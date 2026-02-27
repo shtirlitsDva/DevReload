@@ -1,0 +1,25 @@
+<UserControl x:Class="Example.Plugin.Views.ExamplePaletteView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="#FF2D2D30">
+    <StackPanel Margin="10">
+        <TextBlock Text="DevReload Example"
+                   FontSize="16" FontWeight="Bold"
+                   Foreground="#FFD4D4D4"
+                   Margin="0,0,0,10" />
+
+        <TextBlock Text="This WPF UserControl is loaded from an isolated collectible ALC."
+                   Foreground="#FF9CDCFE"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,10" />
+
+        <TextBlock Text="Edit this text, run EXDEV, and verify the palette updates without restarting AutoCAD."
+                   Foreground="#FFCE9178"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,15" />
+
+        <Button Content="Test Button"
+                Padding="8,4"
+                Click="TestButton_Click" />
+    </StackPanel>
+</UserControl>
