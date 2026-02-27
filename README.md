@@ -16,7 +16,7 @@ Hot-reload framework for AutoCAD .NET 8 plugins. Build, unload, and reload your 
 - **No file locks** — Plugin DLL is loaded from a memory stream, so Visual Studio can rebuild freely
 - **Command hot-reload** — `[CommandMethod]` attributes are registered/unregistered via `Utils.AddCommand`/`RemoveCommand`
 - **WPF palette support** — PaletteSet with WPF UserControls reloads cleanly across ALC boundaries
-- **One-command dev cycle** — Type `EXDEV` in AutoCAD to build from VS and reload in one step
+- **One-command dev cycle** — Define AutoCAD commands to be able to build from VS and reload in one step
 - **VS integration** — Finds running Visual Studio instances via COM ROT, builds projects via EnvDTE
 - **Shared project pattern** — Zero extra DLLs to deploy; DevReload code compiles directly into your Loader
 
