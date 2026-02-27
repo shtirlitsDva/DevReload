@@ -62,7 +62,7 @@ The **Loader** is permanently loaded into AutoCAD via `NETLOAD`. It imports the 
 ## Prerequisites
 
 - **AutoCAD 2025** (or any .NET 8-based AutoCAD/Civil 3D version)
-- **Visual Studio 2022** (must be running for the dev-reload command)
+- **Visual Studio 2022/2026** (must have the project opened for the dev-reload command)
 - **.NET 8 SDK**
 
 </overview>
