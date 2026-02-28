@@ -7,15 +7,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{AE3D5623-4BC
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "example", "example", "{F1A2B3C4-5678-9ABC-DEF0-111222333444}"
 EndProject
-Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "DevReload", "src\DevReload\DevReload.shproj", "{A1B2C3D4-1111-2222-3333-444455556666}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DevReload", "src\DevReload\DevReload.csproj", "{F20D38A6-0AA5-13A5-7AA3-D587D97DBFFB}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DevReload.Interface", "src\DevReload.Interface\DevReload.Interface.csproj", "{4C49683B-EB77-41C5-BCCC-390B4E2640AA}"
 EndProject
-Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "DevReload.Forms", "src\DevReload.Forms\DevReload.Forms.shproj", "{B2C3D4E5-2222-3333-4444-555566667777}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Example.Plugin", "example\Example.Plugin\Example.Plugin.csproj", "{03B9CC22-A45B-480E-AE3B-C40603B5B779}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Example.Loader", "example\Example.Loader\Example.Loader.csproj", "{A35F147D-F4BD-4CB0-A77B-75FBB7EAFC91}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DevReloadTest", "example\DevReloadTest\DevReloadTest.csproj", "{B81D95F0-E74A-4273-8F68-DFA00430AE6A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -23,33 +19,25 @@ Global
 		Release|x64 = Release|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{F20D38A6-0AA5-13A5-7AA3-D587D97DBFFB}.Debug|x64.ActiveCfg = Debug|x64
+		{F20D38A6-0AA5-13A5-7AA3-D587D97DBFFB}.Debug|x64.Build.0 = Debug|x64
+		{F20D38A6-0AA5-13A5-7AA3-D587D97DBFFB}.Release|x64.ActiveCfg = Release|x64
+		{F20D38A6-0AA5-13A5-7AA3-D587D97DBFFB}.Release|x64.Build.0 = Release|x64
 		{4C49683B-EB77-41C5-BCCC-390B4E2640AA}.Debug|x64.ActiveCfg = Debug|x64
 		{4C49683B-EB77-41C5-BCCC-390B4E2640AA}.Debug|x64.Build.0 = Debug|x64
 		{4C49683B-EB77-41C5-BCCC-390B4E2640AA}.Release|x64.ActiveCfg = Release|x64
 		{4C49683B-EB77-41C5-BCCC-390B4E2640AA}.Release|x64.Build.0 = Release|x64
-		{03B9CC22-A45B-480E-AE3B-C40603B5B779}.Debug|x64.ActiveCfg = Debug|x64
-		{03B9CC22-A45B-480E-AE3B-C40603B5B779}.Debug|x64.Build.0 = Debug|x64
-		{03B9CC22-A45B-480E-AE3B-C40603B5B779}.Release|x64.ActiveCfg = Release|x64
-		{03B9CC22-A45B-480E-AE3B-C40603B5B779}.Release|x64.Build.0 = Release|x64
-		{A35F147D-F4BD-4CB0-A77B-75FBB7EAFC91}.Debug|x64.ActiveCfg = Debug|x64
-		{A35F147D-F4BD-4CB0-A77B-75FBB7EAFC91}.Debug|x64.Build.0 = Debug|x64
-		{A35F147D-F4BD-4CB0-A77B-75FBB7EAFC91}.Release|x64.ActiveCfg = Release|x64
-		{A35F147D-F4BD-4CB0-A77B-75FBB7EAFC91}.Release|x64.Build.0 = Release|x64
+		{B81D95F0-E74A-4273-8F68-DFA00430AE6A}.Debug|x64.ActiveCfg = Debug|x64
+		{B81D95F0-E74A-4273-8F68-DFA00430AE6A}.Debug|x64.Build.0 = Debug|x64
+		{B81D95F0-E74A-4273-8F68-DFA00430AE6A}.Release|x64.ActiveCfg = Release|x64
+		{B81D95F0-E74A-4273-8F68-DFA00430AE6A}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
-		{A1B2C3D4-1111-2222-3333-444455556666} = {AE3D5623-4BCD-4510-8529-B35335B4F56F}
+		{F20D38A6-0AA5-13A5-7AA3-D587D97DBFFB} = {AE3D5623-4BCD-4510-8529-B35335B4F56F}
 		{4C49683B-EB77-41C5-BCCC-390B4E2640AA} = {AE3D5623-4BCD-4510-8529-B35335B4F56F}
-		{B2C3D4E5-2222-3333-4444-555566667777} = {AE3D5623-4BCD-4510-8529-B35335B4F56F}
-		{03B9CC22-A45B-480E-AE3B-C40603B5B779} = {F1A2B3C4-5678-9ABC-DEF0-111222333444}
-		{A35F147D-F4BD-4CB0-A77B-75FBB7EAFC91} = {F1A2B3C4-5678-9ABC-DEF0-111222333444}
-	EndGlobalSection
-	GlobalSection(SharedMSBuildProjectFiles) = preSolution
-		src\DevReload\DevReload.projitems*{a1b2c3d4-1111-2222-3333-444455556666}*SharedItemsImport = 13
-		src\DevReload\DevReload.projitems*{a35f147d-f4bd-4cb0-a77b-75fbb7eafc91}*SharedItemsImport = 5
-		src\DevReload.Forms\DevReload.Forms.projitems*{b2c3d4e5-2222-3333-4444-555566667777}*SharedItemsImport = 13
-		src\DevReload.Forms\DevReload.Forms.projitems*{a35f147d-f4bd-4cb0-a77b-75fbb7eafc91}*SharedItemsImport = 5
+		{B81D95F0-E74A-4273-8F68-DFA00430AE6A} = {F1A2B3C4-5678-9ABC-DEF0-111222333444}
 	EndGlobalSection
 EndGlobal

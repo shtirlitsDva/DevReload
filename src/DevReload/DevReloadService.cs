@@ -5,46 +5,110 @@ using System.Linq;
 using System.Windows.Forms;
 using Autodesk.AutoCAD.EditorInput;
 using EnvDTE;
+using EnvDTE80;
 
 namespace DevReload
 {
-    /// <summary>
-    /// Finds a project by name across all running Visual Studio instances,
-    /// builds it, and returns the path to the output DLL.
-    /// <para>
-    /// This is the core "dev-reload" service: type a command in AutoCAD,
-    /// and it automatically builds your latest code in VS and returns the DLL path
-    /// for <see cref="PluginHost{TPlugin}"/> to load.
-    /// </para>
-    /// </summary>
+    public record VsProjectInfo(string Name, string DebugDllPath, string SolutionName);
+
     public static class DevReloadService
     {
-        /// <summary>
-        /// GUID for Visual Studio solution folders (virtual containers, not real projects).
-        /// </summary>
         private const string SolutionFolderKind = "{66A26720-8FB5-11D2-AA7E-00C04F688DDE}";
 
-        /// <summary>
-        /// Finds a project named <paramref name="projectName"/> in any running
-        /// Visual Studio instance, builds it in the active Debug configuration,
-        /// and returns the full path to the output DLL.
-        /// </summary>
-        /// <param name="projectName">
-        /// The project name as it appears in VS Solution Explorer
-        /// (e.g., <c>"Example.Plugin"</c>).
-        /// </param>
-        /// <param name="ed">
-        /// Optional AutoCAD editor for status messages. Pass <c>null</c> for silent operation.
-        /// </param>
-        /// <returns>
-        /// Full path to the built DLL, or <c>null</c> if the project was not found,
-        /// the build failed, or the user cancelled.
-        /// </returns>
+        public static List<VsProjectInfo> GetAvailableProjects(Editor? ed)
+        {
+            var result = new List<VsProjectInfo>();
+            var vsInstances = VsInstanceFinder.GetRunningVSInstances();
+            if (vsInstances.Count == 0)
+            {
+                ed?.WriteMessage("\nNo running Visual Studio instances found.");
+                return result;
+            }
+
+            foreach (var kvp in vsInstances)
+            {
+                _DTE dte = kvp.Value;
+                try
+                {
+                    if (string.IsNullOrEmpty(dte.Solution?.FullName))
+                        continue;
+
+                    string solName = Path.GetFileNameWithoutExtension(dte.Solution.FullName);
+                    CollectProjects(dte.Solution, solName, result);
+                }
+                catch { }
+            }
+
+            return result;
+        }
+
+        private static void CollectProjects(Solution solution, string solName, List<VsProjectInfo> result)
+        {
+            foreach (Project prj in solution.Projects)
+                CollectProject(prj, solName, result);
+        }
+
+        private static void CollectProject(Project prj, string solName, List<VsProjectInfo> result)
+        {
+            try
+            {
+                if (prj.Kind == SolutionFolderKind)
+                {
+                    foreach (ProjectItem item in prj.ProjectItems)
+                    {
+                        if (item.SubProject != null)
+                            CollectProject(item.SubProject, solName, result);
+                    }
+                    return;
+                }
+
+                string projectDir = Path.GetDirectoryName(prj.FullName)!;
+                string assemblyName = prj.Properties.Item("AssemblyName").Value.ToString()!;
+
+                string? debugOutputPath = null;
+                var configMgr = prj.ConfigurationManager;
+                if (configMgr != null)
+                {
+                    for (int i = 1; i <= configMgr.Count; i++)
+                    {
+                        try
+                        {
+                            var cfg = configMgr.Item(i);
+                            if (cfg.ConfigurationName.Equals("Debug", StringComparison.OrdinalIgnoreCase))
+                            {
+                                debugOutputPath = cfg.Properties.Item("OutputPath").Value.ToString();
+                                break;
+                            }
+                        }
+                        catch { }
+                    }
+
+                    if (debugOutputPath == null)
+                    {
+                        try
+                        {
+                            debugOutputPath = configMgr.ActiveConfiguration
+                                .Properties.Item("OutputPath").Value.ToString();
+                        }
+                        catch { }
+                    }
+                }
+
+                if (debugOutputPath == null) return;
+
+                string dllPath = Path.GetFullPath(
+                    Path.Combine(projectDir, debugOutputPath, assemblyName + ".dll"));
+
+                result.Add(new VsProjectInfo(prj.Name, dllPath, solName));
+            }
+            catch { }
+        }
+
         public static string? FindAndBuild(string projectName, Editor? ed)
         {
             using var wc = new WaitCursorScope();
 
-            // 1. Get running VS instances via COM ROT
+            // 1. Get running VS instances
             var vsInstances = VsInstanceFinder.GetRunningVSInstances();
             if (vsInstances.Count == 0)
             {
@@ -52,7 +116,7 @@ namespace DevReload
                 return null;
             }
 
-            // 2. Search for the project across all VS instances
+            // 2. Find project across all VS instances
             var matches = new List<(string solutionName, _DTE dte, Project project)>();
 
             foreach (var kvp in vsInstances)
@@ -70,7 +134,7 @@ namespace DevReload
                 }
                 catch
                 {
-                    // Skip VS instances that don't have a loaded solution
+                    // Skip VS instances without loaded solutions
                 }
             }
 
@@ -80,7 +144,7 @@ namespace DevReload
                 return null;
             }
 
-            // 3. Select the right match (prompt user if multiple)
+            // 3. Select the right match
             _DTE targetDte;
             Project targetProject;
 
@@ -92,9 +156,9 @@ namespace DevReload
             }
             else
             {
-                // Multiple matches — show selection dialog
+                // Multiple matches - ask user via StringGridForm
                 var solNames = matches.Select(m => m.solutionName).ToList();
-                string selection = DevReload.Forms.StringGridFormCaller.Call(
+                string selection = IntersectUtilities.StringGridFormCaller.Call(
                     solNames,
                     $"Project '{projectName}' found in {matches.Count} instances. Select:");
 
@@ -127,30 +191,89 @@ namespace DevReload
                 return null;
             }
 
-            // 5. Build the project (including dependencies)
+            // 5. Build the project (+ dependencies)
             ed?.WriteMessage($"\nBuilding '{projectName}'...");
 
-            SolutionBuild solBuild = targetDte.Solution.SolutionBuild;
-            string solutionConfig = solBuild.ActiveConfiguration.Name;
-            solBuild.BuildProject(solutionConfig, targetProject.UniqueName, true);
+            SolutionBuild solBuild;
+            string solutionConfig;
+            try
+            {
+                solBuild = targetDte.Solution.SolutionBuild;
+                solutionConfig = solBuild.ActiveConfiguration.Name;
+            }
+            catch (Exception ex)
+            {
+                ed?.WriteMessage($"\nFailed to access VS build system: {ex.Message}");
+                return null;
+            }
+
+            try
+            {
+                solBuild.BuildProject(solutionConfig, targetProject.UniqueName, true);
+            }
+            catch (Exception ex)
+            {
+                ed?.WriteMessage(
+                    $"\nBuildProject COM call failed: {ex.GetType().Name}: {ex.Message}");
+                return null;
+            }
 
             if (solBuild.LastBuildInfo != 0)
             {
                 ed?.WriteMessage(
                     $"\nBuild failed ({solBuild.LastBuildInfo} project(s) failed).");
+
+                try
+                {
+                    if (targetDte is DTE2 dte2)
+                    {
+                        foreach (OutputWindowPane pane in dte2.ToolWindows.OutputWindow.OutputWindowPanes)
+                        {
+                            if (pane.Name != "Build") continue;
+                            var doc = pane.TextDocument;
+                            var sel = doc.Selection;
+                            sel.SelectAll();
+                            string buildLog = sel.Text ?? "";
+                            var errorLines = buildLog
+                                .Split('\n')
+                                .Where(l => l.Contains(": error "))
+                                .Take(10)
+                                .ToList();
+                            foreach (var line in errorLines)
+                                ed?.WriteMessage($"\n  {line.Trim()}");
+                            break;
+                        }
+                    }
+                }
+                catch
+                {
+                }
+
                 return null;
             }
 
             ed?.WriteMessage("\nBuild succeeded.");
 
-            // 6. Resolve output DLL path from project properties
-            string projectDir = Path.GetDirectoryName(targetProject.FullName)!;
+            // 6. Get output DLL path
+            string projectDir;
+            string outputPath;
+            string assemblyName;
+            try
+            {
+                projectDir = Path.GetDirectoryName(targetProject.FullName)!;
 
-            string outputPath = targetProject.ConfigurationManager
-                .ActiveConfiguration.Properties.Item("OutputPath").Value.ToString()!;
+                outputPath = targetProject.ConfigurationManager
+                    .ActiveConfiguration.Properties.Item("OutputPath").Value.ToString()!;
 
-            string assemblyName = targetProject.Properties
-                .Item("AssemblyName").Value.ToString()!;
+                assemblyName = targetProject.Properties
+                    .Item("AssemblyName").Value.ToString()!;
+            }
+            catch (Exception ex)
+            {
+                ed?.WriteMessage(
+                    $"\nFailed to read project output properties: {ex.GetType().Name}: {ex.Message}");
+                return null;
+            }
 
             string dllPath = Path.GetFullPath(
                 Path.Combine(projectDir, outputPath, assemblyName + ".dll"));
@@ -165,10 +288,6 @@ namespace DevReload
             return dllPath;
         }
 
-        /// <summary>
-        /// Recursively searches a project (or solution folder) for a project
-        /// matching <paramref name="projectName"/>.
-        /// </summary>
         private static void SearchProject(
             Project prj,
             string projectName,
@@ -199,10 +318,6 @@ namespace DevReload
             }
         }
 
-        /// <summary>
-        /// Sets the cursor to <see cref="Cursors.WaitCursor"/> for the scope
-        /// of the <c>using</c> block, restoring the previous cursor on dispose.
-        /// </summary>
         private class WaitCursorScope : IDisposable
         {
             private readonly Cursor _savedCursor;

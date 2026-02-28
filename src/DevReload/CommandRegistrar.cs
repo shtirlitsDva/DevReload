@@ -8,24 +8,9 @@ using Autodesk.AutoCAD.Runtime;
 namespace DevReload
 {
     /// <summary>
-    /// Registers <c>[CommandMethod]</c> attributes from a loaded assembly via
-    /// <see cref="Utils.AddCommand"/> and unregisters them via
-    /// <see cref="Utils.RemoveCommand"/> before ALC unload.
-    /// <para>
-    /// <b>Important:</b> Core (plugin) assemblies must include:<br/>
-    /// <c>[assembly: CommandClass(typeof(SomeEmptyClass))]</c><br/>
-    /// to suppress AutoCAD's built-in <c>ExtensionLoader.ProcessAssembly</c>
-    /// from auto-registering commands via <c>CommandClass.AddCommand</c>.
-    /// That internal registry is separate from <c>Utils.AddCommand</c>/
-    /// <c>RemoveCommand</c> and cannot be cleaned up by this class.
-    /// </para>
+    /// Registers [CommandMethod]s from a loaded assembly via Utils.AddCommand
+    /// and unregisters them via Utils.RemoveCommand before ALC unload.
     /// </summary>
-    /// <remarks>
-    /// AutoCAD .NET 8 fires <c>AppDomain.AssemblyLoad</c> for ALL
-    /// <c>AssemblyLoadContext</c>s, not just the default. Without the
-    /// <c>[assembly: CommandClass]</c> suppression, AutoCAD auto-registers
-    /// commands from the isolated ALC and throws <c>eDuplicateKey</c> on reload.
-    /// </remarks>
     public class CommandRegistrar
     {
         private readonly List<RegisteredCommand> _commands = new();
@@ -33,28 +18,14 @@ namespace DevReload
         private record RegisteredCommand(
             string Group, string GlobalName, CommandCallback Callback);
 
-        /// <summary>
-        /// Gets the number of commands currently registered by this instance.
-        /// </summary>
         public int CommandCount => _commands.Count;
 
         /// <summary>
-        /// Scans the assembly for <c>[CommandMethod]</c> attributes and registers
-        /// each command with AutoCAD via <see cref="Utils.AddCommand"/>.
-        /// <para>
-        /// Always scans <b>all exported types</b> regardless of any
-        /// <c>[assembly: CommandClass]</c> attribute — that attribute exists
-        /// only to suppress AutoCAD's own <c>ExtensionLoader</c>.
-        /// </para>
+        /// Scan assembly for [CommandMethod] attributes and register each
+        /// with AutoCAD via Utils.AddCommand.
+        /// Always scans ALL exported types — ignores [assembly: CommandClass]
+        /// (that attribute is only there to suppress AutoCAD's ExtensionLoader).
         /// </summary>
-        /// <param name="assembly">
-        /// The plugin assembly loaded into the isolated ALC.
-        /// Typically obtained from <see cref="PluginHost{TPlugin}.LoadedAssembly"/>.
-        /// </param>
-        /// <param name="defaultGroupName">
-        /// Command group name used when <see cref="CommandMethodAttribute.GroupName"/>
-        /// is empty. Defaults to the assembly name.
-        /// </param>
         public void RegisterFromAssembly(Assembly assembly, string? defaultGroupName = null)
         {
             defaultGroupName ??= assembly.GetName().Name ?? "PLUGIN";
@@ -77,7 +48,7 @@ namespace DevReload
                         string localName = attr.LocalizedNameId ?? globalName;
                         CommandFlags flags = attr.Flags;
 
-                        // Instance methods: create a new instance per invocation
+                        // Instance methods: create new instance per invocation
                         // (matches AutoCAD's normal behavior for [CommandMethod])
                         CommandCallback callback;
                         if (method.IsStatic)
@@ -104,13 +75,9 @@ namespace DevReload
         }
 
         /// <summary>
-        /// Unregisters all previously registered commands via
-        /// <see cref="Utils.RemoveCommand"/>.
-        /// <para>
-        /// Must be called <b>before</b> unloading the isolated ALC so that
-        /// AutoCAD releases its delegate references and the collectible
-        /// context can be garbage-collected.
-        /// </para>
+        /// Unregister all previously registered commands via Utils.RemoveCommand.
+        /// Must be called BEFORE unloading the ALC so the collectible context
+        /// can be GC'd (no dangling delegate references).
         /// </summary>
         public void UnregisterAll()
         {

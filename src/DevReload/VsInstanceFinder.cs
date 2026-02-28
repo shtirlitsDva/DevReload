@@ -6,17 +6,6 @@ using EnvDTE;
 
 namespace DevReload
 {
-    /// <summary>
-    /// Discovers running Visual Studio instances by enumerating the COM
-    /// Running Object Table (ROT). Each running VS instance registers itself
-    /// as <c>!VisualStudio.DTE.&lt;version&gt;:&lt;pid&gt;</c> in the ROT.
-    /// </summary>
-    /// <remarks>
-    /// This is the standard technique for programmatic VS automation from
-    /// external processes. The returned <see cref="_DTE"/> objects can be used
-    /// to access the solution, build projects, and inspect project properties
-    /// via the EnvDTE COM interop API.
-    /// </remarks>
     public static class VsInstanceFinder
     {
         [DllImport("ole32.dll")]
@@ -25,14 +14,6 @@ namespace DevReload
         [DllImport("ole32.dll")]
         private static extern uint CreateBindCtx(uint reserved, out IBindCtx ctx);
 
-        /// <summary>
-        /// Returns all running Visual Studio instances found in the COM ROT.
-        /// </summary>
-        /// <returns>
-        /// Dictionary keyed by ROT moniker name (e.g.,
-        /// <c>!VisualStudio.DTE.17.0:12345</c>) with the <see cref="_DTE"/>
-        /// automation object as value.
-        /// </returns>
         public static IDictionary<string, _DTE> GetRunningVSInstances()
         {
             IDictionary<string, object> runningObjects = GetRunningObjectTable();
@@ -53,9 +34,6 @@ namespace DevReload
             return vsInstances;
         }
 
-        /// <summary>
-        /// Enumerates all objects in the COM Running Object Table.
-        /// </summary>
         private static IDictionary<string, object> GetRunningObjectTable()
         {
             IDictionary<string, object> rotTable = new Dictionary<string, object>();
