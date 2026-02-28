@@ -1,244 +1,261 @@
-<section>
-<overview>
+# DevReload — Hot-Reload Plugin System for AutoCAD 2025
 
-# DevReload
+DevReload lets you edit, build, and reload AutoCAD .NET plugins without restarting AutoCAD. It uses .NET 8 collectible `AssemblyLoadContext` to isolate plugins and stream-loads DLLs so Visual Studio can rebuild freely while the old plugin runs. The `{PREFIX}DEV` command builds your project via VS COM automation, tears down the old plugin, and loads the new one — all in one step.
 
-Hot-reload framework for AutoCAD .NET 8 plugins. Build, unload, and reload your plugin code **without restarting AutoCAD**.
+DevReload works exclusively with **Debug builds**. The "Add Plugin" flow contacts Visual Studio via COM, lists loaded projects, and auto-derives the Debug output path and DLL name.
 
-</overview>
-</section>
+## Quickstart
 
-<section>
-<overview>
+1. Place `DevReload.dll` + `DevReload.Interface.dll` in a folder, autoload via `acad2025.lsp`
+2. Open your plugin solution in Visual Studio (**Debug** configuration)
+3. Start AutoCAD, type `DEVRELOAD` to open the management palette
+4. Click **+ Add Plugin** → pick your project from the VS project list
+5. Click **Add** → your plugin is registered with `{PREFIX}LOAD` / `{PREFIX}DEV` / `{PREFIX}UNLOAD`
+7. Type `{PREFIX}LOAD` — loads your Debug DLL (builds first if it doesn't exist)
+8. Edit code in VS → type `{PREFIX}DEV` → see changes instantly, no restart
 
-## Features
-
-- **No file locks** — Plugin DLL is loaded from a memory stream, so Visual Studio can rebuild freely
-- **Command hot-reload** — `[CommandMethod]` attributes are registered/unregistered via `Utils.AddCommand`/`RemoveCommand`
-- **WPF palette support** — PaletteSet with WPF UserControls reloads cleanly across ALC boundaries
-- **One-command dev cycle** — Define AutoCAD commands to be able to build from VS and reload in one step
-- **VS integration** — Finds running Visual Studio instances via COM ROT, builds projects via EnvDTE
-- **Shared project pattern** — Zero extra DLLs to deploy; DevReload code compiles directly into your Loader
-
-</overview>
-</section>
-
-<section>
-<overview>
-
-## Architecture
-Illustrated with example project.
-```
-┌───────────────────────────────────────────────────────────────────┐
-│  AutoCAD Process (.NET 8)                                         │
-│                                                                   │
-│  ┌────────────────────────┐     ┌───────────────────────────────┐ │
-│  │  Default ALC           │     │  Isolated Collectible ALC     │ │
-│  │                        │     │                               │ │
-│  │  EXAMPLELOADER.dll     │────>│  Example.Plugin.dll           │ │
-│  │  (Loader)              │     │  (Core - hot-reloadable)      │ │
-│  │                        │     │                               │ │
-│  │  Contains:             │     │  Contains:                    │ │
-│  │  · EXLOAD/EXDEV/       │     │  · [CommandMethod] commands   │ │
-│  │    EXUNLOAD commands   │     │  · IPlugin implementation     │ │
-│  │  · PluginHost<IPlugin> │     │  · WPF UserControls           │ │
-│  │  · CommandRegistrar    │     │  · PaletteSet                 │ │
-│  │  · DevReloadService    │     │                               │ │
-│  │                        │     │  Loaded from stream (no lock) │ │
-│  │  DevReload.Interface   │◄────│  DevReload.Interface          │ │
-│  │  (shared type identity)│     │  (Private=false, falls back)  │ │
-│  └────────────────────────┘     └───────────────────────────────┘ │
-└───────────────────────────────────────────────────────────────────┘
-```
-
-The **Loader** is permanently loaded into AutoCAD via `NETLOAD`. It imports the DevReload shared project code and manages the lifecycle of the **Plugin (Core)**, which lives in an isolated collectible `AssemblyLoadContext` that can be unloaded and reloaded at will.
-
-</overview>
-</section>
-
-<section>
-<overview>
-
-## Prerequisites
-
-- **AutoCAD 2025** (or any .NET 8-based AutoCAD/Civil 3D version)
-- **Visual Studio 2022/2026** (must have the project opened for the dev-reload command)
-- **.NET 8 SDK**
-
-</overview>
-</section>
-
-<section>
-<overview>
-
-## Setup
-
-1. Clone this repository
-2. Configure your AutoCAD installation path (choose one method):
-
-   **Option A** — Local props file (recommended):
-   ```
-   Copy Directory.Build.props.user.example to Directory.Build.props.user
-   Edit the AutoCADPath value to match your installation
-   ```
-
-   **Option B** — Environment variable:
-   ```
-   set AutoCADPath=C:\Program Files\Autodesk\AutoCAD 2025
-   ```
-
-   **Option C** — Command line:
-   ```
-   dotnet build -p:AutoCADPath="C:\Program Files\Autodesk\AutoCAD 2025"
-   ```
-
-3. Open `DevReload.sln` in Visual Studio
-4. Build the solution (`Debug|x64`)
-
-</overview>
-</section>
-
-<section>
-<overview>
-
-## Quick Start
-
-1. **Publish or locate** `Example.Loader\bin\Debug\EXAMPLELOADER.dll`
-2. In AutoCAD, run `NETLOAD` and select `EXAMPLELOADER.dll`
-3. Type **`EXLOAD`** — loads the example plugin, opens a palette, registers commands
-4. Type **`EXCMD`** — draws a line (proves commands work from isolated ALC)
-5. **Edit** `ExampleCommands.cs` in Visual Studio (change the message or coordinates)
-6. Type **`EXDEV`** — builds from VS, unloads old plugin, loads new one. Your changes are live!
-7. Type **`EXUNLOAD`** — cleans up everything
-
-</overview>
-</section>
-
-<section>
-<overview>
-
-## Creating Your Own Plugin
-
-### Command-Only Plugin (no UI)
-
-If your plugin only has `[CommandMethod]` commands and no PaletteSet, you don't need `IPlugin` or `DevReload.Interface` at all.
-
-**Core project requirements:**
+**Required in your plugin** (prevents stale commands on reload):
 ```csharp
-// Suppress AutoCAD's auto-registration (REQUIRED for hot-reload)
-[assembly: CommandClass(typeof(MyPlugin.NoAutoCommands))]
+#if DEBUG
+[assembly: CommandClass(typeof(YourNamespace.NoAutoCommands))]
+#endif
+// ...
+#if DEBUG
+public class NoAutoCommands { }
+#endif
+```
 
-namespace MyPlugin
+## Project Setup (.csproj)
+
+Your plugin project needs these settings:
+
+```xml
+<PropertyGroup>
+    <TargetFramework>net8.0-windows8.0</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <Platforms>x64</Platforms>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
+    <OutputType>Library</OutputType>
+
+    <!-- REQUIRED for collectible ALC -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+</PropertyGroup>
+```
+
+References:
+
+```xml
+<ItemGroup>
+    <!-- AutoCAD assemblies — Private=False so they're not copied -->
+    <Reference Include="accoremgd">
+        <HintPath>C:\Program Files\Autodesk\AutoCAD 2025\accoremgd.dll</HintPath>
+        <Private>False</Private>
+    </Reference>
+    <Reference Include="acdbmgd">
+        <HintPath>C:\Program Files\Autodesk\AutoCAD 2025\acdbmgd.dll</HintPath>
+        <Private>False</Private>
+    </Reference>
+    <Reference Include="acmgd">
+        <HintPath>C:\Program Files\Autodesk\AutoCAD 2025\acmgd.dll</HintPath>
+        <Private>False</Private>
+    </Reference>
+    <Reference Include="AdWindows">
+        <HintPath>C:\Program Files\Autodesk\AutoCAD 2025\AdWindows.dll</HintPath>
+        <Private>False</Private>
+    </Reference>
+</ItemGroup>
+
+<ItemGroup>
+    <!-- Shared interface — Private=false keeps it in default ALC for type identity -->
+    <ProjectReference Include="..\DevReload.Interface\DevReload.Interface.csproj">
+        <Private>false</Private>
+    </ProjectReference>
+</ItemGroup>
+```
+
+See `DevReloadTest/DevReloadTest.csproj` for a complete working example.
+
+## Dual-Mode: IExtensionApplication + IPlugin
+
+Plugins work in **two modes** from the same DLL:
+- **Release** (for users): loaded via `NETLOAD` — AutoCAD calls `IExtensionApplication.Initialize()` and registers commands normally
+- **Debug** (for you): loaded via DevReload — AutoCAD *still* calls `Initialize()` automatically, but command registration is suppressed
+
+### Dual-Instance Problem & Static State
+
+AutoCAD and DevReload create **separate instances** of your plugin class:
+- **Instance A**: AutoCAD creates via `[assembly: ExtensionApplication]` → calls `Initialize()`
+- **Instance B**: DevReload creates via `Activator.CreateInstance` → calls `Terminate()` on unload
+
+These are different objects. Instance fields set in `Initialize()` on Instance A are NOT visible to `Terminate()` on Instance B. **Use static fields for anything that needs cleanup:**
+
+```csharp
+public class MyPlugin : IPlugin, IExtensionApplication
 {
-    internal class NoAutoCommands { }
+    private static EventHandler? _docActivated;
 
-    public class MyCommands
+    public void Initialize()
     {
-        [CommandMethod("MYCMD")]
-        public void MyCommand() { /* your code */ }
+        _docActivated = (s, e) => { /* handle */ };
+        Application.DocumentManager.DocumentActivated += _docActivated;
+    }
+
+    public void Terminate()
+    {
+        if (_docActivated != null)
+            Application.DocumentManager.DocumentActivated -= _docActivated;
+        _docActivated = null;
     }
 }
 ```
 
-**Loader just needs:**
+### CommandClass Suppression (Required for Debug)
+
+AutoCAD's `ExtensionLoader` scans loaded assemblies for `[CommandMethod]` attributes and registers them via `CommandClass.AddCommand`. These registrations are **permanent** — no public API to remove them. On reload, this causes `eDuplicateKey` errors and stale commands.
+
+To prevent this, plugin assemblies must suppress AutoCAD's command scanning in Debug builds:
+
 ```csharp
-var context = new IsolatedPluginContext(dllPath);
-var assembly = context.LoadFromStream(/* stream */);
-_registrar.RegisterFromAssembly(assembly);
+#if DEBUG
+[assembly: CommandClass(typeof(MyNamespace.NoAutoCommands))]
+#endif
+
+namespace MyNamespace
+{
+#if DEBUG
+    public class NoAutoCommands { }
+#endif
+}
 ```
 
-### Plugin with UI (PaletteSet + Commands)
+- **Debug**: AutoCAD sees `CommandClass(typeof(NoAutoCommands))`, scans only that empty class, finds no commands. DevReload's `CommandRegistrar` handles registration via `Utils.AddCommand` (which CAN be unregistered on reload).
+- **Release**: No `CommandClass` attribute → AutoCAD scans all types and registers commands normally via `NETLOAD`.
 
-Follow the Example.Plugin/Example.Loader pattern:
+If your plugin already has a custom `[assembly: CommandClass]` for Release, guard it:
 
-1. **Create a Core project** (the hot-reloadable part):
-   - Set `EnableDynamicLoading=true` and `CopyLocalLockFileAssemblies=true`
-   - Output to Loader's `Isolated/` subfolder
-   - Reference `DevReload.Interface` with `Private=false`
-   - Add `[assembly: CommandClass(typeof(NoAutoCommands))]`
-   - Implement `IPlugin` (Initialize, CreatePaletteSet, Terminate)
-
-2. **Create a Loader project** (permanent in AutoCAD):
-   - Import `DevReload.projitems` and `DevReload.Forms.projitems`
-   - Reference `DevReload.Interface` normally
-   - Add a build-order dependency on the Core: `ReferenceOutputAssembly=false`
-   - Implement LOAD/DEV/UNLOAD commands following `ExampleLoaderCommands.cs`
-
-</overview>
-</section>
-
-<section>
-<overview>
-
-## How It Works
-
-### Stream-Based Loading (No File Locks)
-
-`PluginHost.Load()` reads the DLL bytes via `File.ReadAllBytes()` and loads via `AssemblyLoadContext.LoadFromStream()`. The file handle is released immediately after reading — Visual Studio can rebuild the DLL at any time. NuGet dependencies are still loaded from disk (via `LoadFromAssemblyPath`), which is fine because they don't change during development.
-
-### The Two Command Registries Problem
-
-AutoCAD .NET 8 has **two separate command registration systems**:
-
-1. **`CommandClass.AddCommand`** — AutoCAD's internal system, triggered automatically by `ExtensionLoader.ProcessAssembly` when `AppDomain.AssemblyLoad` fires (which happens for ALL `AssemblyLoadContext`s in .NET 8, not just the default). There is no public API to remove commands from this registry.
-
-2. **`Utils.AddCommand` / `Utils.RemoveCommand`** — The public API in `Autodesk.AutoCAD.Internal`. Commands added here can be cleanly removed.
-
-Without intervention, loading a plugin assembly triggers system #1, and reloading throws `eDuplicateKey` because the old commands can't be removed. The solution:
-
-- **`[assembly: CommandClass(typeof(EmptyClass))]`** in the Core assembly tells AutoCAD to only scan that empty class — finding no commands, registering nothing via system #1.
-- **`CommandRegistrar`** uses system #2 (`Utils.AddCommand`) to register commands, and `Utils.RemoveCommand` to clean them up before reload.
-
-### Visual Studio Integration
-
-`DevReloadService.FindAndBuild()` uses COM interop to enumerate the Running Object Table (ROT) for `VisualStudio.DTE` monikers. It finds your project by name across all running VS instances, builds it via `EnvDTE.SolutionBuild.BuildProject()`, and returns the output DLL path.
-
-### Collectible AssemblyLoadContext
-
-`IsolatedPluginContext` extends `AssemblyLoadContext` with `isCollectible: true`. When `Unload()` is called and all references are released (commands unregistered, PaletteSet closed), the GC can collect the entire context and all assemblies within it.
-
-</overview>
-</section>
-
-<section>
-<overview>
-
-## Project Structure
-
-```
-DevReload/
-├── DevReload.sln
-├── Directory.Build.props           # AutoCAD path + common MSBuild settings
-├── Directory.Build.props.user.example
-│
-├── src/
-│   ├── DevReload/                  # Shared project (.shproj)
-│   │   ├── CommandRegistrar.cs     # Utils.AddCommand/RemoveCommand wrapper
-│   │   ├── DevReloadService.cs     # VS COM interop: find project, build, return DLL
-│   │   ├── IsolatedPluginContext.cs # Collectible ALC with dependency resolution
-│   │   ├── PluginHost.cs           # Load from stream, find IPlugin, manage lifecycle
-│   │   └── VsInstanceFinder.cs     # COM ROT enumeration for running VS instances
-│   │
-│   ├── DevReload.Interface/        # Shared contract (IPlugin interface)
-│   │   └── IPlugin.cs
-│   │
-│   └── DevReload.Forms/            # Shared project: UI selection dialogs
-│       └── Forms/                  # Dark-themed grid forms for VS instance selection
-│
-└── example/
-    ├── Example.Plugin/             # Hot-reloadable Core (commands + WPF palette)
-    └── Example.Loader/             # Permanent Loader (EXLOAD/EXDEV/EXUNLOAD)
+```csharp
+#if DEBUG
+[assembly: CommandClass(typeof(NoAutoCommands))]
+#else
+[assembly: CommandClass(typeof(MyProductionCommands))]
+#endif
 ```
 
-</overview>
-</section>
+### Lifecycle Summary
 
-<section>
-<overview>
+| Method | NETLOAD (Release) | DevReload (Debug) |
+|--------|-------------------|-------------------|
+| `Initialize()` | AutoCAD calls it | AutoCAD calls it (DevReload skips) |
+| `Terminate()` | AutoCAD calls on shutdown | DevReload calls on unload/reload |
+| `CreatePaletteSet()` | Not called | DevReload calls it |
+| Commands | AutoCAD registers via `CommandClass.AddCommand` | DevReload registers via `Utils.AddCommand` |
 
-## License
+## Implement IPlugin (+ IExtensionApplication)
 
-MIT License. See [LICENSE](LICENSE) for details.
+Your plugin class implements both `IPlugin` and `IExtensionApplication`:
 
-</overview>
-</section>
+```csharp
+using Autodesk.AutoCAD.Runtime;
+using DevReload;
+
+[assembly: ExtensionApplication(typeof(MyNamespace.MyPlugin))]
+
+#if DEBUG
+[assembly: CommandClass(typeof(MyNamespace.NoAutoCommands))]
+#endif
+
+namespace MyNamespace
+{
+#if DEBUG
+    public class NoAutoCommands { }
+#endif
+
+    public class MyPlugin : IPlugin, IPluginPalette, IExtensionApplication
+    {
+        public void Initialize()
+        {
+            // Use STATIC fields for event subscriptions and state.
+        }
+
+        public object CreatePaletteSet()
+        {
+            return new MyPaletteSet();
+        }
+
+        public void Terminate()
+        {
+            // Clean up STATIC state: unsubscribe events, dispose resources.
+        }
+    }
+}
+```
+
+## Adding Plugins (VS-Driven)
+
+1. Open `DEVRELOAD` management palette in AutoCAD
+2. Click **"+ Add Plugin"**
+3. DevReload contacts Visual Studio via COM and lists all loaded projects
+4. Select a project from the picker
+5. Project name, Debug DLL path, and VS project name are auto-derived
+6. Optionally set: Command Prefix, Load on Startup
+7. Click **Add**
+
+If multiple VS instances are open, projects are shown as `SolutionName:ProjectName`.
+
+## plugins.json Configuration
+
+Plugins are stored in `plugins.json` next to `DevReload.dll`:
+
+```json
+{
+  "plugins": [
+    {
+      "name": "DevReloadTest",
+      "dllPath": "C:\\Path\\To\\bin\\Debug\\DevReloadTest.dll",
+      "vsProject": "DevReloadTest",
+      "commandPrefix": "TEST",
+      "loadOnStartup": false
+    }
+  ]
+}
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `name` | *(required)* | Unique plugin name (auto-derived from VS project) |
+| `dllPath` | *(auto)* | Path to Debug output DLL (auto-derived from VS) |
+| `vsProject` | *(auto)* | VS project name (auto-derived) |
+| `commandPrefix` | `{name}` | Prefix for generated LOAD/DEV/UNLOAD commands |
+| `loadOnStartup` | `false` | Auto-load when AutoCAD starts |
+| `paletteWidth` | `400` | Initial palette width |
+| `paletteHeight` | `600` | Initial palette height |
+| `dockSide` | `Right` | Palette dock side (`Left`, `Right`) |
+
+## Generated Commands
+
+For each plugin, DevReload registers three commands using the `commandPrefix`:
+
+| Command | Action |
+|---------|--------|
+| `{PREFIX}LOAD` | Load from Debug DLL path. If DLL not found, builds the project first. |
+| `{PREFIX}DEV` | Build from VS, then reload. If build fails, old plugin stays running. |
+| `{PREFIX}UNLOAD` | Close palette, unregister commands, terminate, unload ALC. |
+
+The management palette is opened with the `DEVRELOAD` command.
+
+## Dev Workflow
+
+1. Open your solution in Visual Studio (Debug configuration)
+2. Start AutoCAD (DevReload loads via autoload)
+3. `DEVRELOAD` → Add Plugin → select your project
+4. Edit your plugin code in VS
+5. In AutoCAD, type `{PREFIX}DEV` (e.g., `TESTDEV`)
+6. DevReload builds, tears down old plugin, loads new DLL
+7. See your changes immediately — no AutoCAD restart needed
+
+The `{PREFIX}DEV` command is safe: it builds **before** tearing down. If the build fails, the old plugin stays loaded and functional.
+
+The `{PREFIX}LOAD` command will auto-build if the Debug DLL doesn't exist yet.
