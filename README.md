@@ -6,15 +6,11 @@ DevReload works exclusively with **Debug builds**. The "Add Plugin" flow contact
 
 ## Quickstart
 
-1. Place `DevReload.dll` + `DevReload.Interface.dll` in a folder, autoload via `acad2025.lsp`
-2. Open your plugin solution in Visual Studio (**Debug** configuration)
-3. Start AutoCAD, type `DEVRELOAD` to open the management palette
-4. Click **+ Add Plugin** → pick your project from the VS project list
-5. Click **Add** → your plugin is registered with `{PREFIX}LOAD` / `{PREFIX}DEV` / `{PREFIX}UNLOAD`
-7. Type `{PREFIX}LOAD` — loads your Debug DLL (builds first if it doesn't exist)
-8. Edit code in VS → type `{PREFIX}DEV` → see changes instantly, no restart
+**Prepare your plugin** (prevents stale commands on reload):
+We add a `#if DEBUG`guarded empty class that prevents autocad from registering [CommandMethods] when the .dll is (re)loaded.
+`DevReload` manages the registering and unregistering of commands on load/reload.
+This also means that you cannot have `Release` build loaded before running `Debug` build.
 
-**Required in your plugin** (prevents stale commands on reload):
 ```csharp
 #if DEBUG
 [assembly: CommandClass(typeof(YourNamespace.NoAutoCommands))]
@@ -25,9 +21,27 @@ public class NoAutoCommands { }
 #endif
 ```
 
+Add interfaces from DevReload.Interface.
+**IPlugin**
+Interface `IPlugin` has to be placed same place as your `IExtensionApplication`. We cannot prevent Autocad from running `Initialize()`, but Autocad does not run `Terminate()` when plugin is unloaded, so `DevReload` runs `Terminate()` when unloading a plugin before reloading. Why do this? All kinds of references to Autocad internal stuff like Events have to be unregistered in `Terminate()` or we wouldn't be able to unload the plugin as internal stuff is still referencing an instance of the plugin. So the solution to this is all event subscriptions (and other stuff, but I know only about events) have to register to *static* methods that can be unregistered in `Terminate()` as Autocad works with another instance of our class which we cannot get to. Okay, rather messy explained, hope it makes sense.
+
+**IPluginPalette**
+This interface is used *if* you have a PaletteSet that needs to be instantiated when plugin loads. So add this interface to the method that instantiates your PaletteSet.
+
+**Launch DevReload**
+
+1. Place `DevReload.dll` + `DevReload.Interface.dll` in a folder.
+2. Open your plugin solution in Visual Studio (**Debug** configuration)
+3. Start AutoCAD, NETLOAD or autoload `DevReload.dll`, type `DEVRELOAD` to open the management palette
+4. Click **+ Add Plugin** → pick your project from the VS project list
+5. Click **Add** → your plugin is registered with `{PREFIX}LOAD` / `{PREFIX}DEV` / `{PREFIX}UNLOAD`
+7. Type `{PREFIX}LOAD` — loads your Debug DLL (builds first if it doesn't exist)
+8. Edit code in VS → type `{PREFIX}DEV` → see changes instantly, no restart
+
 ## Project Setup (.csproj)
 
 Your plugin project needs these settings:
+Note: This was written by AI, I don't actually know which of these are actually needed.
 
 ```xml
 <PropertyGroup>
@@ -44,38 +58,6 @@ Your plugin project needs these settings:
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
 </PropertyGroup>
 ```
-
-References:
-
-```xml
-<ItemGroup>
-    <!-- AutoCAD assemblies — Private=False so they're not copied -->
-    <Reference Include="accoremgd">
-        <HintPath>C:\Program Files\Autodesk\AutoCAD 2025\accoremgd.dll</HintPath>
-        <Private>False</Private>
-    </Reference>
-    <Reference Include="acdbmgd">
-        <HintPath>C:\Program Files\Autodesk\AutoCAD 2025\acdbmgd.dll</HintPath>
-        <Private>False</Private>
-    </Reference>
-    <Reference Include="acmgd">
-        <HintPath>C:\Program Files\Autodesk\AutoCAD 2025\acmgd.dll</HintPath>
-        <Private>False</Private>
-    </Reference>
-    <Reference Include="AdWindows">
-        <HintPath>C:\Program Files\Autodesk\AutoCAD 2025\AdWindows.dll</HintPath>
-        <Private>False</Private>
-    </Reference>
-</ItemGroup>
-
-<ItemGroup>
-    <!-- Shared interface — Private=false keeps it in default ALC for type identity -->
-    <ProjectReference Include="..\DevReload.Interface\DevReload.Interface.csproj">
-        <Private>false</Private>
-    </ProjectReference>
-</ItemGroup>
-```
-
 See `DevReloadTest/DevReloadTest.csproj` for a complete working example.
 
 ## Dual-Mode: IExtensionApplication + IPlugin
@@ -229,7 +211,7 @@ Plugins are stored in `plugins.json` next to `DevReload.dll`:
 | `dllPath` | *(auto)* | Path to Debug output DLL (auto-derived from VS) |
 | `vsProject` | *(auto)* | VS project name (auto-derived) |
 | `commandPrefix` | `{name}` | Prefix for generated LOAD/DEV/UNLOAD commands |
-| `loadOnStartup` | `false` | Auto-load when AutoCAD starts |
+| `loadOnStartup` | `false` | Auto-load when DevReload starts |
 | `paletteWidth` | `400` | Initial palette width |
 | `paletteHeight` | `600` | Initial palette height |
 | `dockSide` | `Right` | Palette dock side (`Left`, `Right`) |
@@ -240,7 +222,7 @@ For each plugin, DevReload registers three commands using the `commandPrefix`:
 
 | Command | Action |
 |---------|--------|
-| `{PREFIX}LOAD` | Load from Debug DLL path. If DLL not found, builds the project first. |
+| `{PREFIX}LOAD` | Load from Debug DLL path. If DLL not found, builds the project first if VS is found. |
 | `{PREFIX}DEV` | Build from VS, then reload. If build fails, old plugin stays running. |
 | `{PREFIX}UNLOAD` | Close palette, unregister commands, terminate, unload ALC. |
 
