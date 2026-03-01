@@ -35,8 +35,5 @@
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
 		<PackageReference Include="Microsoft.VisualStudio.Interop" Version="17.10.40170" />
 	</ItemGroup>
-	<ItemGroup>
-		<ProjectReference Include="..\DevReload.Interface\DevReload.Interface.csproj" />
-	</ItemGroup>
 	<Import Project="..\WpfSHARED\WpfSHARED.projitems" Label="Shared" />
 </Project>

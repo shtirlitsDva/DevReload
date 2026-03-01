@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.IO;
 using System.Linq;
 
@@ -8,7 +7,6 @@ using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Internal;
 using Autodesk.AutoCAD.Runtime;
-using Autodesk.AutoCAD.Windows;
 
 using Exception = System.Exception;
 
@@ -29,12 +27,6 @@ namespace DevReload
             try
             {
                 var reg = GetRegistration(pluginName);
-
-                if (reg.Host.IsLoaded && reg.PaletteSet != null)
-                {
-                    reg.PaletteSet.Visible = true;
-                    return;
-                }
 
                 if (reg.Host.IsLoaded)
                 {
@@ -112,7 +104,7 @@ namespace DevReload
                 catch (StalePluginException)
                 {
                     ed?.WriteMessage(
-                        $"\n{pluginName}: DevReload.Interface has changed. Restart AutoCAD.");
+                        $"\n{pluginName}: IExtensionApplication version mismatch. Restart AutoCAD.");
                     return;
                 }
 
@@ -216,7 +208,7 @@ namespace DevReload
 
         /// <summary>
         /// Core load sequence: tear down old → load new from stream →
-        /// register commands → create palette.
+        /// register commands.
         /// AutoCAD calls IExtensionApplication.Initialize() automatically.
         /// DevReload does NOT call Initialize().
         /// </summary>
@@ -230,20 +222,10 @@ namespace DevReload
             {
                 reg.Registrar.RegisterFromAssembly(reg.Host.LoadedAssembly!);
             }
-
-            var paletteObj = (plugin as IPluginPalette)?.CreatePaletteSet();
-            if (paletteObj is PaletteSet ps)
-            {
-                reg.PaletteSet = ps;
-                ps.Visible = true;
-                ps.Size = reg.PaletteSize;
-                ps.Dock = reg.DockSide;
-            }
         }
 
         private static void TearDown(PluginRegistration reg)
         {
-            ClosePaletteSet(reg);
             reg.Registrar?.UnregisterAll();
 
             if (reg.Host.IsLoaded)
@@ -252,15 +234,6 @@ namespace DevReload
                 catch { /* best-effort */ }
 
                 reg.Host.Unload();
-            }
-        }
-
-        private static void ClosePaletteSet(PluginRegistration reg)
-        {
-            if (reg.PaletteSet != null)
-            {
-                reg.PaletteSet.Close();
-                reg.PaletteSet = null;
             }
         }
 
@@ -290,12 +263,9 @@ namespace DevReload
         public required string DllPath { get; init; }
         public required string? VsProjectName { get; init; }
         public required string[] SharedAssemblyNames { get; init; }
-        public required Size PaletteSize { get; init; }
-        public required DockSides DockSide { get; init; }
 
-        public PluginHost<IPlugin> Host { get; } = new();
+        public PluginHost<IExtensionApplication> Host { get; } = new();
         public CommandRegistrar? Registrar { get; init; }
-        public PaletteSet? PaletteSet { get; set; }
 
         public List<(string Group, string Name, CommandCallback Callback)> LoaderCommands { get; }
             = new();
@@ -306,9 +276,7 @@ namespace DevReload
         private readonly string _pluginName;
         private string? _dllPath;
         private string? _vsProjectName;
-        private string[] _sharedAssemblyNames = new[] { "DevReload.Interface" };
-        private Size _paletteSize = new Size(400, 600);
-        private DockSides _dockSide = DockSides.Right;
+        private string[] _sharedAssemblyNames = Array.Empty<string>();
         private bool _useCommands;
 
         internal PluginRegistrationBuilder(string pluginName)
@@ -334,18 +302,6 @@ namespace DevReload
             return this;
         }
 
-        public PluginRegistrationBuilder WithPaletteSize(int width, int height)
-        {
-            _paletteSize = new Size(width, height);
-            return this;
-        }
-
-        public PluginRegistrationBuilder WithDockSide(DockSides dockSide)
-        {
-            _dockSide = dockSide;
-            return this;
-        }
-
         public PluginRegistrationBuilder WithSharedAssemblies(params string[] assemblyNames)
         {
             _sharedAssemblyNames = assemblyNames;
@@ -360,8 +316,6 @@ namespace DevReload
                 DllPath = _dllPath ?? "",
                 VsProjectName = _vsProjectName ?? _pluginName,
                 SharedAssemblyNames = _sharedAssemblyNames,
-                PaletteSize = _paletteSize,
-                DockSide = _dockSide,
                 Registrar = _useCommands ? new CommandRegistrar() : null,
             };
 

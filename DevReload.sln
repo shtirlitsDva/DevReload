@@ -1,7 +1,6 @@
-
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.0.31903.59
+# Visual Studio Version 18
+VisualStudioVersion = 18.3.11520.95 d18.3
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{AE3D5623-4BCD-4510-8529-B35335B4F56F}"
 EndProject
@@ -39,5 +38,11 @@ Global
 		{F20D38A6-0AA5-13A5-7AA3-D587D97DBFFB} = {AE3D5623-4BCD-4510-8529-B35335B4F56F}
 		{4C49683B-EB77-41C5-BCCC-390B4E2640AA} = {AE3D5623-4BCD-4510-8529-B35335B4F56F}
 		{B81D95F0-E74A-4273-8F68-DFA00430AE6A} = {F1A2B3C4-5678-9ABC-DEF0-111222333444}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {B9FE737A-3C4C-42DA-8F21-4E632E47BC7A}
+	EndGlobalSection
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		src\WpfSHARED\WpfSHARED.projitems*{f20d38a6-0aa5-13a5-7aa3-d587d97dbffb}*SharedItemsImports = 5
 	EndGlobalSection
 EndGlobal

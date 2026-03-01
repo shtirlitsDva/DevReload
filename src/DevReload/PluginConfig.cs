@@ -18,9 +18,6 @@ namespace DevReload
         public string? VsProject { get; set; }
         public string? CommandPrefix { get; set; }
         public bool LoadOnStartup { get; set; }
-        public int PaletteWidth { get; set; } = 400;
-        public int PaletteHeight { get; set; } = 600;
-        public string DockSide { get; set; } = "Right";
     }
 
     public static class PluginConfigLoader

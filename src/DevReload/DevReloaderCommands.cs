@@ -95,11 +95,6 @@ namespace DevReload
             if (entry.VsProject != null) builder.WithVsProject(entry.VsProject);
             builder.WithCommands();
 
-            builder.WithPaletteSize(entry.PaletteWidth, entry.PaletteHeight);
-
-            if (Enum.TryParse<DockSides>(entry.DockSide, true, out var dock))
-                builder.WithDockSide(dock);
-
             builder.Commit();
 
             string prefix = entry.CommandPrefix ?? entry.Name;

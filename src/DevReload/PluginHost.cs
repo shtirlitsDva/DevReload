@@ -72,7 +72,7 @@ namespace DevReload
                 if (nameMatch)
                     throw new StalePluginException(
                         $"{typeof(TPlugin).Name} found by name but compiled against a different " +
-                        $"DevReload.Interface version — rebuilding.");
+                        $"IExtensionApplication version mismatch — rebuilding.");
                 throw new InvalidOperationException(
                     $"Could not find {typeof(TPlugin).Name} implementation in " +
                     $"{Path.GetFileName(assemblyPath)}");

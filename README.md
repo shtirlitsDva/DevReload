@@ -21,22 +21,17 @@ public class NoAutoCommands { }
 #endif
 ```
 
-Add interfaces from DevReload.Interface.
-**IPlugin**
-Interface `IPlugin` has to be placed same place as your `IExtensionApplication`. We cannot prevent Autocad from running `Initialize()`, but Autocad does not run `Terminate()` when plugin is unloaded, so `DevReload` runs `Terminate()` when unloading a plugin before reloading. Why do this? All kinds of references to Autocad internal stuff like Events have to be unregistered in `Terminate()` or we wouldn't be able to unload the plugin as internal stuff is still referencing an instance of the plugin. So the solution to this is all event subscriptions (and other stuff, but I know only about events) have to register to *static* methods that can be unregistered in `Terminate()` as Autocad works with another instance of our class which we cannot get to. Okay, rather messy explained, hope it makes sense.
-
-**IPluginPalette**
-This interface is used *if* you have a PaletteSet that needs to be instantiated when plugin loads. So add this interface to the method that instantiates your PaletteSet.
+Your plugin must implement `IExtensionApplication`. DevReload calls `Terminate()` when unloading a plugin before reloading. All event subscriptions and other AutoCAD references must be unregistered in `Terminate()` using *static* fields, because AutoCAD and DevReload create separate instances of your class (see Dual-Instance Problem below).
 
 **Launch DevReload**
 
-1. Place `DevReload.dll` + `DevReload.Interface.dll` in a folder.
+1. Place `DevReload.dll` in a folder.
 2. Open your plugin solution in Visual Studio (**Debug** configuration)
 3. Start AutoCAD, NETLOAD or autoload `DevReload.dll`, type `DEVRELOAD` to open the management palette
 4. Click **+ Add Plugin** → pick your project from the VS project list
 5. Click **Add** → your plugin is registered with `{PREFIX}LOAD` / `{PREFIX}DEV` / `{PREFIX}UNLOAD`
-7. Type `{PREFIX}LOAD` — loads your Debug DLL (builds first if it doesn't exist)
-8. Edit code in VS → type `{PREFIX}DEV` → see changes instantly, no restart
+6. Type `{PREFIX}LOAD` — loads your Debug DLL (builds first if it doesn't exist)
+7. Edit code in VS → type `{PREFIX}DEV` → see changes instantly, no restart
 
 ## Project Setup (.csproj)
 
@@ -58,9 +53,9 @@ Note: This was written by AI, I don't actually know which of these are actually 
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
 </PropertyGroup>
 ```
-See `DevReloadTest/DevReloadTest.csproj` for a complete working example.
+See `example/DevReloadTest/DevReloadTest.csproj` for a complete working example.
 
-## Dual-Mode: IExtensionApplication + IPlugin
+## Dual-Mode: Release vs Debug
 
 Plugins work in **two modes** from the same DLL:
 - **Release** (for users): loaded via `NETLOAD` — AutoCAD calls `IExtensionApplication.Initialize()` and registers commands normally
@@ -75,7 +70,7 @@ AutoCAD and DevReload create **separate instances** of your plugin class:
 These are different objects. Instance fields set in `Initialize()` on Instance A are NOT visible to `Terminate()` on Instance B. **Use static fields for anything that needs cleanup:**
 
 ```csharp
-public class MyPlugin : IPlugin, IExtensionApplication
+public class MyPlugin : IExtensionApplication
 {
     private static EventHandler? _docActivated;
 
@@ -132,16 +127,15 @@ If your plugin already has a custom `[assembly: CommandClass]` for Release, guar
 |--------|-------------------|-------------------|
 | `Initialize()` | AutoCAD calls it | AutoCAD calls it (DevReload skips) |
 | `Terminate()` | AutoCAD calls on shutdown | DevReload calls on unload/reload |
-| `CreatePaletteSet()` | Not called | DevReload calls it |
 | Commands | AutoCAD registers via `CommandClass.AddCommand` | DevReload registers via `Utils.AddCommand` |
 
-## Implement IPlugin (+ IExtensionApplication)
+## Implement IExtensionApplication
 
-Your plugin class implements both `IPlugin` and `IExtensionApplication`:
+Your plugin class implements `IExtensionApplication`. Everything — commands, palettes, state — lives in one class. Palettes must be stored in a static field and cleaned up in `Terminate()`:
 
 ```csharp
 using Autodesk.AutoCAD.Runtime;
-using DevReload;
+using Autodesk.AutoCAD.Windows;
 
 [assembly: ExtensionApplication(typeof(MyNamespace.MyPlugin))]
 
@@ -155,21 +149,32 @@ namespace MyNamespace
     public class NoAutoCommands { }
 #endif
 
-    public class MyPlugin : IPlugin, IPluginPalette, IExtensionApplication
+    public class MyPlugin : IExtensionApplication
     {
+        private static PaletteSet? _palette;
+
         public void Initialize()
         {
             // Use STATIC fields for event subscriptions and state.
         }
 
-        public object CreatePaletteSet()
-        {
-            return new MyPaletteSet();
-        }
-
         public void Terminate()
         {
+            if (_palette != null)
+            {
+                _palette.Close();
+                _palette.Dispose();
+                _palette = null;
+            }
             // Clean up STATIC state: unsubscribe events, dispose resources.
+        }
+
+        [CommandMethod("MYPALETTE")]
+        public static void ShowPalette()
+        {
+            if (_palette == null)
+                _palette = new MyPaletteSet();
+            _palette.Visible = true;
         }
     }
 }
@@ -212,9 +217,6 @@ Plugins are stored in `%APPDATA%\DevReload\plugins.json`:
 | `vsProject` | *(auto)* | VS project name (auto-derived) |
 | `commandPrefix` | `{name}` | Prefix for generated LOAD/DEV/UNLOAD commands |
 | `loadOnStartup` | `false` | Auto-load when DevReload starts |
-| `paletteWidth` | `400` | Initial palette width |
-| `paletteHeight` | `600` | Initial palette height |
-| `dockSide` | `Right` | Palette dock side (`Left`, `Right`) |
 
 ## Generated Commands
 
@@ -224,7 +226,7 @@ For each plugin, DevReload registers three commands using the `commandPrefix`:
 |---------|--------|
 | `{PREFIX}LOAD` | Load from Debug DLL path. If DLL not found, builds the project first if VS is found. |
 | `{PREFIX}DEV` | Build from VS, then reload. If build fails, old plugin stays running. |
-| `{PREFIX}UNLOAD` | Close palette, unregister commands, terminate, unload ALC. |
+| `{PREFIX}UNLOAD` | Unregister commands, terminate, unload ALC. |
 
 The management palette is opened with the `DEVRELOAD` command.
 
