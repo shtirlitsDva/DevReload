@@ -8,8 +8,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "example", "example", "{F1A2
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DevReload", "src\DevReload\DevReload.csproj", "{F20D38A6-0AA5-13A5-7AA3-D587D97DBFFB}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DevReload.Interface", "src\DevReload.Interface\DevReload.Interface.csproj", "{4C49683B-EB77-41C5-BCCC-390B4E2640AA}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DevReloadTest", "example\DevReloadTest\DevReloadTest.csproj", "{B81D95F0-E74A-4273-8F68-DFA00430AE6A}"
 EndProject
 Global
@@ -22,10 +20,6 @@ Global
 		{F20D38A6-0AA5-13A5-7AA3-D587D97DBFFB}.Debug|x64.Build.0 = Debug|x64
 		{F20D38A6-0AA5-13A5-7AA3-D587D97DBFFB}.Release|x64.ActiveCfg = Release|x64
 		{F20D38A6-0AA5-13A5-7AA3-D587D97DBFFB}.Release|x64.Build.0 = Release|x64
-		{4C49683B-EB77-41C5-BCCC-390B4E2640AA}.Debug|x64.ActiveCfg = Debug|x64
-		{4C49683B-EB77-41C5-BCCC-390B4E2640AA}.Debug|x64.Build.0 = Debug|x64
-		{4C49683B-EB77-41C5-BCCC-390B4E2640AA}.Release|x64.ActiveCfg = Release|x64
-		{4C49683B-EB77-41C5-BCCC-390B4E2640AA}.Release|x64.Build.0 = Release|x64
 		{B81D95F0-E74A-4273-8F68-DFA00430AE6A}.Debug|x64.ActiveCfg = Debug|x64
 		{B81D95F0-E74A-4273-8F68-DFA00430AE6A}.Debug|x64.Build.0 = Debug|x64
 		{B81D95F0-E74A-4273-8F68-DFA00430AE6A}.Release|x64.ActiveCfg = Release|x64
@@ -36,7 +30,6 @@ Global
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{F20D38A6-0AA5-13A5-7AA3-D587D97DBFFB} = {AE3D5623-4BCD-4510-8529-B35335B4F56F}
-		{4C49683B-EB77-41C5-BCCC-390B4E2640AA} = {AE3D5623-4BCD-4510-8529-B35335B4F56F}
 		{B81D95F0-E74A-4273-8F68-DFA00430AE6A} = {F1A2B3C4-5678-9ABC-DEF0-111222333444}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
