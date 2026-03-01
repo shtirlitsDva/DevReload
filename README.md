@@ -189,7 +189,7 @@ If multiple VS instances are open, projects are shown as `SolutionName:ProjectNa
 
 ## plugins.json Configuration
 
-Plugins are stored in `plugins.json` next to `DevReload.dll`:
+Plugins are stored in `%APPDATA%\DevReload\plugins.json`:
 
 ```json
 {
