@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -26,6 +25,7 @@ namespace DevReload
 
     public static class PluginConfigLoader
     {
+        private const string AppFolder = "DevReload";
         private const string ConfigFileName = "plugins.json";
 
         private static readonly JsonSerializerOptions _jsonOptions = new()
@@ -37,15 +37,11 @@ namespace DevReload
 
         public static string GetConfigPath()
         {
-            string loaderDir = Path.GetDirectoryName(
-                Assembly.GetExecutingAssembly().Location)!;
-            return Path.Combine(loaderDir, ConfigFileName);
+            string appData = Environment.GetFolderPath(
+                Environment.SpecialFolder.ApplicationData);
+            return Path.Combine(appData, AppFolder, ConfigFileName);
         }
 
-        /// <summary>
-        /// Load the plugin config from plugins.json next to DevReload.dll.
-        /// Returns null if the file does not exist.
-        /// </summary>
         public static PluginConfig? Load()
         {
             string path = GetConfigPath();
@@ -56,13 +52,10 @@ namespace DevReload
             return JsonSerializer.Deserialize<PluginConfig>(json, _jsonOptions);
         }
 
-        /// <summary>
-        /// Save the plugin config to plugins.json. Creates the file if it
-        /// doesn't exist, overwrites if it does.
-        /// </summary>
         public static void Save(PluginConfig config)
         {
             string path = GetConfigPath();
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             string json = JsonSerializer.Serialize(config, _jsonOptions);
             File.WriteAllText(path, json);
         }
