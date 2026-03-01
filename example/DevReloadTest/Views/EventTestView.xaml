@@ -1,0 +1,153 @@
+<UserControl x:Class="DevReloadTest.Views.EventTestView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:DevReloadTest.ViewModels"
+             Background="#FF3B4453">
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="FgBrush" Color="#E2E8F0"/>
+        <SolidColorBrush x:Key="MutedBrush" Color="#A0AEC0"/>
+        <SolidColorBrush x:Key="SurfaceBrush" Color="#2D3442"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#63B3ED"/>
+        <SolidColorBrush x:Key="SuccessBrush" Color="#48BB78"/>
+        <SolidColorBrush x:Key="DangerBrush" Color="#E53E3E"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <vm:InvertBoolConverter x:Key="InvertBool"/>
+
+        <Style x:Key="BtnBase" TargetType="Button">
+            <Setter Property="Foreground" Value="{StaticResource FgBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.85"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AccentBtn" TargetType="Button" BasedOn="{StaticResource BtnBase}">
+            <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+
+        <Style x:Key="DangerBtn" TargetType="Button" BasedOn="{StaticResource BtnBase}">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{StaticResource DangerBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+        </Style>
+    </UserControl.Resources>
+
+    <DockPanel Margin="10">
+        <!-- Header -->
+        <TextBlock DockPanel.Dock="Top"
+                   Text="Event Manager Test"
+                   FontSize="14" FontWeight="Bold"
+                   Foreground="{StaticResource FgBrush}"
+                   Margin="0,0,0,10"/>
+
+        <!-- Active doc -->
+        <Border DockPanel.Dock="Top" Background="{StaticResource SurfaceBrush}"
+                CornerRadius="4" Padding="8" Margin="0,0,0,8">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Active doc: " Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                <TextBlock Text="{Binding ActiveDocName}" Foreground="{StaticResource AccentBrush}"
+                           FontSize="11" FontWeight="SemiBold"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Subscribe buttons -->
+        <Border DockPanel.Dock="Top" Background="{StaticResource SurfaceBrush}"
+                CornerRadius="4" Padding="8" Margin="0,0,0,8">
+            <StackPanel>
+                <TextBlock Text="Subscribe on active document"
+                           Foreground="{StaticResource MutedBrush}" FontSize="11"
+                           Margin="0,0,0,6"/>
+
+                <!-- CommandEnded row -->
+                <DockPanel Margin="0,0,0,4">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Ellipse Width="8" Height="8" Margin="0,0,6,0"
+                                 VerticalAlignment="Center"
+                                 Visibility="{Binding CmdEndedActive, Converter={StaticResource BoolToVis}}"
+                                 Fill="{StaticResource SuccessBrush}"/>
+                        <Button Style="{StaticResource AccentBtn}" Content="Subscribe"
+                                Command="{Binding SubscribeCommandEndedCommand}"
+                                IsEnabled="{Binding CmdEndedActive, Converter={StaticResource InvertBool}}"/>
+                    </StackPanel>
+                    <TextBlock Text="CommandEnded" Foreground="{StaticResource FgBrush}"
+                               FontSize="11" VerticalAlignment="Center"/>
+                </DockPanel>
+
+                <!-- ObjectAppended row -->
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Ellipse Width="8" Height="8" Margin="0,0,6,0"
+                                 VerticalAlignment="Center"
+                                 Visibility="{Binding ObjAppendedActive, Converter={StaticResource BoolToVis}}"
+                                 Fill="{StaticResource SuccessBrush}"/>
+                        <Button Style="{StaticResource AccentBtn}" Content="Subscribe"
+                                Command="{Binding SubscribeObjectAppendedCommand}"
+                                IsEnabled="{Binding ObjAppendedActive, Converter={StaticResource InvertBool}}"/>
+                    </StackPanel>
+                    <TextBlock Text="ObjectAppended" Foreground="{StaticResource FgBrush}"
+                               FontSize="11" VerticalAlignment="Center"/>
+                </DockPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Subscriptions summary -->
+        <Border DockPanel.Dock="Top" Background="{StaticResource SurfaceBrush}"
+                CornerRadius="4" Padding="8" Margin="0,0,0,8">
+            <StackPanel>
+                <TextBlock Text="Active subscriptions"
+                           Foreground="{StaticResource MutedBrush}" FontSize="11"
+                           Margin="0,0,0,4"/>
+                <TextBlock Text="{Binding SubscriptionSummary}"
+                           Foreground="{StaticResource FgBrush}" FontSize="11"
+                           TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Log area -->
+        <DockPanel>
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                <Button DockPanel.Dock="Right" Style="{StaticResource DangerBtn}"
+                        Content="Clear" Command="{Binding ClearLogCommand}"/>
+                <TextBlock Text="Event log"
+                           Foreground="{StaticResource MutedBrush}" FontSize="11"
+                           VerticalAlignment="Center"/>
+            </DockPanel>
+            <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4" Padding="6">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding Log}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" Foreground="{StaticResource FgBrush}"
+                                           FontSize="10" FontFamily="Consolas"
+                                           TextWrapping="Wrap" Margin="0,1"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+        </DockPanel>
+    </DockPanel>
+</UserControl>

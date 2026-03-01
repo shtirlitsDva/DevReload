@@ -6,6 +6,8 @@ using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
 
+using EventManager;
+
 using Newtonsoft.Json;
 
 [assembly: ExtensionApplication(typeof(DevReloadTest.TestPlugin))]
@@ -23,14 +25,19 @@ namespace DevReloadTest
     public class TestPlugin : IExtensionApplication
     {
         private static TestPaletteSet? _palette;
+        internal static AcadEventManager? Events { get; private set; }
 
         public void Initialize()
         {
+            Events = new AcadEventManager();
             Log("Initialize() called");
         }
 
         public void Terminate()
         {
+            Events?.Dispose();
+            Events = null;
+
             if (_palette != null)
             {
                 _palette.Close();
@@ -43,8 +50,11 @@ namespace DevReloadTest
         [CommandMethod("TESTPALETTE")]
         public static void ShowPalette()
         {
+            if (Events == null)
+                Events = new AcadEventManager();
+
             if (_palette == null)
-                _palette = new TestPaletteSet();
+                _palette = new TestPaletteSet(Events);
             _palette.Visible = true;
         }
 

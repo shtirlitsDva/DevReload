@@ -1,12 +1,14 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.3.11520.95 d18.3
+VisualStudioVersion = 18.3.11520.95
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{AE3D5623-4BCD-4510-8529-B35335B4F56F}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "example", "example", "{F1A2B3C4-5678-9ABC-DEF0-111222333444}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DevReload", "src\DevReload\DevReload.csproj", "{F20D38A6-0AA5-13A5-7AA3-D587D97DBFFB}"
+EndProject
+Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "EventManager", "src\EventManager\EventManager.shproj", "{B2C3D4E5-F6A7-8901-BCDE-F23456789012}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DevReloadTest", "example\DevReloadTest\DevReloadTest.csproj", "{B81D95F0-E74A-4273-8F68-DFA00430AE6A}"
 EndProject
@@ -30,12 +32,15 @@ Global
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{F20D38A6-0AA5-13A5-7AA3-D587D97DBFFB} = {AE3D5623-4BCD-4510-8529-B35335B4F56F}
+		{B2C3D4E5-F6A7-8901-BCDE-F23456789012} = {AE3D5623-4BCD-4510-8529-B35335B4F56F}
 		{B81D95F0-E74A-4273-8F68-DFA00430AE6A} = {F1A2B3C4-5678-9ABC-DEF0-111222333444}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {B9FE737A-3C4C-42DA-8F21-4E632E47BC7A}
 	EndGlobalSection
 	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		src\EventManager\EventManager.projitems*{b2c3d4e5-f6a7-8901-bcde-f23456789012}*SharedItemsImports = 13
+		src\EventManager\EventManager.projitems*{b81d95f0-e74a-4273-8f68-dfa00430ae6a}*SharedItemsImports = 5
 		src\WpfSHARED\WpfSHARED.projitems*{f20d38a6-0aa5-13a5-7aa3-d587d97dbffb}*SharedItemsImports = 5
 	EndGlobalSection
 EndGlobal

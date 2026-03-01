@@ -67,27 +67,7 @@ AutoCAD and DevReload create **separate instances** of your plugin class:
 - **Instance A**: AutoCAD creates via `[assembly: ExtensionApplication]` → calls `Initialize()`
 - **Instance B**: DevReload creates via `Activator.CreateInstance` → calls `Terminate()` on unload
 
-These are different objects. Instance fields set in `Initialize()` on Instance A are NOT visible to `Terminate()` on Instance B. **Use static fields for anything that needs cleanup:**
-
-```csharp
-public class MyPlugin : IExtensionApplication
-{
-    private static EventHandler? _docActivated;
-
-    public void Initialize()
-    {
-        _docActivated = (s, e) => { /* handle */ };
-        Application.DocumentManager.DocumentActivated += _docActivated;
-    }
-
-    public void Terminate()
-    {
-        if (_docActivated != null)
-            Application.DocumentManager.DocumentActivated -= _docActivated;
-        _docActivated = null;
-    }
-}
-```
+These are different objects. Instance fields set in `Initialize()` on Instance A are NOT visible to `Terminate()` on Instance B. **Use static fields for anything that needs cleanup.** The `AcadEventManager` (see below) solves this for event subscriptions.
 
 ### CommandClass Suppression (Required for Debug)
 
@@ -129,13 +109,34 @@ If your plugin already has a custom `[assembly: CommandClass]` for Release, guar
 | `Terminate()` | AutoCAD calls on shutdown | DevReload calls on unload/reload |
 | Commands | AutoCAD registers via `CommandClass.AddCommand` | DevReload registers via `Utils.AddCommand` |
 
+## AcadEventManager
+
+The `EventManager` shared project (`src/EventManager/`) provides `AcadEventManager` — a centralized tracker for per-document event subscriptions. Import it as a shared project so it compiles directly into your plugin DLL (no extra dependency).
+
+**Problem:** Subscribing to a `Document`-level event (like `CommandEnded`) on one document, then unsubscribing from `MdiActiveDocument` in `Terminate()` breaks if the user switched documents. Storing a `Document` reference breaks if that document is closed before `Terminate()`.
+
+**Solution:** `AcadEventManager` tracks unsubscribe actions per document, auto-cleans when a document is closed (`DocumentToBeDestroyed`), and bulk-cleans on `Dispose()`.
+
+```csharp
+// Subscribe to an event on the current document
+var doc = Application.DocumentManager.MdiActiveDocument;
+doc.CommandEnded += OnCommandEnded;
+_events.Track(doc, () => doc.CommandEnded -= OnCommandEnded);
+
+// In Terminate() — cleans up ALL tracked subscriptions across ALL documents
+_events.Dispose();
+```
+
+Works in both Release (NETLOAD) and Debug (DevReload) modes. Multiple documents can have independent subscriptions. Closed documents are cleaned up automatically.
+
 ## Implement IExtensionApplication
 
-Your plugin class implements `IExtensionApplication`. Everything — commands, palettes, state — lives in one class. Palettes must be stored in a static field and cleaned up in `Terminate()`:
+Your plugin class implements `IExtensionApplication`. Palettes must be stored in a static field and cleaned up in `Terminate()`. Use `AcadEventManager` for event subscriptions:
 
 ```csharp
 using Autodesk.AutoCAD.Runtime;
 using Autodesk.AutoCAD.Windows;
+using EventManager;
 
 [assembly: ExtensionApplication(typeof(MyNamespace.MyPlugin))]
 
@@ -152,21 +153,24 @@ namespace MyNamespace
     public class MyPlugin : IExtensionApplication
     {
         private static PaletteSet? _palette;
+        private static AcadEventManager? _events;
 
         public void Initialize()
         {
-            // Use STATIC fields for event subscriptions and state.
+            _events = new AcadEventManager();
         }
 
         public void Terminate()
         {
+            _events?.Dispose();
+            _events = null;
+
             if (_palette != null)
             {
                 _palette.Close();
                 _palette.Dispose();
                 _palette = null;
             }
-            // Clean up STATIC state: unsubscribe events, dispose resources.
         }
 
         [CommandMethod("MYPALETTE")]
