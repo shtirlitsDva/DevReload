@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ApplicationPackage
+    SchemaVersion="1.0"
+    Name="DevReload"
+    AppVersion="1.0.0"
+    Description="Dev Plugin Loader for AutoCAD 2025"
+    Author="shtirlitsDva"
+    ProductCode="{8B0E2F40-FF9C-4704-9E19-5D63CB060C70}">
+
+  <Components>
+    <ComponentEntry
+        AppName="DevReload"
+        ModuleName="./Contents/Win64/DevReload.dll"
+        AppDescription="Dev Plugin Loader"
+        AppType=".Net"
+        LoadOnAutoCADStartup="True">
+      <RuntimeRequirements OS="Win64" SeriesMin="R25.0" SeriesMax="R25.0" />
+    </ComponentEntry>
+  </Components>
+</ApplicationPackage>

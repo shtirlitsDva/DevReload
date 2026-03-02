@@ -79,3 +79,6 @@ _ReSharper*/
 
 # Local user overrides (AutoCAD path)
 Directory.Build.props.user
+
+# Bundle output
+Deploy/
