@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.EditorInput;
@@ -216,6 +217,19 @@ namespace DevReload
         {
             TearDown(reg);
 
+            // Pre-load shared assemblies into the default ALC so WPF XAML
+            // can resolve them (e.g. OxyPlot.Wpf, SharpVectors).
+            if (reg.SharedAssemblyNames.Length > 0)
+            {
+                string pluginDir = Path.GetDirectoryName(dllPath)!;
+                foreach (string asmName in reg.SharedAssemblyNames)
+                {
+                    string asmPath = Path.Combine(pluginDir, asmName + ".dll");
+                    if (File.Exists(asmPath))
+                        Assembly.LoadFrom(asmPath);
+                }
+            }
+
             var plugin = reg.Host.Load(dllPath, reg.SharedAssemblyNames);
 
             if (reg.Registrar != null)
@@ -251,6 +265,12 @@ namespace DevReload
             return Application.DocumentManager.MdiActiveDocument?.Editor;
         }
 
+        public static void UpdateSharedAssemblies(string pluginName, string[] sharedNames)
+        {
+            if (_plugins.TryGetValue(pluginName, out var reg))
+                reg.SharedAssemblyNames = sharedNames;
+        }
+
         internal static void AddRegistration(PluginRegistration reg)
         {
             _plugins[reg.PluginName] = reg;
@@ -262,7 +282,7 @@ namespace DevReload
         public required string PluginName { get; init; }
         public required string DllPath { get; init; }
         public required string? VsProjectName { get; init; }
-        public required string[] SharedAssemblyNames { get; init; }
+        public required string[] SharedAssemblyNames { get; set; }
 
         public PluginHost<IExtensionApplication> Host { get; } = new();
         public CommandRegistrar? Registrar { get; init; }

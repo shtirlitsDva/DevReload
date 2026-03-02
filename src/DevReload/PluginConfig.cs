@@ -8,6 +8,7 @@ namespace DevReload
 {
     public class PluginConfig
     {
+        public string? NsloadCsvPath { get; set; }
         public List<PluginEntry> Plugins { get; set; } = new();
     }
 
@@ -18,6 +19,8 @@ namespace DevReload
         public string? VsProject { get; set; }
         public string? CommandPrefix { get; set; }
         public bool LoadOnStartup { get; set; }
+        public List<string> SharedAssemblies { get; set; } = new();
+        public string? ProductionTarget { get; set; }
     }
 
     public static class PluginConfigLoader

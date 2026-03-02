@@ -118,6 +118,11 @@
         <Border DockPanel.Dock="Bottom" Background="{StaticResource SurfaceBrush}"
                 Padding="8">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Style="{StaticResource SurfaceBtn}"
+                        Content="Settings"
+                        Command="{Binding SettingsCommand}"
+                        Margin="0,0,8,0"
+                        ToolTip="Configure NSLOAD CSV path"/>
                 <Button Style="{StaticResource AccentBtn}"
                         Content="+ Add Plugin"
                         Command="{Binding ShowAddPluginCommand}"
@@ -269,11 +274,25 @@
                                                     CommandParameter="{Binding Name}"/>
                                             <Button Style="{StaticResource DangerBtn}"
                                                     Content="Unload" FontSize="11"
-                                                    Padding="8,3"
+                                                    Padding="8,3" Margin="0,0,4,0"
                                                     Command="{Binding DataContext.UnloadPluginCommand,
                                                         RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                     CommandParameter="{Binding Name}"
                                                     IsEnabled="{Binding IsLoaded}"/>
+                                            <Button Style="{StaticResource SurfaceBtn}"
+                                                    Content="Shared" FontSize="11"
+                                                    Padding="8,3" Margin="0,0,4,0"
+                                                    Command="{Binding DataContext.SharedAssembliesCommand,
+                                                        RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding Name}"
+                                                    ToolTip="Configure shared assemblies for WPF XAML"/>
+                                            <Button Style="{StaticResource SurfaceBtn}"
+                                                    Content="Push" FontSize="11"
+                                                    Padding="8,3"
+                                                    Command="{Binding DataContext.PushToProductionCommand,
+                                                        RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding Name}"
+                                                    ToolTip="Push SharedAssemblies config to production"/>
                                         </StackPanel>
                                     </DockPanel>
                                 </Grid>

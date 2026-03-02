@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Windows.Forms;
 using Autodesk.AutoCAD.EditorInput;
 using EnvDTE;
@@ -191,70 +193,7 @@ namespace DevReload
                 return null;
             }
 
-            // 5. Build the project (+ dependencies)
-            ed?.WriteMessage($"\nBuilding '{projectName}'...");
-
-            SolutionBuild solBuild;
-            string solutionConfig;
-            try
-            {
-                solBuild = targetDte.Solution.SolutionBuild;
-                solutionConfig = solBuild.ActiveConfiguration.Name;
-            }
-            catch (Exception ex)
-            {
-                ed?.WriteMessage($"\nFailed to access VS build system: {ex.Message}");
-                return null;
-            }
-
-            try
-            {
-                solBuild.BuildProject(solutionConfig, targetProject.UniqueName, true);
-            }
-            catch (Exception ex)
-            {
-                ed?.WriteMessage(
-                    $"\nBuildProject COM call failed: {ex.GetType().Name}: {ex.Message}");
-                return null;
-            }
-
-            if (solBuild.LastBuildInfo != 0)
-            {
-                ed?.WriteMessage(
-                    $"\nBuild failed ({solBuild.LastBuildInfo} project(s) failed).");
-
-                try
-                {
-                    if (targetDte is DTE2 dte2)
-                    {
-                        foreach (OutputWindowPane pane in dte2.ToolWindows.OutputWindow.OutputWindowPanes)
-                        {
-                            if (pane.Name != "Build") continue;
-                            var doc = pane.TextDocument;
-                            var sel = doc.Selection;
-                            sel.SelectAll();
-                            string buildLog = sel.Text ?? "";
-                            var errorLines = buildLog
-                                .Split('\n')
-                                .Where(l => l.Contains(": error "))
-                                .Take(10)
-                                .ToList();
-                            foreach (var line in errorLines)
-                                ed?.WriteMessage($"\n  {line.Trim()}");
-                            break;
-                        }
-                    }
-                }
-                catch
-                {
-                }
-
-                return null;
-            }
-
-            ed?.WriteMessage("\nBuild succeeded.");
-
-            // 6. Get output DLL path
+            // 5. Get output DLL path from project properties
             string projectDir;
             string outputPath;
             string assemblyName;
@@ -278,6 +217,61 @@ namespace DevReload
             string dllPath = Path.GetFullPath(
                 Path.Combine(projectDir, outputPath, assemblyName + ".dll"));
 
+            // 6. Build via dotnet CLI (VS COM BuildProject is broken in VS 2026)
+            ed?.WriteMessage($"\nBuilding '{projectName}'...");
+
+            string projectFilePath = targetProject.FullName;
+            var psi = new ProcessStartInfo
+            {
+                FileName = "dotnet",
+                Arguments = $"build \"{projectFilePath}\" -c Debug -p:Platform=x64",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = projectDir,
+            };
+
+            var buildLog = new StringBuilder();
+            int exitCode;
+            try
+            {
+                using var proc = new System.Diagnostics.Process { StartInfo = psi };
+                proc.OutputDataReceived += (_, e) => { if (e.Data != null) buildLog.AppendLine(e.Data); };
+                proc.ErrorDataReceived += (_, e) => { if (e.Data != null) buildLog.AppendLine(e.Data); };
+                proc.Start();
+                proc.BeginOutputReadLine();
+                proc.BeginErrorReadLine();
+                proc.WaitForExit();
+                exitCode = proc.ExitCode;
+            }
+            catch (Exception ex)
+            {
+                ed?.WriteMessage($"\nFailed to start dotnet build: {ex.Message}");
+                return null;
+            }
+
+            string log = buildLog.ToString();
+            var summary = ParseBuildSummary(log);
+
+            if (exitCode != 0)
+            {
+                ed?.WriteMessage($"\nBuild FAILED — {summary.Errors} error(s), {summary.Warnings} warning(s).");
+                var errorLines = log
+                    .Split('\n')
+                    .Where(l => l.Contains(": error "))
+                    .Take(10)
+                    .ToList();
+                foreach (var line in errorLines)
+                    ed?.WriteMessage($"\n  {line.Trim()}");
+                return null;
+            }
+
+            ed?.WriteMessage(summary.Warnings > 0
+                ? $"\nBuild succeeded — {summary.Warnings} warning(s)."
+                : "\nBuild succeeded.");
+
+            // 7. Verify the build produced the DLL
             if (!File.Exists(dllPath))
             {
                 ed?.WriteMessage($"\nBuild output not found at: {dllPath}");
@@ -286,6 +280,24 @@ namespace DevReload
 
             ed?.WriteMessage($"\nOutput: {dllPath}");
             return dllPath;
+        }
+
+        private static (int Warnings, int Errors) ParseBuildSummary(string log)
+        {
+            int warnings = 0, errors = 0;
+            foreach (var line in log.Split('\n'))
+            {
+                var trimmed = line.Trim();
+                if (trimmed.EndsWith("Warning(s)"))
+                {
+                    int.TryParse(trimmed.Split(' ')[0], out warnings);
+                }
+                else if (trimmed.EndsWith("Error(s)"))
+                {
+                    int.TryParse(trimmed.Split(' ')[0], out errors);
+                }
+            }
+            return (warnings, errors);
         }
 
         private static void SearchProject(

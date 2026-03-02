@@ -3,13 +3,17 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Windows.Data;
 
 using Autodesk.AutoCAD.ApplicationServices;
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+
+using DevReload.Views;
 
 namespace DevReload.ViewModels
 {
@@ -174,6 +178,141 @@ namespace DevReload.ViewModels
             HasPlugins = Plugins.Count > 0;
         }
 
+        // ── Settings ─────────────────────────────────────────────────
+
+        [RelayCommand]
+        private void Settings()
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Select NSLOAD Register CSV",
+                Filter = "CSV files|*.csv|All files|*.*",
+                CheckFileExists = true,
+                InitialDirectory = !string.IsNullOrEmpty(_config.NsloadCsvPath)
+                    ? Path.GetDirectoryName(_config.NsloadCsvPath) ?? ""
+                    : "",
+            };
+
+            if (dlg.ShowDialog() != true) return;
+
+            _config.NsloadCsvPath = dlg.FileName;
+            SaveConfig();
+
+            System.Windows.MessageBox.Show(
+                $"NSLOAD CSV path set to:\n{dlg.FileName}",
+                "Settings",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Information);
+        }
+
+        // ── Shared Assemblies + Push to Production ────────────────────
+
+        [RelayCommand]
+        private void SharedAssemblies(string name)
+        {
+            var entry = _config.Plugins.FirstOrDefault(
+                p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (entry == null) return;
+
+            string pluginDir = !string.IsNullOrEmpty(entry.DllPath)
+                ? Path.GetDirectoryName(entry.DllPath)!
+                : "";
+
+            if (string.IsNullOrEmpty(pluginDir) || !Directory.Exists(pluginDir))
+            {
+                System.Windows.MessageBox.Show(
+                    $"Plugin directory not found:\n{pluginDir}",
+                    "Shared Assemblies",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
+            var vm = new SharedAssembliesViewModel(pluginDir, entry.SharedAssemblies);
+            var win = new SharedAssembliesWindow { DataContext = vm };
+
+            if (win.ShowDialog() == true && vm.Saved)
+            {
+                string[] selected = vm.GetSelectedNames();
+                entry.SharedAssemblies = selected.ToList();
+                SaveConfig();
+                PluginManager.UpdateSharedAssemblies(name, selected);
+            }
+        }
+
+        [RelayCommand]
+        private void PushToProduction(string name)
+        {
+            var entry = _config.Plugins.FirstOrDefault(
+                p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (entry == null) return;
+
+            if (entry.SharedAssemblies.Count == 0)
+            {
+                System.Windows.MessageBox.Show(
+                    "No shared assemblies configured for this plugin.\n" +
+                    "Use the \"Shared\" button to configure them first.",
+                    "Push to Production",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Information);
+                return;
+            }
+
+            // Read NSLOAD's production app registry (CSV + user config)
+            var apps = NsloadAppRegistry.Load(_config.NsloadCsvPath);
+            if (apps.Count == 0)
+            {
+                System.Windows.MessageBox.Show(
+                    "No NSLOAD production apps found.\n" +
+                    "Check that \"nsloadCsvPath\" is set in plugins.json.",
+                    "Push to Production",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
+            // Build display list and let the developer pick the target app
+            var displayNames = apps.Select(a => a.Name).ToList();
+            string selection = IntersectUtilities.StringGridFormCaller.Call(
+                displayNames,
+                $"Push shared assemblies for '{name}' to which production app?");
+            if (string.IsNullOrEmpty(selection)) return;
+
+            var target = apps.FirstOrDefault(a => a.Name == selection);
+            if (string.IsNullOrEmpty(target.DllDir) || !Directory.Exists(target.DllDir))
+            {
+                System.Windows.MessageBox.Show(
+                    $"Target directory not found:\n{target.DllDir}",
+                    "Push to Production",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
+            // Write SharedAssemblies.Config.json to the target app's directory
+            var jsonOptions = new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            };
+            var configObj = new { sharedAssemblies = entry.SharedAssemblies };
+            string json = JsonSerializer.Serialize(configObj, jsonOptions);
+            string configPath = Path.Combine(target.DllDir, "SharedAssemblies.Config.json");
+            File.WriteAllText(configPath, json);
+
+            // Remember which production app this plugin targets
+            entry.ProductionTarget = selection;
+            SaveConfig();
+
+            System.Windows.MessageBox.Show(
+                $"SharedAssemblies.Config.json written to:\n{target.DllDir}\n\n" +
+                $"Target app: {selection}\n" +
+                $"Assemblies: {string.Join(", ", entry.SharedAssemblies)}",
+                "Push to Production",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Information);
+        }
+
         // ── Reload Config ─────────────────────────────────────────────
 
         [RelayCommand]
@@ -265,4 +404,5 @@ namespace DevReload.ViewModels
             CultureInfo culture)
             => value is bool b ? !b : value;
     }
+
 }
