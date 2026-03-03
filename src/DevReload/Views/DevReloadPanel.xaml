@@ -266,6 +266,53 @@
 
                                         <!-- Action buttons -->
                                         <StackPanel Orientation="Horizontal">
+                                            <!-- Build config toggle -->
+                                            <ToggleButton IsChecked="{Binding IsReleaseBuild}"
+                                                          FontSize="10" FontWeight="Bold"
+                                                          Padding="6,3" Margin="0,0,4,0"
+                                                          Cursor="Hand"
+                                                          ToolTip="Toggle Debug / Release build">
+                                                <ToggleButton.Style>
+                                                    <Style TargetType="ToggleButton">
+                                                        <Setter Property="Template">
+                                                            <Setter.Value>
+                                                                <ControlTemplate TargetType="ToggleButton">
+                                                                    <Border x:Name="border"
+                                                                            CornerRadius="4"
+                                                                            Padding="{TemplateBinding Padding}">
+                                                                        <TextBlock x:Name="label"
+                                                                                   HorizontalAlignment="Center"
+                                                                                   VerticalAlignment="Center"
+                                                                                   FontWeight="Bold"
+                                                                                   FontSize="10"
+                                                                                   Foreground="White"/>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsChecked" Value="False">
+                                                                            <Setter TargetName="border"
+                                                                                    Property="Background"
+                                                                                    Value="{StaticResource SuccessBrush}"/>
+                                                                            <Setter TargetName="label"
+                                                                                    Property="Text" Value="DBG"/>
+                                                                        </Trigger>
+                                                                        <Trigger Property="IsChecked" Value="True">
+                                                                            <Setter TargetName="border"
+                                                                                    Property="Background"
+                                                                                    Value="{StaticResource DangerBrush}"/>
+                                                                            <Setter TargetName="label"
+                                                                                    Property="Text" Value="REL"/>
+                                                                        </Trigger>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="border"
+                                                                                    Property="Opacity" Value="0.85"/>
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </Style>
+                                                </ToggleButton.Style>
+                                            </ToggleButton>
                                             <Button Style="{StaticResource AccentBtn}"
                                                     Content="Reload" FontSize="11"
                                                     Padding="8,3" Margin="0,0,4,0"

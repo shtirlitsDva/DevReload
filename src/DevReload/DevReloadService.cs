@@ -106,7 +106,7 @@ namespace DevReload
             catch { }
         }
 
-        public static string? FindAndBuild(string projectName, Editor? ed)
+        public static string? FindAndBuild(string projectName, Editor? ed, string buildConfiguration = "Debug")
         {
             using var wc = new WaitCursorScope();
 
@@ -182,18 +182,7 @@ namespace DevReload
                 targetProject = selected.project;
             }
 
-            // 4. Verify Debug configuration
-            string activeConfig = targetProject.ConfigurationManager
-                .ActiveConfiguration.ConfigurationName;
-
-            if (activeConfig != "Debug")
-            {
-                ed?.WriteMessage(
-                    $"\nActive configuration is '{activeConfig}', expected 'Debug'. Aborting.");
-                return null;
-            }
-
-            // 5. Get output DLL path from project properties
+            // 4. Get output DLL path for the requested build configuration
             string projectDir;
             string outputPath;
             string assemblyName;
@@ -201,11 +190,37 @@ namespace DevReload
             {
                 projectDir = Path.GetDirectoryName(targetProject.FullName)!;
 
-                outputPath = targetProject.ConfigurationManager
-                    .ActiveConfiguration.Properties.Item("OutputPath").Value.ToString()!;
-
                 assemblyName = targetProject.Properties
                     .Item("AssemblyName").Value.ToString()!;
+
+                // Find the output path for the requested configuration
+                outputPath = null!;
+                var configMgr = targetProject.ConfigurationManager;
+                if (configMgr != null)
+                {
+                    for (int i = 1; i <= configMgr.Count; i++)
+                    {
+                        try
+                        {
+                            var cfg = configMgr.Item(i);
+                            if (cfg.ConfigurationName.Equals(buildConfiguration,
+                                    StringComparison.OrdinalIgnoreCase))
+                            {
+                                outputPath = cfg.Properties.Item("OutputPath").Value.ToString()!;
+                                break;
+                            }
+                        }
+                        catch { }
+                    }
+
+                    // Fallback: convention-based path
+                    if (string.IsNullOrEmpty(outputPath))
+                        outputPath = Path.Combine("bin", buildConfiguration);
+                }
+                else
+                {
+                    outputPath = Path.Combine("bin", buildConfiguration);
+                }
             }
             catch (Exception ex)
             {
@@ -217,14 +232,14 @@ namespace DevReload
             string dllPath = Path.GetFullPath(
                 Path.Combine(projectDir, outputPath, assemblyName + ".dll"));
 
-            // 6. Build via dotnet CLI (VS COM BuildProject is broken in VS 2026)
-            ed?.WriteMessage($"\nBuilding '{projectName}'...");
+            // 5. Build via dotnet CLI (VS COM BuildProject is broken in VS 2026)
+            ed?.WriteMessage($"\nBuilding '{projectName}' ({buildConfiguration})...");
 
             string projectFilePath = targetProject.FullName;
             var psi = new ProcessStartInfo
             {
                 FileName = "dotnet",
-                Arguments = $"build \"{projectFilePath}\" -c Debug -p:Platform=x64",
+                Arguments = $"build \"{projectFilePath}\" -c {buildConfiguration} -p:Platform=x64",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -271,7 +286,7 @@ namespace DevReload
                 ? $"\nBuild succeeded — {summary.Warnings} warning(s)."
                 : "\nBuild succeeded.");
 
-            // 7. Verify the build produced the DLL
+            // 6. Verify the build produced the DLL
             if (!File.Exists(dllPath))
             {
                 ed?.WriteMessage($"\nBuild output not found at: {dllPath}");

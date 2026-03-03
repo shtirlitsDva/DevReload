@@ -62,7 +62,8 @@ namespace DevReload.ViewModels
 
         private void OnPluginPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(PluginItemViewModel.LoadOnStartup))
+            if (e.PropertyName is nameof(PluginItemViewModel.LoadOnStartup)
+                                  or nameof(PluginItemViewModel.IsReleaseBuild))
                 SaveConfig();
         }
 
@@ -367,16 +368,25 @@ namespace DevReload.ViewModels
         [ObservableProperty] private bool _isLoaded;
         [ObservableProperty] private string _status = "Unloaded";
         [ObservableProperty] private bool _loadOnStartup;
+        [ObservableProperty] private bool _isReleaseBuild;
 
         public PluginItemViewModel(PluginEntry entry)
         {
             Entry = entry;
             _loadOnStartup = entry.LoadOnStartup;
+            _isReleaseBuild = entry.BuildConfiguration
+                .Equals("Release", StringComparison.OrdinalIgnoreCase);
         }
 
         partial void OnLoadOnStartupChanged(bool value)
         {
             Entry.LoadOnStartup = value;
+        }
+
+        partial void OnIsReleaseBuildChanged(bool value)
+        {
+            Entry.BuildConfiguration = value ? "Release" : "Debug";
+            PluginManager.UpdateBuildConfiguration(Name, Entry.BuildConfiguration);
         }
 
         public void RefreshState()

@@ -21,6 +21,7 @@ namespace DevReload
         public bool LoadOnStartup { get; set; }
         public List<string> SharedAssemblies { get; set; } = new();
         public string? ProductionTarget { get; set; }
+        public string BuildConfiguration { get; set; } = "Debug";
     }
 
     public static class PluginConfigLoader

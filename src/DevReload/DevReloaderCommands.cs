@@ -93,6 +93,7 @@ namespace DevReload
 
             if (entry.DllPath != null) builder.WithDllPath(entry.DllPath);
             if (entry.VsProject != null) builder.WithVsProject(entry.VsProject);
+            builder.WithBuildConfiguration(entry.BuildConfiguration);
             builder.WithCommands();
             if (entry.SharedAssemblies.Count > 0)
                 builder.WithSharedAssemblies(entry.SharedAssemblies.ToArray());

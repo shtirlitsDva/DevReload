@@ -51,8 +51,10 @@ namespace DevReload
                         return;
                     }
                     ed?.WriteMessage($"\n{pluginName} DLL not found, building...");
-                    string? builtPath = DevReloadService.FindAndBuild(reg.VsProjectName, ed);
+                    string? builtPath = DevReloadService.FindAndBuild(
+                        reg.VsProjectName, ed, reg.BuildConfiguration);
                     if (builtPath == null) return;
+                    reg.DllPath = builtPath;
                     dllPath = builtPath;
                 }
 
@@ -63,8 +65,10 @@ namespace DevReload
                 catch (StalePluginException ex) when (reg.VsProjectName != null)
                 {
                     ed?.WriteMessage($"\n{ex.Message}");
-                    string? rebuilt = DevReloadService.FindAndBuild(reg.VsProjectName, ed);
+                    string? rebuilt = DevReloadService.FindAndBuild(
+                        reg.VsProjectName, ed, reg.BuildConfiguration);
                     if (rebuilt == null) return;
+                    reg.DllPath = rebuilt;
                     dllPath = rebuilt;
                     LoadCore(reg, dllPath);
                 }
@@ -95,8 +99,10 @@ namespace DevReload
                     return;
                 }
 
-                string? dllPath = DevReloadService.FindAndBuild(reg.VsProjectName, ed);
+                string? dllPath = DevReloadService.FindAndBuild(
+                    reg.VsProjectName, ed, reg.BuildConfiguration);
                 if (dllPath == null) return;
+                reg.DllPath = dllPath;
 
                 try
                 {
@@ -271,6 +277,12 @@ namespace DevReload
                 reg.SharedAssemblyNames = sharedNames;
         }
 
+        public static void UpdateBuildConfiguration(string pluginName, string buildConfiguration)
+        {
+            if (_plugins.TryGetValue(pluginName, out var reg))
+                reg.BuildConfiguration = buildConfiguration;
+        }
+
         internal static void AddRegistration(PluginRegistration reg)
         {
             _plugins[reg.PluginName] = reg;
@@ -280,9 +292,10 @@ namespace DevReload
     internal class PluginRegistration
     {
         public required string PluginName { get; init; }
-        public required string DllPath { get; init; }
+        public required string DllPath { get; set; }
         public required string? VsProjectName { get; init; }
         public required string[] SharedAssemblyNames { get; set; }
+        public required string BuildConfiguration { get; set; }
 
         public PluginHost<IExtensionApplication> Host { get; } = new();
         public CommandRegistrar? Registrar { get; init; }
@@ -297,6 +310,7 @@ namespace DevReload
         private string? _dllPath;
         private string? _vsProjectName;
         private string[] _sharedAssemblyNames = Array.Empty<string>();
+        private string _buildConfiguration = "Debug";
         private bool _useCommands;
 
         internal PluginRegistrationBuilder(string pluginName)
@@ -313,6 +327,12 @@ namespace DevReload
         public PluginRegistrationBuilder WithVsProject(string vsProjectName)
         {
             _vsProjectName = vsProjectName;
+            return this;
+        }
+
+        public PluginRegistrationBuilder WithBuildConfiguration(string buildConfiguration)
+        {
+            _buildConfiguration = buildConfiguration;
             return this;
         }
 
@@ -336,6 +356,7 @@ namespace DevReload
                 DllPath = _dllPath ?? "",
                 VsProjectName = _vsProjectName ?? _pluginName,
                 SharedAssemblyNames = _sharedAssemblyNames,
+                BuildConfiguration = _buildConfiguration,
                 Registrar = _useCommands ? new CommandRegistrar() : null,
             };
 
