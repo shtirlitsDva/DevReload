@@ -48,13 +48,15 @@ namespace DevReload
                         string localName = attr.LocalizedNameId ?? globalName;
                         CommandFlags flags = attr.Flags;
 
-                        // Instance methods: create new instance per invocation
-                        // (matches AutoCAD's normal behavior for [CommandMethod])
                         CommandCallback callback;
                         if (method.IsStatic)
                         {
                             var m = method;
-                            callback = () => m.Invoke(null, null);
+                            callback = () =>
+                            {
+                                try { m.Invoke(null, null); }
+                                catch (System.Exception ex) { ReportException(ex); }
+                            };
                         }
                         else
                         {
@@ -62,8 +64,12 @@ namespace DevReload
                             var m = method;
                             callback = () =>
                             {
-                                var instance = Activator.CreateInstance(t);
-                                m.Invoke(instance, null);
+                                try
+                                {
+                                    var instance = Activator.CreateInstance(t);
+                                    m.Invoke(instance, null);
+                                }
+                                catch (System.Exception ex) { ReportException(ex); }
                             };
                         }
 
@@ -72,6 +78,18 @@ namespace DevReload
                     }
                 }
             }
+        }
+
+        private static void ReportException(System.Exception ex)
+        {
+            var inner = ex is TargetInvocationException tie ? tie.InnerException ?? ex : ex;
+            try
+            {
+                var doc = Autodesk.AutoCAD.ApplicationServices.Application
+                    .DocumentManager.MdiActiveDocument;
+                doc?.Editor.WriteMessage("\n" + inner.ToString() + "\n");
+            }
+            catch { }
         }
 
         /// <summary>
