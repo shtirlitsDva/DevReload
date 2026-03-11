@@ -20,6 +20,7 @@ namespace DevReload
         public string? CommandPrefix { get; set; }
         public bool LoadOnStartup { get; set; }
         public List<string> SharedAssemblies { get; set; } = new();
+        public List<string> MixedModeAssemblies { get; set; } = new();
         public string? ProductionTarget { get; set; }
         public string BuildConfiguration { get; set; } = "Debug";
     }

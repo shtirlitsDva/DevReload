@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Internal;
@@ -223,16 +222,22 @@ namespace DevReload
         {
             TearDown(reg);
 
-            // Pre-load shared assemblies into the default ALC so WPF XAML
-            // can resolve them (e.g. OxyPlot.Wpf, SharpVectors).
             if (reg.SharedAssemblyNames.Length > 0)
             {
+                var ed = GetEditor();
                 string pluginDir = Path.GetDirectoryName(dllPath)!;
+                var mixedSet = new HashSet<string>(
+                    reg.MixedModeAssemblyNames, StringComparer.OrdinalIgnoreCase);
+
                 foreach (string asmName in reg.SharedAssemblyNames)
                 {
                     string asmPath = Path.Combine(pluginDir, asmName + ".dll");
-                    if (File.Exists(asmPath))
-                        Assembly.LoadFrom(asmPath);
+                    if (!File.Exists(asmPath)) continue;
+
+                    if (mixedSet.Contains(asmName))
+                        EnsureRuntimeConfig(asmPath, asmName, ed);
+
+                    Assembly.LoadFrom(asmPath);
                 }
             }
 
@@ -257,6 +262,32 @@ namespace DevReload
             }
         }
 
+        private static void EnsureRuntimeConfig(string asmPath, string asmName, Editor? ed)
+        {
+            string asmDir = Path.GetDirectoryName(asmPath)!;
+            string rcPath = Path.Combine(asmDir, asmName + ".runtimeconfig.json");
+            if (!File.Exists(rcPath))
+            {
+                ed?.WriteMessage($"\n[DevReload] Creating runtimeconfig.json for mixed-mode: {asmName}");
+                File.WriteAllText(rcPath,
+                    """
+                    {
+                      "runtimeOptions": {
+                        "tfm": "net8.0",
+                        "framework": {
+                          "name": "Microsoft.NETCore.App",
+                          "version": "8.0.0"
+                        }
+                      }
+                    }
+                    """);
+            }
+
+            string ijwPath = Path.Combine(asmDir, "Ijwhost.dll");
+            if (!File.Exists(ijwPath))
+                ed?.WriteMessage($"\n[DevReload] WARNING: Ijwhost.dll not found in {asmDir}");
+        }
+
         private static PluginRegistration GetRegistration(string pluginName)
         {
             if (!_plugins.TryGetValue(pluginName, out var reg))
@@ -277,6 +308,12 @@ namespace DevReload
                 reg.SharedAssemblyNames = sharedNames;
         }
 
+        public static void UpdateMixedModeAssemblies(string pluginName, string[] mixedModeNames)
+        {
+            if (_plugins.TryGetValue(pluginName, out var reg))
+                reg.MixedModeAssemblyNames = mixedModeNames;
+        }
+
         public static void UpdateBuildConfiguration(string pluginName, string buildConfiguration)
         {
             if (_plugins.TryGetValue(pluginName, out var reg))
@@ -295,6 +332,7 @@ namespace DevReload
         public required string DllPath { get; set; }
         public required string? VsProjectName { get; init; }
         public required string[] SharedAssemblyNames { get; set; }
+        public required string[] MixedModeAssemblyNames { get; set; }
         public required string BuildConfiguration { get; set; }
 
         public PluginHost<IExtensionApplication> Host { get; } = new();
@@ -310,6 +348,7 @@ namespace DevReload
         private string? _dllPath;
         private string? _vsProjectName;
         private string[] _sharedAssemblyNames = Array.Empty<string>();
+        private string[] _mixedModeAssemblyNames = Array.Empty<string>();
         private string _buildConfiguration = "Debug";
         private bool _useCommands;
 
@@ -348,6 +387,12 @@ namespace DevReload
             return this;
         }
 
+        public PluginRegistrationBuilder WithMixedModeAssemblies(params string[] assemblyNames)
+        {
+            _mixedModeAssemblyNames = assemblyNames;
+            return this;
+        }
+
         public void Commit()
         {
             var reg = new PluginRegistration
@@ -356,6 +401,7 @@ namespace DevReload
                 DllPath = _dllPath ?? "",
                 VsProjectName = _vsProjectName ?? _pluginName,
                 SharedAssemblyNames = _sharedAssemblyNames,
+                MixedModeAssemblyNames = _mixedModeAssemblyNames,
                 BuildConfiguration = _buildConfiguration,
                 Registrar = _useCommands ? new CommandRegistrar() : null,
             };

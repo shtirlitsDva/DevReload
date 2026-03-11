@@ -229,15 +229,18 @@ namespace DevReload.ViewModels
                 return;
             }
 
-            var vm = new SharedAssembliesViewModel(pluginDir, entry.SharedAssemblies);
+            var vm = new SharedAssembliesViewModel(pluginDir, entry.SharedAssemblies, entry.MixedModeAssemblies);
             var win = new SharedAssembliesWindow { DataContext = vm };
 
             if (win.ShowDialog() == true && vm.Saved)
             {
                 string[] selected = vm.GetSelectedNames();
+                string[] mixedMode = vm.GetMixedModeNames();
                 entry.SharedAssemblies = selected.ToList();
+                entry.MixedModeAssemblies = mixedMode.ToList();
                 SaveConfig();
                 PluginManager.UpdateSharedAssemblies(name, selected);
+                PluginManager.UpdateMixedModeAssemblies(name, mixedMode);
             }
         }
 
@@ -296,7 +299,7 @@ namespace DevReload.ViewModels
                 WriteIndented = true,
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             };
-            var configObj = new { sharedAssemblies = entry.SharedAssemblies };
+            var configObj = new { sharedAssemblies = entry.SharedAssemblies, mixedModeAssemblies = entry.MixedModeAssemblies };
             string json = JsonSerializer.Serialize(configObj, jsonOptions);
             string configPath = Path.Combine(target.DllDir, "SharedAssemblies.Config.json");
             File.WriteAllText(configPath, json);

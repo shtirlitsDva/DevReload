@@ -50,10 +50,24 @@
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <CheckBox IsChecked="{Binding IsSelected}"
-                                  Content="{Binding Name}"
-                                  Foreground="{StaticResource FgBrush}"
-                                  FontSize="12" Margin="4,3"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <CheckBox Grid.Column="0"
+                                      IsChecked="{Binding IsSelected}"
+                                      Content="{Binding Name}"
+                                      Foreground="{StaticResource FgBrush}"
+                                      FontSize="12" Margin="4,3"/>
+                            <CheckBox Grid.Column="1"
+                                      IsChecked="{Binding IsMixedMode}"
+                                      Content="C++/CLI"
+                                      Foreground="{StaticResource MutedBrush}"
+                                      FontSize="10" Margin="4,3"
+                                      IsEnabled="{Binding IsSelected}"
+                                      ToolTip="Mark as mixed-mode (C++/CLI) assembly — auto-creates runtimeconfig.json"/>
+                        </Grid>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
                 <ListBox.ItemContainerStyle>

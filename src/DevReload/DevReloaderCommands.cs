@@ -97,6 +97,8 @@ namespace DevReload
             builder.WithCommands();
             if (entry.SharedAssemblies.Count > 0)
                 builder.WithSharedAssemblies(entry.SharedAssemblies.ToArray());
+            if (entry.MixedModeAssemblies.Count > 0)
+                builder.WithMixedModeAssemblies(entry.MixedModeAssemblies.ToArray());
 
             builder.Commit();
 

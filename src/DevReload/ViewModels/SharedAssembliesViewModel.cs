@@ -15,12 +15,17 @@ namespace DevReload.ViewModels
 
         [ObservableProperty] private bool _saved;
 
-        public SharedAssembliesViewModel(string pluginDir, IReadOnlyList<string> currentShared)
+        public SharedAssembliesViewModel(
+            string pluginDir,
+            IReadOnlyList<string> currentShared,
+            IReadOnlyList<string> currentMixedMode)
         {
             if (!Directory.Exists(pluginDir)) return;
 
             var currentSet = new HashSet<string>(
                 currentShared, StringComparer.OrdinalIgnoreCase);
+            var mixedSet = new HashSet<string>(
+                currentMixedMode, StringComparer.OrdinalIgnoreCase);
 
             foreach (string dll in Directory.GetFiles(pluginDir, "*.dll"))
             {
@@ -29,12 +34,18 @@ namespace DevReload.ViewModels
                 {
                     Name = name,
                     IsSelected = currentSet.Contains(name),
+                    IsMixedMode = mixedSet.Contains(name),
                 });
             }
         }
 
         public string[] GetSelectedNames()
             => Assemblies.Where(a => a.IsSelected)
+                         .Select(a => a.Name)
+                         .ToArray();
+
+        public string[] GetMixedModeNames()
+            => Assemblies.Where(a => a.IsSelected && a.IsMixedMode)
                          .Select(a => a.Name)
                          .ToArray();
 
@@ -49,5 +60,6 @@ namespace DevReload.ViewModels
     {
         [ObservableProperty] private string _name = "";
         [ObservableProperty] private bool _isSelected;
+        [ObservableProperty] private bool _isMixedMode;
     }
 }
