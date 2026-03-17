@@ -34,24 +34,14 @@ namespace DevReload
                     return;
                 }
 
-                if (string.IsNullOrEmpty(reg.DllPath))
-                {
-                    ed?.WriteMessage($"\n{pluginName} has no DLL path configured.");
-                    return;
-                }
-
                 string dllPath = reg.DllPath;
 
                 if (!File.Exists(dllPath))
                 {
-                    if (reg.VsProjectName == null)
-                    {
-                        ed?.WriteMessage($"\n{pluginName} DLL not found and no VS project configured.");
-                        return;
-                    }
+                    string csprojPath = GetEffectiveCsprojPath(reg);
                     ed?.WriteMessage($"\n{pluginName} DLL not found, building...");
-                    string? builtPath = DevReloadService.FindAndBuild(
-                        reg.VsProjectName, ed, reg.BuildConfiguration);
+                    string? builtPath = DevReloadService.BuildProject(
+                        csprojPath, reg.BuildConfiguration, ed);
                     if (builtPath == null) return;
                     reg.DllPath = builtPath;
                     dllPath = builtPath;
@@ -61,11 +51,12 @@ namespace DevReload
                 {
                     LoadCore(reg, dllPath);
                 }
-                catch (StalePluginException ex) when (reg.VsProjectName != null)
+                catch (StalePluginException)
                 {
-                    ed?.WriteMessage($"\n{ex.Message}");
-                    string? rebuilt = DevReloadService.FindAndBuild(
-                        reg.VsProjectName, ed, reg.BuildConfiguration);
+                    ed?.WriteMessage($"\nStale plugin detected, rebuilding...");
+                    string csprojPath = GetEffectiveCsprojPath(reg);
+                    string? rebuilt = DevReloadService.BuildProject(
+                        csprojPath, reg.BuildConfiguration, ed);
                     if (rebuilt == null) return;
                     reg.DllPath = rebuilt;
                     dllPath = rebuilt;
@@ -91,15 +82,9 @@ namespace DevReload
             {
                 var reg = GetRegistration(pluginName);
 
-                if (reg.VsProjectName == null)
-                {
-                    ed?.WriteMessage(
-                        $"\n{pluginName} has no VS project configured for dev-reload.");
-                    return;
-                }
-
-                string? dllPath = DevReloadService.FindAndBuild(
-                    reg.VsProjectName, ed, reg.BuildConfiguration);
+                string csprojPath = GetEffectiveCsprojPath(reg);
+                string? dllPath = DevReloadService.BuildProject(
+                    csprojPath, reg.BuildConfiguration, ed);
                 if (dllPath == null) return;
                 reg.DllPath = dllPath;
 
@@ -288,6 +273,20 @@ namespace DevReload
                 ed?.WriteMessage($"\n[DevReload] WARNING: Ijwhost.dll not found in {asmDir}");
         }
 
+        private static string GetEffectiveCsprojPath(PluginRegistration reg)
+        {
+            if (string.IsNullOrEmpty(reg.ActiveWorktreePath))
+                return reg.ProjectFilePath;
+
+            string? repoRoot = GitWorktreeService.GetRepoRoot(
+                Path.GetDirectoryName(reg.ProjectFilePath)!);
+            if (repoRoot == null)
+                return reg.ProjectFilePath;
+
+            return GitWorktreeService.RemapToWorktree(
+                reg.ProjectFilePath, repoRoot, reg.ActiveWorktreePath);
+        }
+
         private static PluginRegistration GetRegistration(string pluginName)
         {
             if (!_plugins.TryGetValue(pluginName, out var reg))
@@ -320,6 +319,12 @@ namespace DevReload
                 reg.BuildConfiguration = buildConfiguration;
         }
 
+        public static void UpdateActiveWorktree(string pluginName, string? worktreePath)
+        {
+            if (_plugins.TryGetValue(pluginName, out var reg))
+                reg.ActiveWorktreePath = worktreePath;
+        }
+
         internal static void AddRegistration(PluginRegistration reg)
         {
             _plugins[reg.PluginName] = reg;
@@ -330,10 +335,11 @@ namespace DevReload
     {
         public required string PluginName { get; init; }
         public required string DllPath { get; set; }
-        public required string? VsProjectName { get; init; }
+        public required string ProjectFilePath { get; init; }
         public required string[] SharedAssemblyNames { get; set; }
         public required string[] MixedModeAssemblyNames { get; set; }
         public required string BuildConfiguration { get; set; }
+        public string? ActiveWorktreePath { get; set; }
 
         public PluginHost<IExtensionApplication> Host { get; } = new();
         public CommandRegistrar? Registrar { get; init; }
@@ -346,10 +352,11 @@ namespace DevReload
     {
         private readonly string _pluginName;
         private string? _dllPath;
-        private string? _vsProjectName;
+        private string? _projectFilePath;
         private string[] _sharedAssemblyNames = Array.Empty<string>();
         private string[] _mixedModeAssemblyNames = Array.Empty<string>();
         private string _buildConfiguration = "Debug";
+        private string? _activeWorktreePath;
         private bool _useCommands;
 
         internal PluginRegistrationBuilder(string pluginName)
@@ -363,15 +370,21 @@ namespace DevReload
             return this;
         }
 
-        public PluginRegistrationBuilder WithVsProject(string vsProjectName)
+        public PluginRegistrationBuilder WithProjectFilePath(string path)
         {
-            _vsProjectName = vsProjectName;
+            _projectFilePath = path;
             return this;
         }
 
         public PluginRegistrationBuilder WithBuildConfiguration(string buildConfiguration)
         {
             _buildConfiguration = buildConfiguration;
+            return this;
+        }
+
+        public PluginRegistrationBuilder WithActiveWorktreePath(string? path)
+        {
+            _activeWorktreePath = path;
             return this;
         }
 
@@ -399,10 +412,11 @@ namespace DevReload
             {
                 PluginName = _pluginName,
                 DllPath = _dllPath ?? "",
-                VsProjectName = _vsProjectName ?? _pluginName,
+                ProjectFilePath = _projectFilePath ?? "",
                 SharedAssemblyNames = _sharedAssemblyNames,
                 MixedModeAssemblyNames = _mixedModeAssemblyNames,
                 BuildConfiguration = _buildConfiguration,
+                ActiveWorktreePath = _activeWorktreePath,
                 Registrar = _useCommands ? new CommandRegistrar() : null,
             };
 

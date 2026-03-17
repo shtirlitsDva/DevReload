@@ -15,14 +15,16 @@ using DevReload.Views;
 namespace DevReload
 {
     /// <summary>
-    /// Config-driven loader — reads plugins.json at startup, registers
-    /// dynamic commands per plugin, and provides the DEVRELOAD management
-    /// palette for visual plugin management.
+    /// Config-driven loader — reads plugins.json at startup, migrates
+    /// old config entries, registers dynamic commands per plugin, and
+    /// provides the DEVRELOAD management palette for visual plugin management.
     /// <para>
     /// AutoCAD loads this DLL once via autoload (acad2025.lsp).
     /// If no plugins.json exists, initialization is silent.
     /// Plugins are registered + commands created for all entries,
     /// but only those with <c>loadOnStartup = true</c> are auto-loaded.
+    /// Builds run via <c>dotnet build</c> using stored .csproj paths —
+    /// no running VS instance required after initial registration.
     /// </para>
     /// </summary>
     public class DevReloaderCommands : IExtensionApplication
@@ -41,6 +43,8 @@ namespace DevReload
                 ed?.WriteMessage("\nDevReload initialized (no plugins configured).");
                 return;
             }
+
+            PluginConfigLoader.MigrateIfNeeded(config);
 
             // Register all plugins + their LOAD/DEV/UNLOAD commands
             foreach (var entry in config.Plugins)
@@ -92,8 +96,9 @@ namespace DevReload
             var builder = PluginManager.Register(entry.Name);
 
             if (entry.DllPath != null) builder.WithDllPath(entry.DllPath);
-            if (entry.VsProject != null) builder.WithVsProject(entry.VsProject);
+            if (entry.ProjectFilePath != null) builder.WithProjectFilePath(entry.ProjectFilePath);
             builder.WithBuildConfiguration(entry.BuildConfiguration);
+            builder.WithActiveWorktreePath(entry.ActiveWorktreePath);
             builder.WithCommands();
             if (entry.SharedAssemblies.Count > 0)
                 builder.WithSharedAssemblies(entry.SharedAssemblies.ToArray());
