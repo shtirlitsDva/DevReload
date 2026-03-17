@@ -23,6 +23,8 @@ namespace DevReload
         public List<string> MixedModeAssemblies { get; set; } = new();
         public string? ProductionTarget { get; set; }
         public string BuildConfiguration { get; set; } = "Debug";
+        public string? ProjectFilePath { get; set; }
+        public string? ActiveWorktreePath { get; set; }
     }
 
     public static class PluginConfigLoader
@@ -60,6 +62,62 @@ namespace DevReload
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             string json = JsonSerializer.Serialize(config, _jsonOptions);
             File.WriteAllText(path, json);
+        }
+
+        public static void MigrateIfNeeded(PluginConfig config)
+        {
+            bool changed = false;
+
+            config.Plugins.RemoveAll(entry =>
+            {
+                if (entry.ProjectFilePath != null) return false;
+
+                string? csproj = FindCsprojFromDllPath(entry.DllPath);
+                if (csproj != null)
+                {
+                    entry.ProjectFilePath = csproj;
+                    changed = true;
+                    return false;
+                }
+
+                changed = true;
+                return true;
+            });
+
+            if (changed)
+                Save(config);
+        }
+
+        private static string? FindCsprojFromDllPath(string? dllPath)
+        {
+            if (string.IsNullOrEmpty(dllPath)) return null;
+
+            string? dir = Path.GetDirectoryName(dllPath);
+            string dllName = Path.GetFileNameWithoutExtension(dllPath);
+
+            while (dir != null)
+            {
+                try
+                {
+                    var csprojFiles = Directory.GetFiles(dir, "*.csproj");
+                    if (csprojFiles.Length == 1)
+                        return csprojFiles[0];
+
+                    // Prefer the one matching the DLL name
+                    foreach (var f in csprojFiles)
+                    {
+                        if (Path.GetFileNameWithoutExtension(f)
+                            .Equals(dllName, StringComparison.OrdinalIgnoreCase))
+                            return f;
+                    }
+                }
+                catch { }
+
+                // Stop if we hit a .csproj at some level (ambiguous)
+                dir = Path.GetDirectoryName(dir);
+            }
+
+            return null;
         }
     }
 }

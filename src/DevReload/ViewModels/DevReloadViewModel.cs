@@ -15,6 +15,17 @@ using CommunityToolkit.Mvvm.Input;
 
 using DevReload.Views;
 
+namespace DevReload
+{
+    public class WorktreeItem
+    {
+        public string Path { get; set; } = "";
+        public string Branch { get; set; } = "";
+        public bool IsMain { get; set; }
+        public override string ToString() => Branch;
+    }
+}
+
 namespace DevReload.ViewModels
 {
     public partial class DevReloadViewModel : ObservableObject
@@ -48,6 +59,7 @@ namespace DevReload.ViewModels
             Plugins.Clear();
 
             _config = PluginConfigLoader.Load() ?? new PluginConfig();
+            PluginConfigLoader.MigrateIfNeeded(_config);
 
             foreach (var entry in _config.Plugins)
             {
@@ -63,7 +75,8 @@ namespace DevReload.ViewModels
         private void OnPluginPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName is nameof(PluginItemViewModel.LoadOnStartup)
-                                  or nameof(PluginItemViewModel.IsReleaseBuild))
+                                  or nameof(PluginItemViewModel.IsReleaseBuild)
+                                  or nameof(PluginItemViewModel.SelectedWorktree))
                 SaveConfig();
         }
 
@@ -81,6 +94,9 @@ namespace DevReload.ViewModels
         {
             PluginManager.DevReload(name);
             RefreshStates();
+
+            var vm = Plugins.FirstOrDefault(p => p.Name == name);
+            vm?.RefreshWorktrees();
         }
 
         [RelayCommand]
@@ -136,6 +152,7 @@ namespace DevReload.ViewModels
                     ? null : NewPluginPrefix.Trim().ToUpperInvariant(),
                 DllPath = _selectedProject.DebugDllPath,
                 VsProject = _selectedProject.Name,
+                ProjectFilePath = _selectedProject.ProjectFilePath,
                 LoadOnStartup = NewPluginLoadOnStartup,
             };
 
@@ -372,6 +389,9 @@ namespace DevReload.ViewModels
         [ObservableProperty] private string _status = "Unloaded";
         [ObservableProperty] private bool _loadOnStartup;
         [ObservableProperty] private bool _isReleaseBuild;
+        [ObservableProperty] private WorktreeItem? _selectedWorktree;
+
+        public ObservableCollection<WorktreeItem> Worktrees { get; } = new();
 
         public PluginItemViewModel(PluginEntry entry)
         {
@@ -392,10 +412,51 @@ namespace DevReload.ViewModels
             PluginManager.UpdateBuildConfiguration(Name, Entry.BuildConfiguration);
         }
 
+        partial void OnSelectedWorktreeChanged(WorktreeItem? value)
+        {
+            if (value == null) return;
+            Entry.ActiveWorktreePath = value.IsMain ? null : value.Path;
+            PluginManager.UpdateActiveWorktree(Name, Entry.ActiveWorktreePath);
+        }
+
         public void RefreshState()
         {
             IsLoaded = PluginManager.IsRegistered(Name) && PluginManager.IsLoaded(Name);
             Status = IsLoaded ? "Loaded" : "Unloaded";
+            RefreshWorktrees();
+        }
+
+        public void RefreshWorktrees()
+        {
+            if (string.IsNullOrEmpty(Entry.ProjectFilePath)) return;
+
+            string? projectDir = Path.GetDirectoryName(Entry.ProjectFilePath);
+            if (projectDir == null) return;
+
+            string? repoRoot = GitWorktreeService.GetRepoRoot(projectDir);
+            if (repoRoot == null) return;
+
+            var worktrees = GitWorktreeService.ListWorktrees(repoRoot);
+
+            var previousSelection = SelectedWorktree;
+            Worktrees.Clear();
+
+            foreach (var wt in worktrees)
+                Worktrees.Add(new WorktreeItem
+                {
+                    Path = wt.Path,
+                    Branch = wt.Branch,
+                    IsMain = wt.IsMain,
+                });
+
+            // Restore selection: match ActiveWorktreePath, or fall back to main
+            if (!string.IsNullOrEmpty(Entry.ActiveWorktreePath))
+                SelectedWorktree = Worktrees.FirstOrDefault(
+                    w => w.Path.Equals(Entry.ActiveWorktreePath,
+                        StringComparison.OrdinalIgnoreCase))
+                    ?? Worktrees.FirstOrDefault(w => w.IsMain);
+            else
+                SelectedWorktree = Worktrees.FirstOrDefault(w => w.IsMain);
         }
     }
 

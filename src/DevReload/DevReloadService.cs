@@ -11,7 +11,7 @@ using EnvDTE80;
 
 namespace DevReload
 {
-    public record VsProjectInfo(string Name, string DebugDllPath, string SolutionName);
+    public record VsProjectInfo(string Name, string DebugDllPath, string SolutionName, string ProjectFilePath);
 
     public static class DevReloadService
     {
@@ -101,9 +101,120 @@ namespace DevReload
                 string dllPath = Path.GetFullPath(
                     Path.Combine(projectDir, debugOutputPath, assemblyName + ".dll"));
 
-                result.Add(new VsProjectInfo(prj.Name, dllPath, solName));
+                result.Add(new VsProjectInfo(prj.Name, dllPath, solName, prj.FullName));
             }
             catch { }
+        }
+
+        public static string? BuildProject(string csprojPath, string buildConfiguration, Editor? ed)
+        {
+            using var wc = new WaitCursorScope();
+
+            string projectDir = Path.GetDirectoryName(csprojPath)!;
+            string projectName = Path.GetFileNameWithoutExtension(csprojPath);
+
+            // 1. Query target DLL path via dotnet msbuild
+            string? targetPath = QueryMsBuildProperty(
+                csprojPath, "TargetPath", buildConfiguration);
+
+            if (string.IsNullOrEmpty(targetPath))
+            {
+                ed?.WriteMessage($"\nFailed to resolve output path for '{projectName}'.");
+                return null;
+            }
+
+            // 2. Build via dotnet CLI
+            ed?.WriteMessage($"\nBuilding '{projectName}' ({buildConfiguration})...");
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = "dotnet",
+                Arguments = $"build \"{csprojPath}\" -c {buildConfiguration} -p:Platform=x64",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = projectDir,
+            };
+
+            var buildLog = new StringBuilder();
+            int exitCode;
+            try
+            {
+                using var proc = new System.Diagnostics.Process { StartInfo = psi };
+                proc.OutputDataReceived += (_, e) => { if (e.Data != null) buildLog.AppendLine(e.Data); };
+                proc.ErrorDataReceived += (_, e) => { if (e.Data != null) buildLog.AppendLine(e.Data); };
+                proc.Start();
+                proc.BeginOutputReadLine();
+                proc.BeginErrorReadLine();
+                proc.WaitForExit();
+                exitCode = proc.ExitCode;
+            }
+            catch (Exception ex)
+            {
+                ed?.WriteMessage($"\nFailed to start dotnet build: {ex.Message}");
+                return null;
+            }
+
+            string log = buildLog.ToString();
+            var summary = ParseBuildSummary(log);
+
+            if (exitCode != 0)
+            {
+                ed?.WriteMessage($"\nBuild FAILED — {summary.Errors} error(s), {summary.Warnings} warning(s).");
+                var errorLines = log
+                    .Split('\n')
+                    .Where(l => l.Contains(": error "))
+                    .Take(10)
+                    .ToList();
+                foreach (var line in errorLines)
+                    ed?.WriteMessage($"\n  {line.Trim()}");
+                return null;
+            }
+
+            ed?.WriteMessage(summary.Warnings > 0
+                ? $"\nBuild succeeded — {summary.Warnings} warning(s)."
+                : "\nBuild succeeded.");
+
+            // 3. Verify output
+            if (!File.Exists(targetPath))
+            {
+                ed?.WriteMessage($"\nBuild output not found at: {targetPath}");
+                return null;
+            }
+
+            ed?.WriteMessage($"\nOutput: {targetPath}");
+            return targetPath;
+        }
+
+        private static string? QueryMsBuildProperty(
+            string csprojPath, string propertyName, string buildConfiguration)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "dotnet",
+                    Arguments = $"msbuild \"{csprojPath}\" -getProperty:{propertyName} -p:Configuration={buildConfiguration} -p:Platform=x64",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    WorkingDirectory = Path.GetDirectoryName(csprojPath)!,
+                };
+
+                using var proc = System.Diagnostics.Process.Start(psi);
+                if (proc == null) return null;
+
+                string output = proc.StandardOutput.ReadToEnd().Trim();
+                proc.WaitForExit();
+
+                return proc.ExitCode == 0 && !string.IsNullOrEmpty(output) ? output : null;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         public static string? FindAndBuild(string projectName, Editor? ed, string buildConfiguration = "Debug")

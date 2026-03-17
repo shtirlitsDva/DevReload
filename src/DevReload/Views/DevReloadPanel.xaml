@@ -207,7 +207,7 @@
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
 
-                                    <!-- Row 0: Name + status + remove -->
+                                    <!-- Row 0: Name + status + worktree + remove -->
                                     <DockPanel Grid.Row="0" Margin="0,0,0,6">
                                         <!-- Remove button -->
                                         <Button DockPanel.Dock="Right"
@@ -217,6 +217,33 @@
                                                     RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                 CommandParameter="{Binding Name}"
                                                 ToolTip="Remove plugin"/>
+
+                                        <!-- Worktree selector -->
+                                        <ComboBox DockPanel.Dock="Right"
+                                                  ItemsSource="{Binding Worktrees}"
+                                                  SelectedItem="{Binding SelectedWorktree}"
+                                                  DropDownOpened="WorktreeComboBox_DropDownOpened"
+                                                  FontSize="11"
+                                                  Margin="8,0,4,0"
+                                                  Padding="6,2"
+                                                  MinWidth="80"
+                                                  VerticalAlignment="Center"
+                                                  ToolTip="Select worktree to build from">
+                                            <ComboBox.Style>
+                                                <Style TargetType="ComboBox">
+                                                    <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+                                                    <Setter Property="Foreground" Value="{StaticResource FgBrush}"/>
+                                                    <Setter Property="BorderBrush" Value="#4A5568"/>
+                                                    <Setter Property="BorderThickness" Value="1"/>
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Worktrees.Count}" Value="0">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </ComboBox.Style>
+                                        </ComboBox>
 
                                         <!-- Status circle -->
                                         <Ellipse DockPanel.Dock="Left"
@@ -236,7 +263,7 @@
                                             </Ellipse.Style>
                                         </Ellipse>
 
-                                        <!-- Name + prefix -->
+                                        <!-- Name + prefix + status -->
                                         <StackPanel Orientation="Horizontal"
                                                     VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Name}"
