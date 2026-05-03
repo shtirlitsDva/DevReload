@@ -13,7 +13,7 @@ namespace DevReload
         private readonly string _pluginDir;
 
         public IsolatedPluginContext(string pluginPath, params string[] sharedAssemblyNames)
-            : base("PluginIsolated", isCollectible: true)
+            : base($"PluginIsolated::{Path.GetFileName(pluginPath)}", isCollectible: true)
         {
             _resolver = new AssemblyDependencyResolver(pluginPath);
             _sharedAssemblies = new HashSet<string>(sharedAssemblyNames);
@@ -22,25 +22,39 @@ namespace DevReload
 
         protected override Assembly? Load(AssemblyName assemblyName)
         {
-            // Keep shared interface assemblies in default context for type identity
-            if (_sharedAssemblies.Contains(assemblyName.Name!))
+            string name = assemblyName.Name ?? "";
+
+            // Shared assemblies stay in default ALC for type identity (WPF XAML etc.)
+            if (_sharedAssemblies.Contains(name))
                 return null;
 
-            // 1. NuGet/package deps — deps.json drives this.
+            // Resolve path: deps.json first (NuGet/package), then plugin dir for
+            // project refs (type:"project" entries are by design ignored by
+            // AssemblyDependencyResolver per the SDK runtime-config spec).
             string? assemblyPath = _resolver.ResolveAssemblyToPath(assemblyName);
-            if (assemblyPath != null)
-                return LoadFromAssemblyPath(assemblyPath);
+            if (assemblyPath == null)
+            {
+                string sideBySide = Path.Combine(_pluginDir, name + ".dll");
+                if (File.Exists(sideBySide))
+                    assemblyPath = sideBySide;
+            }
 
-            // 2. Project references — by design AssemblyDependencyResolver ignores
-            //    type:"project" entries in deps.json (per SDK runtime-configuration
-            //    spec). Probe the plugin directory directly. Same pattern as
-            //    natemcmaster/DotNetCorePlugins.
-            string sideBySide = Path.Combine(_pluginDir, assemblyName.Name + ".dll");
-            if (File.Exists(sideBySide))
-                return LoadFromAssemblyPath(sideBySide);
+            if (assemblyPath == null)
+                return null;
 
-            // 3. AutoCAD / BCL / WPF — fall through to default ALC.
-            return null;
+            // Stream-load (same approach as PluginHost) — leaves no file lock,
+            // so collectible-ALC unload truly releases the DLL on disk and the
+            // next build can overwrite it.
+            byte[] asmBytes = File.ReadAllBytes(assemblyPath);
+            string pdbPath = Path.ChangeExtension(assemblyPath, ".pdb");
+            using var asmStream = new MemoryStream(asmBytes);
+            if (File.Exists(pdbPath))
+            {
+                byte[] pdbBytes = File.ReadAllBytes(pdbPath);
+                using var pdbStream = new MemoryStream(pdbBytes);
+                return LoadFromStream(asmStream, pdbStream);
+            }
+            return LoadFromStream(asmStream);
         }
 
         protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)
