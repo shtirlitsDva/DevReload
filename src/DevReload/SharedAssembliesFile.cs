@@ -35,6 +35,13 @@ namespace DevReload
         {
             public List<string> SharedAssemblies { get; set; } = new();
             public List<string> MixedModeAssemblies { get; set; } = new();
+            // Subset of SharedAssemblies loaded via Assembly.Load(byte[]) instead
+            // of Assembly.LoadFrom — releases the file lock so the project can
+            // be rebuilt without restarting AutoCAD. The old assembly image
+            // remains in the default ALC for the rest of the session; only
+            // applicable when the public surface is stable. Mutually exclusive
+            // with MixedModeAssemblies (native deps probe the DLL's folder).
+            public List<string> StreamedAssemblies { get; set; } = new();
         }
 
         public static string PathFor(string buildDir) =>
@@ -59,13 +66,18 @@ namespace DevReload
             }
         }
 
-        public static void Write(string buildDir, IEnumerable<string> shared, IEnumerable<string> mixedMode)
+        public static void Write(
+            string buildDir,
+            IEnumerable<string> shared,
+            IEnumerable<string> mixedMode,
+            IEnumerable<string> streamed)
         {
             Directory.CreateDirectory(buildDir);
             var cfg = new Config
             {
                 SharedAssemblies = new List<string>(shared),
                 MixedModeAssemblies = new List<string>(mixedMode),
+                StreamedAssemblies = new List<string>(streamed),
             };
             string json = JsonSerializer.Serialize(cfg, _options);
             File.WriteAllText(PathFor(buildDir), json);

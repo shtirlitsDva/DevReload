@@ -220,6 +220,8 @@ namespace DevReload
                 var ed = GetEditor();
                 var mixedSet = new HashSet<string>(
                     sharedConfig.MixedModeAssemblies, StringComparer.OrdinalIgnoreCase);
+                var streamedSet = new HashSet<string>(
+                    sharedConfig.StreamedAssemblies, StringComparer.OrdinalIgnoreCase);
 
                 foreach (string asmName in sharedNames)
                 {
@@ -227,9 +229,18 @@ namespace DevReload
                     if (!File.Exists(asmPath)) continue;
 
                     if (mixedSet.Contains(asmName))
+                    {
                         EnsureRuntimeConfig(asmPath, asmName, ed);
-
-                    Assembly.LoadFrom(asmPath);
+                        Assembly.LoadFrom(asmPath);
+                    }
+                    else if (streamedSet.Contains(asmName))
+                    {
+                        LoadSharedFromStream(asmPath);
+                    }
+                    else
+                    {
+                        Assembly.LoadFrom(asmPath);
+                    }
                 }
             }
 
@@ -251,6 +262,30 @@ namespace DevReload
                 catch { /* best-effort */ }
 
                 reg.Host.Unload();
+            }
+        }
+
+        // Stream-loads a shared assembly into the default ALC. Because the
+        // caller (PluginManager) lives in the default ALC, Assembly.Load(byte[])
+        // resolves to AssemblyLoadContext.Default — same identity as LoadFrom,
+        // but no file lock on the DLL. PDB is included when present so the
+        // debugger still gets symbols.
+        //
+        // Caveat: the default ALC is non-collectible. The streamed image lives
+        // until AutoCAD exits — rebuilding the DLL on disk is fine, but the
+        // running plugin keeps seeing the old surface until AutoCAD restarts.
+        private static void LoadSharedFromStream(string asmPath)
+        {
+            byte[] asmBytes = File.ReadAllBytes(asmPath);
+            string pdbPath = Path.ChangeExtension(asmPath, ".pdb");
+            if (File.Exists(pdbPath))
+            {
+                byte[] pdbBytes = File.ReadAllBytes(pdbPath);
+                Assembly.Load(asmBytes, pdbBytes);
+            }
+            else
+            {
+                Assembly.Load(asmBytes);
             }
         }
 

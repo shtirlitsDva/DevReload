@@ -134,7 +134,8 @@ namespace DevReload
                             SharedAssembliesFile.Write(
                                 buildDir,
                                 legacyShared ?? new List<string>(),
-                                legacyMixed ?? new List<string>());
+                                legacyMixed ?? new List<string>(),
+                                new List<string>());
                         }
                     }
                 }

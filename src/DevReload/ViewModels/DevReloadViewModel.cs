@@ -251,13 +251,19 @@ namespace DevReload.ViewModels
             // empty seed; no fallback to plugins.json.
             var current = SharedAssembliesFile.Read(pluginDir);
             var vm = new SharedAssembliesViewModel(
-                pluginDir, current.SharedAssemblies, current.MixedModeAssemblies);
+                pluginDir,
+                current.SharedAssemblies,
+                current.MixedModeAssemblies,
+                current.StreamedAssemblies);
             var win = new SharedAssembliesWindow { DataContext = vm };
 
             if (win.ShowDialog() == true && vm.Saved)
             {
                 SharedAssembliesFile.Write(
-                    pluginDir, vm.GetSelectedNames(), vm.GetMixedModeNames());
+                    pluginDir,
+                    vm.GetSelectedNames(),
+                    vm.GetMixedModeNames(),
+                    vm.GetStreamedNames());
             }
         }
 
@@ -366,7 +372,8 @@ namespace DevReload.ViewModels
             SharedAssembliesFile.Write(
                 target.DllDir,
                 devConfig.SharedAssemblies,
-                devConfig.MixedModeAssemblies);
+                devConfig.MixedModeAssemblies,
+                devConfig.StreamedAssemblies);
 
             // Remember which production app this plugin targets
             entry.ProductionTarget = selection;

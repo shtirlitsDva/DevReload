@@ -18,7 +18,8 @@ namespace DevReload.ViewModels
         public SharedAssembliesViewModel(
             string pluginDir,
             IReadOnlyList<string> currentShared,
-            IReadOnlyList<string> currentMixedMode)
+            IReadOnlyList<string> currentMixedMode,
+            IReadOnlyList<string> currentStreamed)
         {
             if (!Directory.Exists(pluginDir)) return;
 
@@ -26,6 +27,8 @@ namespace DevReload.ViewModels
                 currentShared, StringComparer.OrdinalIgnoreCase);
             var mixedSet = new HashSet<string>(
                 currentMixedMode, StringComparer.OrdinalIgnoreCase);
+            var streamedSet = new HashSet<string>(
+                currentStreamed, StringComparer.OrdinalIgnoreCase);
 
             foreach (string dll in Directory.GetFiles(pluginDir, "*.dll"))
             {
@@ -35,6 +38,7 @@ namespace DevReload.ViewModels
                     Name = name,
                     IsSelected = currentSet.Contains(name),
                     IsMixedMode = mixedSet.Contains(name),
+                    IsStreamed = streamedSet.Contains(name),
                 });
             }
         }
@@ -49,6 +53,11 @@ namespace DevReload.ViewModels
                          .Select(a => a.Name)
                          .ToArray();
 
+        public string[] GetStreamedNames()
+            => Assemblies.Where(a => a.IsSelected && a.IsStreamed)
+                         .Select(a => a.Name)
+                         .ToArray();
+
         [RelayCommand]
         private void Save()
         {
@@ -59,7 +68,34 @@ namespace DevReload.ViewModels
     public partial class AssemblyItem : ObservableObject
     {
         [ObservableProperty] private string _name = "";
-        [ObservableProperty] private bool _isSelected;
-        [ObservableProperty] private bool _isMixedMode;
+
+        [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(CanEnableMixedMode))]
+        [NotifyPropertyChangedFor(nameof(CanEnableStreamed))]
+        private bool _isSelected;
+
+        [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(CanEnableStreamed))]
+        private bool _isMixedMode;
+
+        [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(CanEnableMixedMode))]
+        private bool _isStreamed;
+
+        // Mixed-mode and streamed are mutually exclusive: mixed-mode (C++/CLI)
+        // relies on directory-adjacent native deps (Ijwhost.dll, satellites),
+        // which the streamed/"location-unknown" load path cannot probe.
+        public bool CanEnableMixedMode => IsSelected && !IsStreamed;
+        public bool CanEnableStreamed => IsSelected && !IsMixedMode;
+
+        partial void OnIsMixedModeChanged(bool value)
+        {
+            if (value) IsStreamed = false;
+        }
+
+        partial void OnIsStreamedChanged(bool value)
+        {
+            if (value) IsMixedMode = false;
+        }
     }
 }
