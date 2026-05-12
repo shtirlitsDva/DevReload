@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Loader;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Internal;
@@ -265,11 +266,18 @@ namespace DevReload
             }
         }
 
-        // Stream-loads a shared assembly into the default ALC. Because the
-        // caller (PluginManager) lives in the default ALC, Assembly.Load(byte[])
-        // resolves to AssemblyLoadContext.Default — same identity as LoadFrom,
-        // but no file lock on the DLL. PDB is included when present so the
-        // debugger still gets symbols.
+        // Stream-loads a shared assembly INTO the default ALC.
+        //
+        // We must call AssemblyLoadContext.Default.LoadFromStream(...) explicitly.
+        // Assembly.Load(byte[]) looks like the "right" API but it loads into a
+        // brand-new anonymous AssemblyLoadContext (one per call) per the
+        // documented .NET algorithm — the assembly never ends up in
+        // AssemblyLoadContext.Default and is invisible to name-based binding
+        // from the isolated plugin ALC.
+        //
+        // Default.LoadFromStream behaves like LoadFrom for binding purposes
+        // (assembly is in Default.Assemblies, findable by name), but without
+        // the file lock on the DLL on disk.
         //
         // Caveat: the default ALC is non-collectible. The streamed image lives
         // until AutoCAD exits — rebuilding the DLL on disk is fine, but the
@@ -278,14 +286,16 @@ namespace DevReload
         {
             byte[] asmBytes = File.ReadAllBytes(asmPath);
             string pdbPath = Path.ChangeExtension(asmPath, ".pdb");
+            using var asmStream = new MemoryStream(asmBytes);
             if (File.Exists(pdbPath))
             {
                 byte[] pdbBytes = File.ReadAllBytes(pdbPath);
-                Assembly.Load(asmBytes, pdbBytes);
+                using var pdbStream = new MemoryStream(pdbBytes);
+                AssemblyLoadContext.Default.LoadFromStream(asmStream, pdbStream);
             }
             else
             {
-                Assembly.Load(asmBytes);
+                AssemblyLoadContext.Default.LoadFromStream(asmStream);
             }
         }
 

@@ -24,9 +24,27 @@ namespace DevReload
         {
             string name = assemblyName.Name ?? "";
 
-            // Shared assemblies stay in default ALC for type identity (WPF XAML etc.)
+            // Shared assemblies stay in default ALC for type identity (WPF XAML etc.).
+            //
+            // PluginManager loads them via LoadFrom or via
+            // AssemblyLoadContext.Default.LoadFromStream — both put the assembly
+            // into the Default ALC. The explicit lookup below is belt-and-braces:
+            // returning null and letting the default binder resolve also works, but
+            // handing the runtime the resolved instance is unambiguous.
+            //
+            // Note: Assembly.Load(byte[]) — which we explicitly DO NOT use — would
+            // put the assembly in a brand-new anonymous ALC, where it would be
+            // invisible to default-binder name resolution.
             if (_sharedAssemblies.Contains(name))
+            {
+                foreach (var asm in AssemblyLoadContext.Default.Assemblies)
+                {
+                    if (string.Equals(
+                            asm.GetName().Name, name, StringComparison.OrdinalIgnoreCase))
+                        return asm;
+                }
                 return null;
+            }
 
             // Resolve path: deps.json first (NuGet/package), then plugin dir for
             // project refs (type:"project" entries are by design ignored by
