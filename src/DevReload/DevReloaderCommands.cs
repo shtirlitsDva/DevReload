@@ -100,10 +100,9 @@ namespace DevReload
             builder.WithBuildConfiguration(entry.BuildConfiguration);
             builder.WithActiveWorktreePath(entry.ActiveWorktreePath);
             builder.WithCommands();
-            if (entry.SharedAssemblies.Count > 0)
-                builder.WithSharedAssemblies(entry.SharedAssemblies.ToArray());
-            if (entry.MixedModeAssemblies.Count > 0)
-                builder.WithMixedModeAssemblies(entry.MixedModeAssemblies.ToArray());
+            // Shared / mixed-mode assembly choice is no longer held in
+            // PluginEntry — it lives in <buildDir>/SharedAssemblies.Config.json
+            // and is read fresh by PluginManager.LoadCore on every load.
 
             builder.Commit();
 

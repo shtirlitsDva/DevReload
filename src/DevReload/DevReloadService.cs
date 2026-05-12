@@ -187,7 +187,10 @@ namespace DevReload
             return targetPath;
         }
 
-        private static string? QueryMsBuildProperty(
+        // Internal so DevReloadViewModel.SharedAssemblies can ask MSBuild for the
+        // effective TargetPath without depending on a stale entry.DllPath. Reading
+        // an MSBuild property does not invoke a full build, so this stays cheap.
+        internal static string? QueryMsBuildProperty(
             string csprojPath, string propertyName, string buildConfiguration)
         {
             try

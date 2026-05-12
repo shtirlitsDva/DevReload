@@ -232,9 +232,10 @@ namespace DevReload.ViewModels
                 p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
             if (entry == null) return;
 
-            string pluginDir = !string.IsNullOrEmpty(entry.DllPath)
-                ? Path.GetDirectoryName(entry.DllPath)!
-                : "";
+            // Resolve the build directory via the csproj's MSBuild TargetPath
+            // (worktree-aware). The file we read/write lives inside that dir,
+            // so the dialog automatically reflects the active worktree.
+            string pluginDir = ResolveEffectivePluginDir(entry);
 
             if (string.IsNullOrEmpty(pluginDir) || !Directory.Exists(pluginDir))
             {
@@ -246,19 +247,56 @@ namespace DevReload.ViewModels
                 return;
             }
 
-            var vm = new SharedAssembliesViewModel(pluginDir, entry.SharedAssemblies, entry.MixedModeAssemblies);
+            // Seed dialog state from the per-build config file. Missing file =
+            // empty seed; no fallback to plugins.json.
+            var current = SharedAssembliesFile.Read(pluginDir);
+            var vm = new SharedAssembliesViewModel(
+                pluginDir, current.SharedAssemblies, current.MixedModeAssemblies);
             var win = new SharedAssembliesWindow { DataContext = vm };
 
             if (win.ShowDialog() == true && vm.Saved)
             {
-                string[] selected = vm.GetSelectedNames();
-                string[] mixedMode = vm.GetMixedModeNames();
-                entry.SharedAssemblies = selected.ToList();
-                entry.MixedModeAssemblies = mixedMode.ToList();
-                SaveConfig();
-                PluginManager.UpdateSharedAssemblies(name, selected);
-                PluginManager.UpdateMixedModeAssemblies(name, mixedMode);
+                SharedAssembliesFile.Write(
+                    pluginDir, vm.GetSelectedNames(), vm.GetMixedModeNames());
             }
+        }
+
+        // Returns the directory whose SharedAssemblies.Config.json is the
+        // configuration source for the currently-selected build of this
+        // plugin: csproj → worktree-remapped csproj → MSBuild TargetPath →
+        // parent directory. Last-resort safety net: entry.DllPath's directory
+        // for cases where MSBuild can't be queried (no csproj recorded,
+        // repo-root lookup fails, dotnet not on PATH, etc.).
+        private static string ResolveEffectivePluginDir(PluginEntry entry)
+        {
+            string Fallback() =>
+                !string.IsNullOrEmpty(entry.DllPath)
+                    ? Path.GetDirectoryName(entry.DllPath)!
+                    : "";
+
+            if (string.IsNullOrEmpty(entry.ProjectFilePath))
+                return Fallback();
+
+            string csproj = entry.ProjectFilePath!;
+
+            if (!string.IsNullOrEmpty(entry.ActiveWorktreePath))
+            {
+                string? repoRoot = GitWorktreeService.GetRepoRoot(
+                    Path.GetDirectoryName(csproj)!);
+                if (repoRoot != null)
+                {
+                    csproj = GitWorktreeService.RemapToWorktree(
+                        entry.ProjectFilePath!, repoRoot, entry.ActiveWorktreePath!);
+                }
+            }
+
+            string? targetPath = DevReloadService.QueryMsBuildProperty(
+                csproj, "TargetPath", entry.BuildConfiguration);
+
+            if (string.IsNullOrEmpty(targetPath))
+                return Fallback();
+
+            return Path.GetDirectoryName(targetPath)!;
         }
 
         [RelayCommand]
@@ -268,10 +306,25 @@ namespace DevReload.ViewModels
                 p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
             if (entry == null) return;
 
-            if (entry.SharedAssemblies.Count == 0)
+            // The dev build's SharedAssemblies.Config.json is the source —
+            // we copy its contents to the chosen production app's directory.
+            string pluginDir = ResolveEffectivePluginDir(entry);
+            if (string.IsNullOrEmpty(pluginDir) || !Directory.Exists(pluginDir))
             {
                 System.Windows.MessageBox.Show(
-                    "No shared assemblies configured for this plugin.\n" +
+                    $"Plugin build directory not found:\n{pluginDir}\n\n" +
+                    "Build the plugin first (DEV / LOAD).",
+                    "Push to Production",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
+            var devConfig = SharedAssembliesFile.Read(pluginDir);
+            if (devConfig.SharedAssemblies.Count == 0)
+            {
+                System.Windows.MessageBox.Show(
+                    "No shared assemblies configured for this plugin's current build.\n" +
                     "Use the \"Shared\" button to configure them first.",
                     "Push to Production",
                     System.Windows.MessageBoxButton.OK,
@@ -310,16 +363,10 @@ namespace DevReload.ViewModels
                 return;
             }
 
-            // Write SharedAssemblies.Config.json to the target app's directory
-            var jsonOptions = new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            };
-            var configObj = new { sharedAssemblies = entry.SharedAssemblies, mixedModeAssemblies = entry.MixedModeAssemblies };
-            string json = JsonSerializer.Serialize(configObj, jsonOptions);
-            string configPath = Path.Combine(target.DllDir, "SharedAssemblies.Config.json");
-            File.WriteAllText(configPath, json);
+            SharedAssembliesFile.Write(
+                target.DllDir,
+                devConfig.SharedAssemblies,
+                devConfig.MixedModeAssemblies);
 
             // Remember which production app this plugin targets
             entry.ProductionTarget = selection;
@@ -328,7 +375,7 @@ namespace DevReload.ViewModels
             System.Windows.MessageBox.Show(
                 $"SharedAssemblies.Config.json written to:\n{target.DllDir}\n\n" +
                 $"Target app: {selection}\n" +
-                $"Assemblies: {string.Join(", ", entry.SharedAssemblies)}",
+                $"Assemblies: {string.Join(", ", devConfig.SharedAssemblies)}",
                 "Push to Production",
                 System.Windows.MessageBoxButton.OK,
                 System.Windows.MessageBoxImage.Information);

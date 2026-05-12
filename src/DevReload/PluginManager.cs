@@ -207,14 +207,21 @@ namespace DevReload
         {
             TearDown(reg);
 
-            if (reg.SharedAssemblyNames.Length > 0)
+            // Single source of truth for shared-assembly config: the file in
+            // the build directory we're loading from. No cached state on the
+            // registration, no fallback to plugins.json — if the file isn't
+            // there, this build has no shared assemblies, period.
+            string pluginDir = Path.GetDirectoryName(dllPath)!;
+            var sharedConfig = SharedAssembliesFile.Read(pluginDir);
+            string[] sharedNames = sharedConfig.SharedAssemblies.ToArray();
+
+            if (sharedNames.Length > 0)
             {
                 var ed = GetEditor();
-                string pluginDir = Path.GetDirectoryName(dllPath)!;
                 var mixedSet = new HashSet<string>(
-                    reg.MixedModeAssemblyNames, StringComparer.OrdinalIgnoreCase);
+                    sharedConfig.MixedModeAssemblies, StringComparer.OrdinalIgnoreCase);
 
-                foreach (string asmName in reg.SharedAssemblyNames)
+                foreach (string asmName in sharedNames)
                 {
                     string asmPath = Path.Combine(pluginDir, asmName + ".dll");
                     if (!File.Exists(asmPath)) continue;
@@ -226,7 +233,7 @@ namespace DevReload
                 }
             }
 
-            var plugin = reg.Host.Load(dllPath, reg.SharedAssemblyNames);
+            var plugin = reg.Host.Load(dllPath, sharedNames);
 
             if (reg.Registrar != null)
             {
@@ -301,18 +308,6 @@ namespace DevReload
             return Application.DocumentManager.MdiActiveDocument?.Editor;
         }
 
-        public static void UpdateSharedAssemblies(string pluginName, string[] sharedNames)
-        {
-            if (_plugins.TryGetValue(pluginName, out var reg))
-                reg.SharedAssemblyNames = sharedNames;
-        }
-
-        public static void UpdateMixedModeAssemblies(string pluginName, string[] mixedModeNames)
-        {
-            if (_plugins.TryGetValue(pluginName, out var reg))
-                reg.MixedModeAssemblyNames = mixedModeNames;
-        }
-
         public static void UpdateBuildConfiguration(string pluginName, string buildConfiguration)
         {
             if (_plugins.TryGetValue(pluginName, out var reg))
@@ -336,8 +331,6 @@ namespace DevReload
         public required string PluginName { get; init; }
         public required string DllPath { get; set; }
         public required string ProjectFilePath { get; init; }
-        public required string[] SharedAssemblyNames { get; set; }
-        public required string[] MixedModeAssemblyNames { get; set; }
         public required string BuildConfiguration { get; set; }
         public string? ActiveWorktreePath { get; set; }
 
@@ -353,8 +346,6 @@ namespace DevReload
         private readonly string _pluginName;
         private string? _dllPath;
         private string? _projectFilePath;
-        private string[] _sharedAssemblyNames = Array.Empty<string>();
-        private string[] _mixedModeAssemblyNames = Array.Empty<string>();
         private string _buildConfiguration = "Debug";
         private string? _activeWorktreePath;
         private bool _useCommands;
@@ -394,18 +385,6 @@ namespace DevReload
             return this;
         }
 
-        public PluginRegistrationBuilder WithSharedAssemblies(params string[] assemblyNames)
-        {
-            _sharedAssemblyNames = assemblyNames;
-            return this;
-        }
-
-        public PluginRegistrationBuilder WithMixedModeAssemblies(params string[] assemblyNames)
-        {
-            _mixedModeAssemblyNames = assemblyNames;
-            return this;
-        }
-
         public void Commit()
         {
             var reg = new PluginRegistration
@@ -413,8 +392,6 @@ namespace DevReload
                 PluginName = _pluginName,
                 DllPath = _dllPath ?? "",
                 ProjectFilePath = _projectFilePath ?? "",
-                SharedAssemblyNames = _sharedAssemblyNames,
-                MixedModeAssemblyNames = _mixedModeAssemblyNames,
                 BuildConfiguration = _buildConfiguration,
                 ActiveWorktreePath = _activeWorktreePath,
                 Registrar = _useCommands ? new CommandRegistrar() : null,

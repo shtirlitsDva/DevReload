@@ -19,12 +19,24 @@ namespace DevReload
         public string? VsProject { get; set; }
         public string? CommandPrefix { get; set; }
         public bool LoadOnStartup { get; set; }
-        public List<string> SharedAssemblies { get; set; } = new();
-        public List<string> MixedModeAssemblies { get; set; } = new();
         public string? ProductionTarget { get; set; }
         public string BuildConfiguration { get; set; } = "Debug";
         public string? ProjectFilePath { get; set; }
         public string? ActiveWorktreePath { get; set; }
+
+        // Legacy fields kept ONLY so MigrateIfNeeded can read old plugins.json
+        // files. After migration the values are null → not re-serialised (see
+        // DefaultIgnoreCondition.WhenWritingNull below). The JSON property
+        // names stay lowercase-camel so old config files deserialise into
+        // these properties. Do not reference outside MigrateIfNeeded — the
+        // source of truth is <buildDir>/SharedAssemblies.Config.json.
+        [JsonPropertyName("sharedAssemblies")]
+        [Obsolete("Migrated to <buildDir>/SharedAssemblies.Config.json. Read only by MigrateIfNeeded.")]
+        public List<string>? LegacySharedAssemblies { get; set; }
+
+        [JsonPropertyName("mixedModeAssemblies")]
+        [Obsolete("Migrated to <buildDir>/SharedAssemblies.Config.json. Read only by MigrateIfNeeded.")]
+        public List<string>? LegacyMixedModeAssemblies { get; set; }
     }
 
     public static class PluginConfigLoader
@@ -83,6 +95,55 @@ namespace DevReload
                 changed = true;
                 return true;
             });
+
+            // One-shot drain of legacy SharedAssemblies / MixedModeAssemblies
+            // into per-build SharedAssemblies.Config.json files. Best effort:
+            // if the build dir doesn't exist yet we drop the data (acceptable
+            // because the user can always re-tick in the dialog). After this
+            // pass the properties are null and won't re-serialise.
+#pragma warning disable CS0618
+            foreach (var entry in config.Plugins)
+            {
+                var legacyShared = entry.LegacySharedAssemblies;
+                var legacyMixed = entry.LegacyMixedModeAssemblies;
+                bool hasLegacy = (legacyShared?.Count ?? 0) > 0
+                              || (legacyMixed?.Count ?? 0) > 0;
+                if (!hasLegacy)
+                {
+                    // Even an empty-list legacy field gets nulled so it stops
+                    // appearing in saved JSON.
+                    if (legacyShared != null || legacyMixed != null)
+                    {
+                        entry.LegacySharedAssemblies = null;
+                        entry.LegacyMixedModeAssemblies = null;
+                        changed = true;
+                    }
+                    continue;
+                }
+
+                if (!string.IsNullOrEmpty(entry.DllPath))
+                {
+                    string buildDir = Path.GetDirectoryName(entry.DllPath)!;
+                    if (Directory.Exists(buildDir))
+                    {
+                        // Don't overwrite an existing per-build file — that
+                        // would clobber a more recent user choice with
+                        // whatever was last saved to plugins.json.
+                        if (!File.Exists(SharedAssembliesFile.PathFor(buildDir)))
+                        {
+                            SharedAssembliesFile.Write(
+                                buildDir,
+                                legacyShared ?? new List<string>(),
+                                legacyMixed ?? new List<string>());
+                        }
+                    }
+                }
+
+                entry.LegacySharedAssemblies = null;
+                entry.LegacyMixedModeAssemblies = null;
+                changed = true;
+            }
+#pragma warning restore CS0618
 
             if (changed)
                 Save(config);
