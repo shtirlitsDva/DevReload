@@ -1,5 +1,8 @@
 ## .NET / Visual Studio
 
+# Local scratch folder
+.scratch/
+
 # Build results
 [Dd]ebug/
 [Rr]elease/
