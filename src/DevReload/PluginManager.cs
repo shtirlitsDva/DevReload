@@ -279,11 +279,28 @@ namespace DevReload
         // (assembly is in Default.Assemblies, findable by name), but without
         // the file lock on the DLL on disk.
         //
-        // Caveat: the default ALC is non-collectible. The streamed image lives
-        // until AutoCAD exits — rebuilding the DLL on disk is fine, but the
-        // running plugin keeps seeing the old surface until AutoCAD restarts.
+        // The default ALC is non-collectible. The streamed image lives until
+        // AutoCAD exits — rebuilding the DLL on disk is fine, but the running
+        // plugin keeps seeing the old surface until AutoCAD restarts.
+        //
+        // Idempotency guard: on the second DevReload cycle, this method is
+        // called again with the same simple name. Default.LoadFromStream is
+        // NOT idempotent by name — it throws "Assembly with same name is
+        // already loaded". Since the existing image is permanent (default ALC
+        // is non-collectible), there's nothing to do on a re-load anyway —
+        // skip silently. (Compare Assembly.LoadFrom, which is already
+        // idempotent by name and is why the LoadFrom branches of LoadCore
+        // never hit this problem.)
         private static void LoadSharedFromStream(string asmPath)
         {
+            string asmName = Path.GetFileNameWithoutExtension(asmPath);
+            foreach (var existing in AssemblyLoadContext.Default.Assemblies)
+            {
+                if (string.Equals(
+                        existing.GetName().Name, asmName, StringComparison.OrdinalIgnoreCase))
+                    return;
+            }
+
             byte[] asmBytes = File.ReadAllBytes(asmPath);
             string pdbPath = Path.ChangeExtension(asmPath, ".pdb");
             using var asmStream = new MemoryStream(asmBytes);
