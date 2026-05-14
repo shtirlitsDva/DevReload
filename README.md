@@ -6,6 +6,51 @@ At registration time, DevReload discovers projects via Visual Studio COM automat
 
 **Git worktree support**: DevReload detects worktrees for registered projects and lets you select which worktree to build from via a dropdown in the management palette.
 
+## Install as a Claude Code / Codex plugin
+
+DevReload also ships an MCP bridge (`Acad.Rpc.Bridge`) and the `/acd-agentic-dev` skill, so an agent (Claude Code or Codex) can drive the full edit → reload → live-test loop directly. The MCP bridge exposes two tool groups:
+
+- `acad_*` — AutoCAD/Civil 3D process control: launch, attach, send commands, wait for readiness, open/close drawings, quit.
+- `devreload_*` — plugin lifecycle: register, load, reload (build + hot-swap), unload, query state, switch build config and worktree.
+
+Both Claude Code and Codex install paths share a single packed bridge under `./server/`.
+
+### One-time prerequisites
+
+- .NET 8 SDK (you almost certainly have this — you're building AutoCAD plugins).
+- This repo cloned somewhere stable; the install records its path.
+
+```powershell
+git clone https://github.com/shtirlitsDva/DevReload
+cd DevReload
+.\scripts\Pack-Plugin.ps1
+```
+
+`Pack-Plugin.ps1` publishes a framework-dependent bridge into `./server/`. Pass `-SelfContained` if you want a ~60 MB self-contained build instead.
+
+### Claude Code
+
+From any Claude Code session:
+
+```
+/plugin marketplace add <absolute path to this repo>
+/plugin install devreload
+```
+
+(Once the repo is on GitHub and a release is cut, `/plugin marketplace add shtirlitsDva/DevReload` will work directly.)
+
+The `acad_*` / `devreload_*` MCP tools appear automatically, and the skill becomes invokable as `/devreload:acd-agentic-dev`.
+
+### Codex
+
+```powershell
+.\scripts\Install-Codex.ps1
+```
+
+The script copies the skill into `%USERPROFILE%\.agents\skills\acd-agentic-dev\` (Codex's user-scope skills directory) and registers the MCP server in `%USERPROFILE%\.codex\config.toml`. If the `codex` CLI is on PATH it uses `codex mcp add`; otherwise it appends an idempotent `[mcp_servers.devreload]` block.
+
+Restart Codex (or reload its config) and the skill is discoverable via `/skills`, the MCP tools via the usual tool selector.
+
 ## Quickstart
 
 **Prepare your plugin** (prevents stale commands on reload):

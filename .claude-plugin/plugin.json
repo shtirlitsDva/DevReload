@@ -1,0 +1,21 @@
+{
+  "name": "devreload",
+  "version": "0.1.0",
+  "description": "Hot-reload toolchain for AutoCAD .NET plugins. Ships an MCP bridge that exposes acad_* (process + drawing control) and devreload_* (plugin lifecycle + build) tools, plus the /acd-agentic-dev skill for agentic-development workflows.",
+  "author": {
+    "name": "shtirlitsDva",
+    "email": "mgo@norsyn.dk",
+    "url": "https://github.com/shtirlitsDva/DevReload"
+  },
+  "homepage": "https://github.com/shtirlitsDva/DevReload",
+  "license": "MIT",
+  "keywords": ["autocad", "civil3d", "mcp", "hot-reload", "plugin-development"],
+  "mcpServers": {
+    "devreload": {
+      "command": "dotnet",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/server/Acad.Rpc.Bridge.dll"
+      ]
+    }
+  }
+}

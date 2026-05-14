@@ -1,0 +1,19 @@
+{
+  "name": "devreload",
+  "owner": {
+    "name": "shtirlitsDva",
+    "email": "mgo@norsyn.dk",
+    "url": "https://github.com/shtirlitsDva"
+  },
+  "metadata": {
+    "description": "DevReload — hot-reload toolchain for AutoCAD .NET plugins. Ships the acad_*/devreload_* MCP surface and the /acd-agentic-dev skill.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "devreload",
+      "source": ".",
+      "description": "AutoCAD/.NET plugin hot-reload — MCP bridge + agentic-development skill."
+    }
+  ]
+}
