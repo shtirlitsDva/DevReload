@@ -13,8 +13,8 @@
     {
       "name": "devreload",
       "source": {
-        "source": "github",
-        "repo": "shtirlitsDva/DevReload",
+        "source": "url",
+        "url": "https://github.com/shtirlitsDva/DevReload.git",
         "ref": "release"
       },
       "description": "AutoCAD/.NET plugin hot-reload — MCP bridge + agentic-development skill."
