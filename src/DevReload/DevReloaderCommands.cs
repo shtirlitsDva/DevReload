@@ -62,8 +62,19 @@ namespace DevReload
                 int pid = System.Diagnostics.Process.GetCurrentProcess().Id;
                 var host = AcadRpcHost.Initialize(new AcadRpcHostOptions(
                     PipeName: $"acad-rpc-{pid}",
-                    MainThreadDispatcher: _dispatcher));
-                host.RegisterAssembly(typeof(PluginManager).Assembly);
+                    MainThreadDispatcher: _dispatcher,
+                    Log: DevReloadLog.Info));
+
+                // Zero-glue plugin contribution: any assembly in any
+                // non-collectible ALC with an [AcadRpcSurface] gets
+                // auto-registered. Catches DevReload itself, NETLOAD'd
+                // plugins (default ALC), NSLOAD'd plugins (isolated
+                // non-collectible ALCs). Plugins loaded into a
+                // collectible ALC via DevReload are registered
+                // explicitly by PluginManager.LoadCore, because the
+                // hot-reload lifecycle owns register/unregister.
+                host.EnableAutoDiscovery();
+
                 _ = host.StartAsync(CancellationToken.None);
                 DevReloadLog.Info($"RPC pipe opening at \\\\.\\pipe\\acad-rpc-{pid}");
                 ed?.WriteMessage(
@@ -133,7 +144,9 @@ namespace DevReload
         /// <summary>
         /// Register a single plugin from a <see cref="PluginEntry"/> config
         /// entry. Creates the PluginManager registration and the 3 loader
-        /// commands ({prefix}LOAD/DEV/UNLOAD).
+        /// commands ({prefix}LOAD/DEV/UNLOAD). Same call site for both
+        /// the palette UI (ConfirmAddPlugin) and the RPC tool surface
+        /// (via PluginConfigLoader.RegisterNewPlugin).
         /// </summary>
         internal static void RegisterFromConfig(PluginEntry entry)
         {

@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+
+using DevReload.Rpc;
 
 namespace DevReload
 {
@@ -74,6 +77,75 @@ namespace DevReload
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             string json = JsonSerializer.Serialize(config, _jsonOptions);
             File.WriteAllText(path, json);
+        }
+
+        /// <summary>
+        /// Add a plugin entry to plugins.json and register it with
+        /// PluginManager + create its loader commands. The "add plugin"
+        /// flow as a single call, consolidating what the palette UI does
+        /// across <see cref="DevReloaderCommands.RegisterFromConfig"/>
+        /// and <see cref="Save"/>.
+        /// Idempotent on the plugin name: already-registered names
+        /// return Success=false rather than throw, so the agent can
+        /// safely re-issue.
+        /// </summary>
+        public static RegisterPluginResult RegisterNewPlugin(PluginEntry entry)
+        {
+            if (entry == null) throw new ArgumentNullException(nameof(entry));
+            if (string.IsNullOrWhiteSpace(entry.Name))
+                return new RegisterPluginResult(false, "", "name is required");
+            if (string.IsNullOrWhiteSpace(entry.ProjectFilePath))
+                return new RegisterPluginResult(false, entry.Name, "projectFilePath is required");
+
+            if (PluginManager.IsRegistered(entry.Name))
+                return new RegisterPluginResult(false, entry.Name, "already registered");
+
+            PluginConfig config = Load() ?? new PluginConfig();
+            if (config.Plugins.Any(p =>
+                    p.Name.Equals(entry.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                return new RegisterPluginResult(false, entry.Name, "already in plugins.json");
+            }
+            config.Plugins.Add(entry);
+            Save(config);
+
+            DevReloaderCommands.RegisterFromConfig(entry);
+            return new RegisterPluginResult(true, entry.Name, "registered");
+        }
+
+        /// <summary>Update a single plugin entry in plugins.json and
+        /// return true if the entry existed. Used by mutating MCP tools
+        /// (update_build_configuration, update_active_worktree) so the
+        /// agent's changes survive an AutoCAD restart — the palette UI
+        /// already persists by the same pattern.</summary>
+        public static bool UpdatePluginEntry(string name, Action<PluginEntry> mutate)
+        {
+            if (name == null) throw new ArgumentNullException(nameof(name));
+            if (mutate == null) throw new ArgumentNullException(nameof(mutate));
+
+            PluginConfig? config = Load();
+            if (config == null) return false;
+            var entry = config.Plugins.FirstOrDefault(
+                p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (entry == null) return false;
+            mutate(entry);
+            Save(config);
+            return true;
+        }
+
+        /// <summary>Remove a plugin entry from plugins.json. Returns
+        /// true if the entry existed. Paired with the unregister tool so
+        /// removal is durable across restarts.</summary>
+        public static bool RemovePluginEntry(string name)
+        {
+            if (name == null) throw new ArgumentNullException(nameof(name));
+            PluginConfig? config = Load();
+            if (config == null) return false;
+            int removed = config.Plugins.RemoveAll(
+                p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (removed == 0) return false;
+            Save(config);
+            return true;
         }
 
         public static void MigrateIfNeeded(PluginConfig config)

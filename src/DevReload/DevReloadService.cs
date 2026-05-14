@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Windows.Forms;
 using Autodesk.AutoCAD.EditorInput;
+using DevReload.Rpc;
 using EnvDTE;
 using EnvDTE80;
 
@@ -106,24 +107,23 @@ namespace DevReload
             catch { }
         }
 
-        public static string? BuildProject(string csprojPath, string buildConfiguration, Editor? ed)
+        public static BuildResult BuildProject(string csprojPath, string buildConfiguration, Editor? ed)
         {
             using var wc = new WaitCursorScope();
 
             string projectDir = Path.GetDirectoryName(csprojPath)!;
             string projectName = Path.GetFileNameWithoutExtension(csprojPath);
 
-            // 1. Query target DLL path via dotnet msbuild
             string? targetPath = QueryMsBuildProperty(
                 csprojPath, "TargetPath", buildConfiguration);
 
             if (string.IsNullOrEmpty(targetPath))
             {
-                ed?.WriteMessage($"\nFailed to resolve output path for '{projectName}'.");
-                return null;
+                string msg = $"Failed to resolve output path for '{projectName}'.";
+                ed?.WriteMessage("\n" + msg);
+                return new BuildResult(false, null, 0, 1, msg);
             }
 
-            // 2. Build via dotnet CLI
             ed?.WriteMessage($"\nBuilding '{projectName}' ({buildConfiguration})...");
 
             var psi = new ProcessStartInfo
@@ -152,8 +152,9 @@ namespace DevReload
             }
             catch (Exception ex)
             {
-                ed?.WriteMessage($"\nFailed to start dotnet build: {ex.Message}");
-                return null;
+                string msg = $"Failed to start dotnet build: {ex.Message}";
+                ed?.WriteMessage("\n" + msg);
+                return new BuildResult(false, null, 0, 1, msg);
             }
 
             string log = buildLog.ToString();
@@ -162,29 +163,24 @@ namespace DevReload
             if (exitCode != 0)
             {
                 ed?.WriteMessage($"\nBuild FAILED — {summary.Errors} error(s), {summary.Warnings} warning(s).");
-                var errorLines = log
-                    .Split('\n')
-                    .Where(l => l.Contains(": error "))
-                    .Take(10)
-                    .ToList();
-                foreach (var line in errorLines)
+                foreach (var line in log.Split('\n').Where(l => l.Contains(": error ")).Take(10))
                     ed?.WriteMessage($"\n  {line.Trim()}");
-                return null;
+                return new BuildResult(false, null, summary.Warnings, summary.Errors, log);
             }
 
             ed?.WriteMessage(summary.Warnings > 0
                 ? $"\nBuild succeeded — {summary.Warnings} warning(s)."
                 : "\nBuild succeeded.");
 
-            // 3. Verify output
             if (!File.Exists(targetPath))
             {
-                ed?.WriteMessage($"\nBuild output not found at: {targetPath}");
-                return null;
+                string msg = $"Build output not found at: {targetPath}";
+                ed?.WriteMessage("\n" + msg);
+                return new BuildResult(false, null, summary.Warnings, summary.Errors + 1, log);
             }
 
             ed?.WriteMessage($"\nOutput: {targetPath}");
-            return targetPath;
+            return new BuildResult(true, targetPath, summary.Warnings, summary.Errors, log);
         }
 
         // Internal so DevReloadViewModel.SharedAssemblies can ask MSBuild for the

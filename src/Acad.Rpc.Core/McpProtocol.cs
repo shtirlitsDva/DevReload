@@ -17,7 +17,7 @@ namespace Acad.Rpc.Core;
 /// Wire format: line-delimited JSON-RPC 2.0. Each message is exactly
 /// one JSON object on one line (no Content-Length framing).
 /// </summary>
-internal static class McpProtocol
+public static class McpProtocol
 {
     public const string ProtocolVersion = "2025-03-26";
 

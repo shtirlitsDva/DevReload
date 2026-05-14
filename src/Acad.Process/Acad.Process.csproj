@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <AssemblyName>Acad.Rpc.Bridge</AssemblyName>
-    <RootNamespace>Acad.Rpc.Bridge</RootNamespace>
+    <OutputType>Library</OutputType>
+    <AssemblyName>Acad.Process</AssemblyName>
+    <RootNamespace>Acad.Process</RootNamespace>
     <UseWPF>false</UseWPF>
     <UseWindowsForms>false</UseWindowsForms>
     <ImportWindowsDesktopTargets>false</ImportWindowsDesktopTargets>
@@ -22,6 +22,5 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Acad.Rpc.Core\Acad.Rpc.Core.csproj" />
-    <ProjectReference Include="..\Acad.Process\Acad.Process.csproj" />
   </ItemGroup>
 </Project>

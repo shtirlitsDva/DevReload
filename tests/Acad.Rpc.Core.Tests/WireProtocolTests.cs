@@ -19,6 +19,7 @@ public static class WireFixture
     public static int Sum(int a, int b) => a + b;
 }
 
+[Collection("AcadRpcHostSingleton")]
 public class WireProtocolTests
 {
     [Fact(Timeout = 10000)]

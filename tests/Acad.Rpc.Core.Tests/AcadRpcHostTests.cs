@@ -1,6 +1,6 @@
 using System;
 using System.Linq;
-using System.Reflection;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -21,8 +21,19 @@ public static class FixtureTools
     [AcadRpcTool]
     [RunOnAcadMainThread]
     public static string OnMainThreadOnly() => "main";
+
+    [AcadRpcTool]
+    [RunOnAcadMainThread]
+    public static int OnMainThreadAdd(int a, int b) => a + b;
 }
 
+[CollectionDefinition("AcadRpcHostSingleton", DisableParallelization = true)]
+public class AcadRpcHostSingletonCollection { }
+
+// Every test class that touches the AcadRpcHost singleton joins this
+// collection so xUnit runs them sequentially. The singleton is global
+// per AppDomain; parallel access produces flaky tests.
+[Collection("AcadRpcHostSingleton")]
 public class AcadRpcHostTests
 {
     [Fact]
@@ -118,17 +129,26 @@ public class AcadRpcHostTests
     }
 
     [Fact]
-    public void MethodRequiresMainThread_ReturnsTrue_ForAnnotatedMethod()
+    public void EnableAutoDiscovery_RegistersFixtureAssemblyFromDefaultAlc()
     {
-        var mi = typeof(FixtureTools).GetMethod(nameof(FixtureTools.OnMainThreadOnly))!;
-        Assert.True(AcadRpcHost.MethodRequiresMainThread(mi));
+        var host = NewHost();
+        // FixtureTools lives in this assembly (test assembly, default ALC).
+        // After enabling auto-discovery, it must register automatically —
+        // no explicit RegisterAssembly call.
+        host.EnableAutoDiscovery();
+        var asmName = typeof(FixtureTools).Assembly.GetName().Name!;
+        Assert.Contains(host.ListRegisteredTools(), t => t.SourceAssembly == asmName);
     }
 
     [Fact]
-    public void MethodRequiresMainThread_ReturnsFalse_ForUnannotatedMethod()
+    public void EnableAutoDiscovery_Idempotent()
     {
-        var mi = typeof(FixtureTools).GetMethod(nameof(FixtureTools.Echo))!;
-        Assert.False(AcadRpcHost.MethodRequiresMainThread(mi));
+        var host = NewHost();
+        host.EnableAutoDiscovery();
+        int firstCount = host.ListRegisteredTools().Count;
+        host.EnableAutoDiscovery();
+        int secondCount = host.ListRegisteredTools().Count;
+        Assert.Equal(firstCount, secondCount);
     }
 
     [Fact]
@@ -146,27 +166,75 @@ public class AcadRpcHostTests
     }
 
     [Fact]
-    public void RegisterAssembly_AddsTools_ToLiveByNameIndex()
+    public void ToolListChanged_Fires_OnRegister()
     {
         var host = NewHost();
+        int events = 0;
+        host.Core.ToolListChanged += () => System.Threading.Interlocked.Increment(ref events);
         host.RegisterAssembly(typeof(FixtureTools).Assembly);
-        var index = (System.Collections.IDictionary)typeof(AcadRpcHost).GetField(
-            "_toolsByName", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(host)!;
-        Assert.True(index.Count >= 3, $"expected >=3 live tools, got {index.Count}");
+        Assert.True(events >= 1, $"expected ToolListChanged to fire at least once, got {events}");
     }
 
     [Fact]
-    public void UnregisterAssembly_RemovesTools_FromLiveByNameIndex()
+    public async Task InvokeTool_MarkedRunOnAcadMainThread_GoesThroughDispatcher()
     {
         var host = NewHost();
         host.RegisterAssembly(typeof(FixtureTools).Assembly);
-        var index = (System.Collections.IDictionary)typeof(AcadRpcHost).GetField(
-            "_toolsByName", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(host)!;
-        var before = index.Count;
+        var fake = (FakeDispatcher)host.Dispatcher;
+        int before = fake.InvokeCount;
+
+        var toolName = host.ListRegisteredTools()
+            .Single(t => t.ToolName.EndsWith("_on_main_thread_only", StringComparison.Ordinal))
+            .ToolName;
+
+        string result = await host.Core.InvokeToolForTestAsync(toolName, new JsonObject(), default);
+        Assert.Equal("main", result);
+        Assert.Equal(before + 1, fake.InvokeCount);
+    }
+
+    [Fact]
+    public async Task InvokeTool_NotMarked_DoesNotGoThroughDispatcher()
+    {
+        var host = NewHost();
+        host.RegisterAssembly(typeof(FixtureTools).Assembly);
+        var fake = (FakeDispatcher)host.Dispatcher;
+        int before = fake.InvokeCount;
+
+        var toolName = host.ListRegisteredTools()
+            .Single(t => t.ToolName.EndsWith("_echo", StringComparison.Ordinal))
+            .ToolName;
+
+        string result = await host.Core.InvokeToolForTestAsync(
+            toolName, new JsonObject { ["s"] = "x" }, default);
+        Assert.Equal("x", result);
+        Assert.Equal(before, fake.InvokeCount);
+    }
+
+    [Fact]
+    public async Task InvokeTool_MarkedRunOnAcadMainThread_WithArgs_BindsCorrectly()
+    {
+        var host = NewHost();
+        host.RegisterAssembly(typeof(FixtureTools).Assembly);
+        var toolName = host.ListRegisteredTools()
+            .Single(t => t.ToolName.EndsWith("_on_main_thread_add", StringComparison.Ordinal))
+            .ToolName;
+
+        string result = await host.Core.InvokeToolForTestAsync(
+            toolName,
+            new JsonObject { ["a"] = 7, ["b"] = 35 },
+            default);
+        Assert.Equal("42", result);
+    }
+
+    [Fact]
+    public void ToolListChanged_Fires_OnUnregister()
+    {
+        var host = NewHost();
+        host.RegisterAssembly(typeof(FixtureTools).Assembly);
+        int events = 0;
+        host.Core.ToolListChanged += () => System.Threading.Interlocked.Increment(ref events);
         host.UnregisterAssembly(typeof(FixtureTools).Assembly);
-        var after = index.Count;
-        Assert.True(before > after);
-        Assert.Equal(0, after);
+        Assert.True(events >= 1, $"expected ToolListChanged to fire on unregister, got {events}");
     }
 
     static AcadRpcHost NewHost()
