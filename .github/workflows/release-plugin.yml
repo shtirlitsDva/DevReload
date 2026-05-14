@@ -1,0 +1,53 @@
+name: release-plugin
+
+# Builds the Acad.Rpc.Bridge MCP server and force-pushes the result —
+# the master tree plus the packed `server/` directory — to a `release`
+# branch. The plugin entry in .claude-plugin/marketplace.json points
+# Claude Code at this branch, so `/plugin marketplace add
+# shtirlitsDva/DevReload` resolves to a binary-included plugin without
+# the user having to clone the repo first.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Pack the MCP bridge
+        shell: pwsh
+        run: .\scripts\Pack-Plugin.ps1
+
+      - name: Publish to release branch
+        shell: pwsh
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Force-create the release branch at the current HEAD (master).
+          git checkout -B release
+
+          # server/ is gitignored on master, so force-add the packed bridge
+          # explicitly. Everything else under master is already tracked.
+          git add -A
+          git add -f server/
+
+          git commit -m "build: server/ from $env:GITHUB_SHA" --allow-empty
+          git push --force origin release
