@@ -39,5 +39,11 @@
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
 	</ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\..\src\Acad.Rpc.Core\Acad.Rpc.Core.csproj">
+			<Private>False</Private>
+			<ExcludeAssets>runtime</ExcludeAssets>
+		</ProjectReference>
+	</ItemGroup>
 	<Import Project="..\..\src\EventManager\EventManager.projitems" Label="Shared" />
 </Project>

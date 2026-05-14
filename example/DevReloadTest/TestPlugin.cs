@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Threading;
+using System.Threading.Tasks;
 
+using Acad.Rpc.Core;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
@@ -112,5 +116,19 @@ namespace DevReloadTest
             var ed = Application.DocumentManager.MdiActiveDocument?.Editor;
             ed?.WriteMessage($"\n[DevReloadTest] {msg} @ {DateTime.Now:HH:mm:ss}");
         }
+    }
+
+    [AcadRpcSurface]
+    public static class TestPluginTools
+    {
+        [AcadRpcTool, Description("Returns the test plugin's version tag so we can confirm a reload landed.")]
+        public static Task<string> Version(CancellationToken ct = default)
+            => AcadRpc.OnMainThread(() => TestVersion.Tag, ct);
+
+        [AcadRpcTool, Description("Echo a string back, prefixed with the version tag. Useful to confirm hot-reload by changing the prefix and seeing the new value here.")]
+        public static Task<string> Echo(
+            [Description("Text to echo")] string text,
+            CancellationToken ct = default)
+            => AcadRpc.OnMainThread(() => $"[{TestVersion.Tag}] {text}", ct);
     }
 }

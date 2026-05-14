@@ -1,9 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
+using System.Threading;
+using System.Threading.Tasks;
+
+using Acad.Rpc.Core;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Internal;
@@ -13,6 +18,7 @@ using Exception = System.Exception;
 
 namespace DevReload
 {
+    [AcadRpcSurface]
     public static class PluginManager
     {
         private static readonly Dictionary<string, PluginRegistration> _plugins = new();
@@ -165,6 +171,83 @@ namespace DevReload
             _plugins.Remove(pluginName);
         }
 
+        // ── MCP tool surface ──────────────────────────────────────────
+        // Each tool is an annotated method sitting next to the verb it
+        // wraps. No central registry, no Verbs/ folder. AcadRpcHost
+        // scans this assembly on Initialize and surfaces these as MCP
+        // tools. Methods marshal to the AutoCAD main thread via
+        // AcadRpc.OnMainThread so the SDK worker never touches AutoCAD
+        // APIs directly.
+
+        [AcadRpcTool, Description("Build the plugin from source and load (or reload) it into a fresh isolated ALC.")]
+        public static Task<string> Reload(
+            [Description("Registered plugin name as in plugins.json (e.g. \"DevReloadTest\")")] string name,
+            CancellationToken ct = default)
+            => AcadRpc.OnMainThread<string>(() =>
+            {
+                try { DevReload(name); return $"reload ok: {name}"; }
+                catch (Exception ex) { return $"reload failed: {ex.Message}"; }
+            }, ct);
+
+        [AcadRpcTool, Description("Load a registered plugin if not already loaded.")]
+        public static Task<string> LoadPlugin(
+            [Description("Registered plugin name")] string name,
+            CancellationToken ct = default)
+            => AcadRpc.OnMainThread<string>(() =>
+            {
+                try { Load(name); return $"load ok: {name}"; }
+                catch (Exception ex) { return $"load failed: {ex.Message}"; }
+            }, ct);
+
+        [AcadRpcTool, Description("Unload a loaded plugin (tear down the isolated ALC).")]
+        public static Task<string> UnloadPlugin(
+            [Description("Registered plugin name")] string name,
+            CancellationToken ct = default)
+            => AcadRpc.OnMainThread<string>(() =>
+            {
+                try { Unload(name); return $"unload ok: {name}"; }
+                catch (Exception ex) { return $"unload failed: {ex.Message}"; }
+            }, ct);
+
+        [AcadRpcTool, Description("List all registered plugins with their loaded/unloaded state.")]
+        public static Task<string> ListPlugins(CancellationToken ct = default)
+            => AcadRpc.OnMainThread<string>(() =>
+            {
+                var lines = _plugins.Values.Select(reg =>
+                    $"{reg.PluginName} | loaded={reg.Host.IsLoaded} | config={reg.BuildConfiguration} | dll={reg.DllPath}");
+                return string.Join("\n", lines);
+            }, ct);
+
+        [AcadRpcTool, Description("Check whether a plugin is currently loaded.")]
+        public static Task<bool> IsPluginLoaded(
+            [Description("Registered plugin name")] string name,
+            CancellationToken ct = default)
+            => AcadRpc.OnMainThread<bool>(() => IsLoaded(name), ct);
+
+        [AcadRpcTool, Description("Get info about a loaded plugin's assembly (name, location, last-write timestamp).")]
+        public static Task<string> GetAssemblyInfo(
+            [Description("Registered plugin name")] string name,
+            CancellationToken ct = default)
+            => AcadRpc.OnMainThread<string>(() =>
+            {
+                if (!_plugins.TryGetValue(name, out var reg)) return $"not registered: {name}";
+                if (!reg.Host.IsLoaded || reg.Host.LoadedAssembly == null) return $"not loaded: {name}";
+                var asm = reg.Host.LoadedAssembly;
+                var asmName = asm.GetName();
+                var loc = asm.Location;
+                var when = string.IsNullOrEmpty(loc) || !File.Exists(loc)
+                    ? "(streamed; no file)"
+                    : File.GetLastWriteTimeUtc(loc).ToString("O");
+                return $"{asmName.Name} v{asmName.Version} loaded={loc} lastWriteUtc={when}";
+            }, ct);
+
+        [AcadRpcTool, Description("List every MCP tool currently registered with the Acad.Rpc host, grouped by source assembly.")]
+        public static Task<string> ListTools(CancellationToken ct = default)
+            => Task.FromResult(string.Join("\n",
+                AcadRpcHost.Current.ListRegisteredTools()
+                    .OrderBy(t => t.SourceAssembly).ThenBy(t => t.ToolName)
+                    .Select(t => $"{t.SourceAssembly}::{t.ToolName} — {t.Description ?? ""}")));
+
         // ── Loader-level command registration ─────────────────────────
 
         public static void RegisterLoaderCommands(string pluginName, string prefix)
@@ -214,6 +297,19 @@ namespace DevReload
             // there, this build has no shared assemblies, period.
             string pluginDir = Path.GetDirectoryName(dllPath)!;
             var sharedConfig = SharedAssembliesFile.Read(pluginDir);
+
+            // Auto-inject Acad.Rpc.Core into every plugin's effective shared
+            // list. Required for plugins that contribute MCP tools: their
+            // [AcadRpcSurface] / [AcadRpcTool] attribute references must
+            // resolve to the SAME loaded Acad.Rpc.Core instance DevReload uses,
+            // otherwise the singleton host's registry never sees them.
+            // Plugin authors don't need to remember to add it.
+            const string AcadRpcCore = "Acad.Rpc.Core";
+            if (!sharedConfig.SharedAssemblies.Contains(AcadRpcCore, StringComparer.OrdinalIgnoreCase))
+                sharedConfig.SharedAssemblies.Add(AcadRpcCore);
+            if (!sharedConfig.StreamedAssemblies.Contains(AcadRpcCore, StringComparer.OrdinalIgnoreCase))
+                sharedConfig.StreamedAssemblies.Add(AcadRpcCore);
+
             string[] sharedNames = sharedConfig.SharedAssemblies.ToArray();
 
             if (sharedNames.Length > 0)
@@ -251,10 +347,41 @@ namespace DevReload
             {
                 reg.Registrar.RegisterFromAssembly(reg.Host.LoadedAssembly!);
             }
+
+            // Register the freshly-loaded assembly's tools into the
+            // unified MCP surface. AutoCAD has already invoked the
+            // plugin's IExtensionApplication.Initialize() via its
+            // AssemblyLoad-event-driven scan; tool registration happens
+            // immediately after so the new tools become visible to the
+            // agent as soon as Initialize completes its work.
+            try
+            {
+                if (AcadRpcHost.IsInitialized && reg.Host.LoadedAssembly != null)
+                {
+                    AcadRpcHost.Current.RegisterAssembly(reg.Host.LoadedAssembly);
+                }
+            }
+            catch (Exception ex)
+            {
+                GetEditor()?.WriteMessage(
+                    $"\n[DevReload] RPC RegisterAssembly failed: {ex.Message}");
+            }
         }
 
         private static void TearDown(PluginRegistration reg)
         {
+            // RPC unregister fires FIRST so any inbound agent call lands
+            // after the SDK has already removed the tool. The plugin's
+            // Terminate then runs with no inbound RPC traffic possible.
+            try
+            {
+                if (AcadRpcHost.IsInitialized && reg.Host.LoadedAssembly != null)
+                {
+                    AcadRpcHost.Current.UnregisterAssembly(reg.Host.LoadedAssembly);
+                }
+            }
+            catch { /* best-effort during teardown */ }
+
             reg.Registrar?.UnregisterAll();
 
             if (reg.Host.IsLoaded)
