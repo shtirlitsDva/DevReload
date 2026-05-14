@@ -41,6 +41,9 @@
 		<PackageReference Include="Microsoft.VisualStudio.Interop" Version="17.10.40170" />
 	</ItemGroup>
 	<ItemGroup>
+		<ProjectReference Include="..\Acad.Rpc.Core\Acad.Rpc.Core.csproj" />
+	</ItemGroup>
+	<ItemGroup>
 		<None Include="PackageContents.xml" CopyToOutputDirectory="Never" />
 	</ItemGroup>
 	<Import Project="..\WpfSHARED\WpfSHARED.projitems" Label="Shared" />

@@ -1,0 +1,277 @@
+[
+  {
+    "label": "tools/list (before)",
+    "tool": "tools/list",
+    "args": {},
+    "isError": false,
+    "response": "devreload_build_project, devreload_get_assembly_info, devreload_get_available_projects, devreload_list_plugins, devreload_list_tools, devreload_list_worktrees, devreload_load_plugin, devreload_read_shared_assemblies, devreload_register_new_plugin, devreload_reload, devreload_unload_all, devreload_unload_plugin, devreload_unregister, devreload_update_active_worktree, devreload_update_build_configuration, devreload_write_shared_assemblies"
+  },
+  {
+    "label": "devreload_list_tools",
+    "tool": "devreload_list_tools",
+    "args": {},
+    "isError": false,
+    "response": "[{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_build_project\",\"description\":\"Invoke \\u0060dotnet build\\u0060 for a csproj and return the structured result with full log.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_get_assembly_info\",\"description\":\"Inspect the loaded assembly behind a plugin: name, version, file location, last-write timestamp.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_get_available_projects\",\"description\":\"Enumerate projects in running Visual Studio instances via COM. Returns project name \\u002B Debug-config DLL path \\u002B .csproj.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_list_plugins\",\"description\":\"List every registered plugin with its current state. The single source of truth for registration \\u002B load status; filter the returned list rather than asking with three separate query tools.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_list_tools\",\"description\":\"List every MCP tool currently registered with the Acad.Rpc host, grouped by source assembly.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_list_worktrees\",\"description\":\"List git worktrees rooted at the given repo path, with branch names. Each entry is { path, branch, isMain }.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_load_plugin\",\"description\":\"Load a registered plugin if not already loaded. If a build is triggered (missing DLL) the full build log is returned under \\u0027build\\u0027.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_read_shared_assemblies\",\"description\":\"Read SharedAssemblies.Config.json from a build directory. Returns shared/mixed-mode/streamed lists.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_register_new_plugin\",\"description\":\"Register a new plugin with DevReload and persist it to plugins.json. After this call the plugin is available for load via this surface\\u0027s load_plugin tool or the generated AutoCAD {prefix}LOAD command.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_reload\",\"description\":\"Build the plugin from source and load (or reload) it into a fresh isolated ALC. Equivalent to clicking \\u0027Reload\\u0027 in the palette. If the build fails, the response carries the full build log under \\u0027build\\u0027.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_unload_all\",\"description\":\"Unload every loaded plugin. Used during shutdown or to recover from a wedged state.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_unload_plugin\",\"description\":\"Unload a loaded plugin (tear down its isolated ALC). No-op if not loaded.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_unregister\",\"description\":\"Remove a plugin from the registry AND from plugins.json. Unloads it first if loaded. Durable across AutoCAD restarts.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_update_active_worktree\",\"description\":\"Point this plugin at a git worktree path (or null to clear). Persists to plugins.json via the same path the palette UI uses.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_update_build_configuration\",\"description\":\"Switch the build configuration (Debug / Release) used for the next build of this plugin. Persists to plugins.json via the same path the palette UI uses.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_write_shared_assemblies\",\"description\":\"Write SharedAssemblies.Config.json into a build directory. Overwrites any existing file.\"}]"
+  },
+  {
+    "label": "devreload_list_plugins",
+    "tool": "devreload_list_plugins",
+    "args": {},
+    "isError": false,
+    "response": "[{\"name\":\"IntersectUtilities\",\"loaded\":false,\"buildConfiguration\":\"Debug\",\"dllPath\":\"X:\\\\GitHub\\\\shtirlitsDva\\\\Autocad-Civil3d-Tools\\\\Acad-C3D-Tools\\\\IntersectUtilities\\\\bin\\\\Debug\\\\IntersectUtilities.dll\",\"projectFilePath\":\"X:\\\\GitHub\\\\shtirlitsDva\\\\Autocad-Civil3d-Tools\\\\Acad-C3D-Tools\\\\IntersectUtilities\\\\IntersectUtilities.csproj\",\"commandCount\":0},{\"name\":\"Ler2PolygonSplitting\",\"loaded\":false,\"buildConfiguration\":\"Debug\",\"dllPath\":\"X:\\\\GitHub\\\\shtirlitsDva\\\\Autocad-Civil3d-Tools\\\\Acad-C3D-Tools\\\\Ler2PolygonSplitting\\\\bin\\\\Debug\\\\Ler2PolygonSplitting.dll\",\"projectFilePath\":\"X:\\\\GitHub\\\\shtirlitsDva\\\\Autocad-Civil3d-Tools\\\\Acad-C3D-Tools\\\\Ler2PolygonSplitting\\\\Ler2PolygonSplitting.csproj\",\"commandCount\":0},{\"name\":\"LERImporter\",\"loaded\":false,\"buildConfiguration\":\"Debug\",\"dllPath\":\"X:\\\\GitHub\\\\shtirlitsDva\\\\Autocad-Civil3d-Tools\\\\Acad-C3D-Tools\\\\LERImporter\\\\bin\\\\Debug\\\\LERImporter.dll\",\"projectFilePath\":\"X:\\\\GitHub\\\\shtirlitsDva\\\\Autocad-Civil3d-Tools\\\\Acad-C3D-Tools\\\\LERImporter\\\\LERImporter.csproj\",\"commandCount\":0},{\"name\":\"SheetSetManager\",\"loaded\":false,\"buildConfiguration\":\"Debug\",\"dllPath\":\"X:\\\\GitHub\\\\shtirlitsDva\\\\SheetSetManagerPlugIn\\\\ABF_SheetSetManager\\\\bin\\\\Debug\\\\SheetSetManager.dll\",\"projectFilePath\":\"X:\\\\GitHub\\\\shtirlitsDva\\\\SheetSetManagerPlugIn\\\\ABF_SheetSetManager\\\\SheetSetManager.csproj\",\"commandCount\":0},{\"name\":\"SheetCreationAutomation\",\"loaded\":false,\"buildConfiguration\":\"Debug\",\"dllPath\":\"X:\\\\GitHub\\\\shtirlitsDva\\\\Autocad-Civil3d-Tools\\\\Acad-C3D-Tools\\\\SheetCreationAutomation\\\\bin\\\\Debug\\\\SheetCreationAutomation.dll\",\"projectFilePath\":\"X:\\\\GitHub\\\\shtirlitsDva\\\\Autocad-Civil3d-Tools\\\\Acad-C3D-Tools\\\\SheetCreationAutomation\\\\SheetCreationAutomation.csproj\",\"commandCount\":0},{\"name\":\"DimensioneringV2\",\"loaded\":false,\"buildConfiguration\":\"Debug\",\"dllPath\":\"H:\\\\GitHub\\\\DamgaardRI\\\\DimensioneringV2\\\\src\\\\DimensioneringV2\\\\bin\\\\Debug\\\\DimensioneringV2.dll\",\"projectFilePath\":\"H:\\\\GitHub\\\\DamgaardRI\\\\DimensioneringV2\\\\src\\\\DimensioneringV2\\\\DimensioneringV2.csproj\",\"commandCount\":0},{\"name\":\"AcadOverrules\",\"loaded\":false,\"buildConfiguration\":\"Debug\",\"dllPath\":\"X:\\\\GitHub\\\\shtirlitsDva\\\\Autocad-Civil3d-Tools\\\\Acad-C3D-Tools\\\\AcadOverrules\\\\bin\\\\Debug\\\\AcadOverrules.dll\",\"projectFilePath\":\"X:\\\\GitHub\\\\shtirlitsDva\\\\Autocad-Civil3d-Tools\\\\Acad-C3D-Tools\\\\AcadOverrules\\\\AcadOverrules.csproj\",\"commandCount\":0},{\"name\":\"Acd.Mcp\",\"loaded\":false,\"buildConfiguration\":\"Debug\",\"dllPath\":\"X:\\\\GitHub\\\\shtirlitsDva\\\\ACD-MCP\\\\src\\\\Acd.Mcp\\\\bin\\\\Debug\\\\Acd.Mcp.dll\",\"projectFilePath\":\"X:\\\\GitHub\\\\shtirlitsDva\\\\ACD-MCP\\\\src\\\\Acd.Mcp\\\\Acd.Mcp.csproj\",\"commandCount\":0}]"
+  },
+  {
+    "label": "get_assembly_info(Acd.Mcp not loaded)",
+    "tool": "devreload_get_assembly_info",
+    "args": {
+      "name": "Acd.Mcp"
+    },
+    "isError": false,
+    "response": "{\"pluginName\":\"Acd.Mcp\",\"loaded\":false}"
+  },
+  {
+    "label": "devreload_list_worktrees",
+    "tool": "devreload_list_worktrees",
+    "args": {
+      "repoRoot": "H:\\GitHub\\shtirlitsDva\\DevReload-impl"
+    },
+    "isError": false,
+    "response": "[{\"path\":\"H:/GitHub/shtirlitsDva/DevReload\",\"branch\":\"master\",\"isMain\":true},{\"path\":\"H:/GitHub/shtirlitsDva/DevReload-impl\",\"branch\":\"feat/universal-rpc\",\"isMain\":false}]"
+  },
+  {
+    "label": "devreload_read_shared_assemblies",
+    "tool": "devreload_read_shared_assemblies",
+    "args": {
+      "buildDir": "H:\\GitHub\\shtirlitsDva\\DevReload-impl\\example\\DevReloadTest\\bin\\Debug"
+    },
+    "isError": false,
+    "response": "{\"sharedAssemblies\":[\"Acad.Rpc.Core\"],\"mixedModeAssemblies\":[],\"streamedAssemblies\":[\"Acad.Rpc.Core\"]}"
+  },
+  {
+    "label": "devreload_write_shared_assemblies",
+    "tool": "devreload_write_shared_assemblies",
+    "args": {
+      "streamedAssemblies": [
+        "Acad.Rpc.Core"
+      ],
+      "sharedAssemblies": [
+        "Acad.Rpc.Core"
+      ],
+      "mixedModeAssemblies": [],
+      "buildDir": "H:\\GitHub\\shtirlitsDva\\DevReload-impl\\example\\DevReloadTest\\bin\\Debug"
+    },
+    "isError": false,
+    "response": "{\"sharedAssemblies\":[\"Acad.Rpc.Core\"],\"mixedModeAssemblies\":[],\"streamedAssemblies\":[\"Acad.Rpc.Core\"]}"
+  },
+  {
+    "label": "build_project(DevReloadTest Debug)",
+    "tool": "devreload_build_project",
+    "args": {
+      "buildConfiguration": "Debug",
+      "csprojPath": "H:\\GitHub\\shtirlitsDva\\DevReload-impl\\example\\DevReloadTest\\DevReloadTest.csproj"
+    },
+    "isError": false,
+    "response": "{\"success\":true,\"outputPath\":\"H:\\\\GitHub\\\\shtirlitsDva\\\\DevReload-impl\\\\example\\\\DevReloadTest\\\\bin\\\\Debug\\\\DevReloadTest.Core.dll\",\"warnings\":0,\"errors\":0,\"log\":\"  Determining projects to restore...\\r\\n  All projects are up-to-date for restore.\\r\\n  Acad.Rpc.Core -\\u003E H:\\\\GitHub\\\\shtirlitsDva\\\\DevReload-impl\\\\src\\\\Acad.Rpc.Core\\\\bin\\\\Debug\\\\Acad.Rpc.Core.dll\\r\\n  DevReloadTest -\\u003E H:\\\\GitHub\\\\shtirlitsDva\\\\DevReload-impl\\\\example\\\\DevReloadTest\\\\bin\\\\Debug\\\\DevReloadTest.Core.dll\\r\\n\\r\\nBuild succeeded.\\r\\n    0 Warning(s)\\r\\n    0 Error(s)\\r\\n\\r\\nTime Elapsed 00:00:00.91\\r\\n\"}"
+  },
+  {
+    "label": "devreload_get_available_projects",
+    "tool": "devreload_get_available_projects",
+    "args": {},
+    "isError": false,
+    "response": "[]"
+  },
+  {
+    "label": "devreload_register_new_plugin",
+    "tool": "devreload_register_new_plugin",
+    "args": {
+      "projectFilePath": "H:\\GitHub\\shtirlitsDva\\DevReload-impl\\example\\DevReloadTest\\DevReloadTest.csproj",
+      "name": "DevReloadTest",
+      "loadOnStartup": false,
+      "buildConfiguration": "Debug",
+      "commandPrefix": "TESTSMOKE",
+      "dllPath": "H:\\GitHub\\shtirlitsDva\\DevReload-impl\\example\\DevReloadTest\\bin\\Debug\\DevReloadTest.Core.dll"
+    },
+    "isError": false,
+    "response": "{\"success\":true,\"name\":\"DevReloadTest\",\"message\":\"registered\"}"
+  },
+  {
+    "label": "DevReloadTest registered",
+    "tool": "list_plugins+filter",
+    "args": {},
+    "isError": false,
+    "response": "actual=True expected=True"
+  },
+  {
+    "label": "devreload_load_plugin",
+    "tool": "devreload_load_plugin",
+    "args": {
+      "name": "DevReloadTest"
+    },
+    "isError": false,
+    "response": "{\"pluginName\":\"DevReloadTest\",\"success\":true,\"commandCount\":4,\"loaded\":true,\"message\":\"loaded\"}"
+  },
+  {
+    "label": "DevReloadTest loaded",
+    "tool": "list_plugins+filter",
+    "args": {},
+    "isError": false,
+    "response": "actual=True expected=True"
+  },
+  {
+    "label": "get_assembly_info after load",
+    "tool": "devreload_get_assembly_info",
+    "args": {
+      "name": "DevReloadTest"
+    },
+    "isError": false,
+    "response": "{\"pluginName\":\"DevReloadTest\",\"loaded\":true,\"assemblyName\":\"DevReloadTest.Core\",\"version\":\"1.0.0.0\"}"
+  },
+  {
+    "label": "list_tools includes plugin tools",
+    "tool": "devreload_list_tools",
+    "args": {},
+    "isError": false,
+    "response": "[{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_build_project\",\"description\":\"Invoke \\u0060dotnet build\\u0060 for a csproj and return the structured result with full log.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_get_assembly_info\",\"description\":\"Inspect the loaded assembly behind a plugin: name, version, file location, last-write timestamp.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_get_available_projects\",\"description\":\"Enumerate projects in running Visual Studio instances via COM. Returns project name \\u002B Debug-config DLL path \\u002B .csproj.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_list_plugins\",\"description\":\"List every registered plugin with its current state. The single source of truth for registration \\u002B load status; filter the returned list rather than asking with three separate query tools.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_list_tools\",\"description\":\"List every MCP tool currently registered with the Acad.Rpc host, grouped by source assembly.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_list_worktrees\",\"description\":\"List git worktrees rooted at the given repo path, with branch names. Each entry is { path, branch, isMain }.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_load_plugin\",\"description\":\"Load a registered plugin if not already loaded. If a build is triggered (missing DLL) the full build log is returned under \\u0027build\\u0027.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_read_shared_assemblies\",\"description\":\"Read SharedAssemblies.Config.json from a build directory. Returns shared/mixed-mode/streamed lists.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_register_new_plugin\",\"description\":\"Register a new plugin with DevReload and persist it to plugins.json. After this call the plugin is available for load via this surface\\u0027s load_plugin tool or the generated AutoCAD {prefix}LOAD command.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_reload\",\"description\":\"Build the plugin from source and load (or reload) it into a fresh isolated ALC. Equivalent to clicking \\u0027Reload\\u0027 in the palette. If the build fails, the response carries the full build log under \\u0027build\\u0027.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_unload_all\",\"description\":\"Unload every loaded plugin. Used during shutdown or to recover from a wedged state.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_unload_plugin\",\"description\":\"Unload a loaded plugin (tear down its isolated ALC). No-op if not loaded.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_unregister\",\"description\":\"Remove a plugin from the registry AND from plugins.json. Unloads it first if loaded. Durable across AutoCAD restarts.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_update_active_worktree\",\"description\":\"Point this plugin at a git worktree path (or null to clear). Persists to plugins.json via the same path the palette UI uses.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_update_build_configuration\",\"description\":\"Switch the build configuration (Debug / Release) used for the next build of this plugin. Persists to plugins.json via the same path the palette UI uses.\"},{\"sourceAssembly\":\"DevReload\",\"toolName\":\"devreload_write_shared_assemblies\",\"description\":\"Write SharedAssemblies.Config.json into a build directory. Overwrites any existing file.\"},{\"sourceAssembly\":\"DevReloadTest.Core\",\"toolName\":\"devreloadtest_core_echo\",\"description\":\"Echo a string back, prefixed with the version tag. Useful to confirm hot-reload by changing the prefix and seeing the new value here.\"},{\"sourceAssembly\":\"DevReloadTest.Core\",\"toolName\":\"devreloadtest_core_version\",\"description\":\"Returns the test plugin\\u0027s version tag so we can confirm a reload landed.\"}]"
+  },
+  {
+    "label": "devreloadtest_core_echo",
+    "tool": "devreloadtest_core_echo",
+    "args": {
+      "text": "hi from smoke"
+    },
+    "isError": false,
+    "response": "[V17] hi from smoke"
+  },
+  {
+    "label": "devreloadtest_core_version",
+    "tool": "devreloadtest_core_version",
+    "args": {},
+    "isError": false,
+    "response": "V17"
+  },
+  {
+    "label": "reload (builds + swaps ALC)",
+    "tool": "devreload_reload",
+    "args": {
+      "name": "DevReloadTest"
+    },
+    "isError": false,
+    "response": "{\"pluginName\":\"DevReloadTest\",\"success\":true,\"commandCount\":4,\"loaded\":true,\"message\":\"dev-reloaded\",\"build\":{\"success\":true,\"outputPath\":\"H:\\\\GitHub\\\\shtirlitsDva\\\\DevReload-impl\\\\example\\\\DevReloadTest\\\\bin\\\\Debug\\\\DevReloadTest.Core.dll\",\"warnings\":0,\"errors\":0,\"log\":\"  Determining projects to restore...\\r\\n  All projects are up-to-date for restore.\\r\\n  Acad.Rpc.Core -\\u003E H:\\\\GitHub\\\\shtirlitsDva\\\\DevReload-impl\\\\src\\\\Acad.Rpc.Core\\\\bin\\\\Debug\\\\Acad.Rpc.Core.dll\\r\\n  DevReloadTest -\\u003E H:\\\\GitHub\\\\shtirlitsDva\\\\DevReload-impl\\\\example\\\\DevReloadTest\\\\bin\\\\Debug\\\\DevReloadTest.Core.dll\\r\\n\\r\\nBuild succeeded.\\r\\n    0 Warning(s)\\r\\n    0 Error(s)\\r\\n\\r\\nTime Elapsed 00:00:00.90\\r\\n\"}}"
+  },
+  {
+    "label": "DevReloadTest loaded after reload",
+    "tool": "list_plugins+filter",
+    "args": {},
+    "isError": false,
+    "response": "actual=True expected=True"
+  },
+  {
+    "label": "devreload_update_build_configuration",
+    "tool": "devreload_update_build_configuration",
+    "args": {
+      "name": "DevReloadTest",
+      "buildConfiguration": "Release"
+    },
+    "isError": false,
+    "response": "{\"pluginName\":\"DevReloadTest\",\"success\":true,\"commandCount\":4,\"loaded\":true,\"message\":\"build config -\\u003E Release (live \\u002B persisted)\"}"
+  },
+  {
+    "label": "persistence: update_build_configuration -> plugins.json",
+    "tool": "(plugins.json check)",
+    "args": {
+      "actual": "Release",
+      "expected": "Release"
+    },
+    "isError": false,
+    "response": "persisted"
+  },
+  {
+    "label": "devreload_update_active_worktree",
+    "tool": "devreload_update_active_worktree",
+    "args": {
+      "name": "DevReloadTest",
+      "worktreePath": "H:\\smoke-temp-worktree"
+    },
+    "isError": false,
+    "response": "{\"pluginName\":\"DevReloadTest\",\"success\":true,\"commandCount\":4,\"loaded\":true,\"message\":\"worktree -\\u003E H:\\\\smoke-temp-worktree (live \\u002B persisted)\"}"
+  },
+  {
+    "label": "persistence: update_active_worktree -> plugins.json",
+    "tool": "(plugins.json check)",
+    "args": {
+      "actual": "H:\\smoke-temp-worktree",
+      "expected": "H:\\smoke-temp-worktree"
+    },
+    "isError": false,
+    "response": "persisted"
+  },
+  {
+    "label": "devreload_update_active_worktree",
+    "tool": "devreload_update_active_worktree",
+    "args": {
+      "name": "DevReloadTest",
+      "worktreePath": null
+    },
+    "isError": false,
+    "response": "{\"pluginName\":\"DevReloadTest\",\"success\":true,\"commandCount\":4,\"loaded\":true,\"message\":\"worktree -\\u003E (main) (live \\u002B persisted)\"}"
+  },
+  {
+    "label": "persistence: update_active_worktree(null) -> plugins.json",
+    "tool": "(plugins.json check)",
+    "args": {
+      "actual": "",
+      "expected": "(null)"
+    },
+    "isError": false,
+    "response": "persisted"
+  },
+  {
+    "label": "devreload_unload_plugin",
+    "tool": "devreload_unload_plugin",
+    "args": {
+      "name": "DevReloadTest"
+    },
+    "isError": false,
+    "response": "{\"pluginName\":\"DevReloadTest\",\"success\":true,\"commandCount\":0,\"loaded\":false,\"message\":\"unloaded\"}"
+  },
+  {
+    "label": "DevReloadTest unloaded",
+    "tool": "list_plugins+filter",
+    "args": {},
+    "isError": false,
+    "response": "actual=True expected=True"
+  },
+  {
+    "label": "unload_all",
+    "tool": "devreload_unload_all",
+    "args": {},
+    "isError": false,
+    "response": "{\"total\":9,\"unloadedNow\":0,\"pluginNames\":[]}"
+  },
+  {
+    "label": "devreload_unregister",
+    "tool": "devreload_unregister",
+    "args": {
+      "name": "DevReloadTest"
+    },
+    "isError": false,
+    "response": "{\"pluginName\":\"DevReloadTest\",\"success\":true,\"commandCount\":0,\"loaded\":false,\"message\":\"unregistered and removed from plugins.json\"}"
+  },
+  {
+    "label": "DevReloadTest unregistered",
+    "tool": "list_plugins+filter",
+    "args": {},
+    "isError": false,
+    "response": "actual=True expected=True"
+  },
+  {
+    "label": "persistence: unregister -> entry removed from plugins.json",
+    "tool": "(plugins.json check)",
+    "args": {
+      "actual": "",
+      "expected": "(absent)"
+    },
+    "isError": false,
+    "response": "persisted"
+  }
+]

@@ -1,13 +1,18 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
+
+using Acad.Rpc.Core;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Internal;
 using Autodesk.AutoCAD.Runtime;
+
+using DevReload.Rpc;
 
 using Exception = System.Exception;
 
@@ -22,30 +27,33 @@ namespace DevReload
             return new PluginRegistrationBuilder(pluginName);
         }
 
-        public static void Load(string pluginName)
+        public static PluginActionResult Load(string pluginName)
         {
             var ed = GetEditor();
+            if (!_plugins.TryGetValue(pluginName, out var reg))
+                return new PluginActionResult(pluginName, false, 0, false, "not registered");
+
+            if (reg.Host.IsLoaded)
+            {
+                ed?.WriteMessage($"\n{pluginName} is already loaded.");
+                return Result(reg, success: true, "already loaded");
+            }
+
+            BuildResult? build = null;
             try
             {
-                var reg = GetRegistration(pluginName);
-
-                if (reg.Host.IsLoaded)
-                {
-                    ed?.WriteMessage($"\n{pluginName} is already loaded.");
-                    return;
-                }
-
                 string dllPath = reg.DllPath;
 
                 if (!File.Exists(dllPath))
                 {
                     string csprojPath = GetEffectiveCsprojPath(reg);
                     ed?.WriteMessage($"\n{pluginName} DLL not found, building...");
-                    string? builtPath = DevReloadService.BuildProject(
+                    build = DevReloadService.BuildProject(
                         csprojPath, reg.BuildConfiguration, ed);
-                    if (builtPath == null) return;
-                    reg.DllPath = builtPath;
-                    dllPath = builtPath;
+                    if (!build.Success || build.OutputPath == null)
+                        return Result(reg, success: false, "build failed", build);
+                    reg.DllPath = build.OutputPath;
+                    dllPath = build.OutputPath;
                 }
 
                 try
@@ -56,38 +64,43 @@ namespace DevReload
                 {
                     ed?.WriteMessage($"\nStale plugin detected, rebuilding...");
                     string csprojPath = GetEffectiveCsprojPath(reg);
-                    string? rebuilt = DevReloadService.BuildProject(
+                    build = DevReloadService.BuildProject(
                         csprojPath, reg.BuildConfiguration, ed);
-                    if (rebuilt == null) return;
-                    reg.DllPath = rebuilt;
-                    dllPath = rebuilt;
+                    if (!build.Success || build.OutputPath == null)
+                        return Result(reg, success: false, "rebuild failed", build);
+                    reg.DllPath = build.OutputPath;
+                    dllPath = build.OutputPath;
                     LoadCore(reg, dllPath);
                 }
 
-                string cmdMsg = reg.Registrar != null
-                    ? $" {reg.Registrar.CommandCount} commands registered."
-                    : "";
-                ed?.WriteMessage($"\n{pluginName} loaded.{cmdMsg}");
+                ed?.WriteMessage($"\n{pluginName} loaded.{CommandSuffix(reg)}");
+                return Result(reg, success: true, "loaded", build);
             }
             catch (Exception ex)
             {
                 ed?.WriteMessage($"\n{pluginName} load error: {ex.Message}");
                 ed?.WriteMessage($"\n{ex}");
+                return Result(reg, success: false,
+                    $"load error: {ex.GetType().Name}: {ex.Message}", build);
             }
         }
 
-        public static void DevReload(string pluginName)
+        public static PluginActionResult DevReload(string pluginName)
         {
             var ed = GetEditor();
+            if (!_plugins.TryGetValue(pluginName, out var reg))
+                return new PluginActionResult(pluginName, false, 0, false, "not registered");
+
+            BuildResult? build = null;
             try
             {
-                var reg = GetRegistration(pluginName);
-
                 string csprojPath = GetEffectiveCsprojPath(reg);
-                string? dllPath = DevReloadService.BuildProject(
+                build = DevReloadService.BuildProject(
                     csprojPath, reg.BuildConfiguration, ed);
-                if (dllPath == null) return;
-                reg.DllPath = dllPath;
+                if (!build.Success || build.OutputPath == null)
+                    return Result(reg, success: false, "build failed", build);
+                reg.DllPath = build.OutputPath;
+                string dllPath = build.OutputPath;
 
                 try
                 {
@@ -95,54 +108,81 @@ namespace DevReload
                 }
                 catch (StalePluginException)
                 {
-                    ed?.WriteMessage(
-                        $"\n{pluginName}: IExtensionApplication version mismatch. Restart AutoCAD.");
-                    return;
+                    string msg = $"{pluginName}: IExtensionApplication version mismatch. Restart AutoCAD.";
+                    ed?.WriteMessage("\n" + msg);
+                    return Result(reg, success: false, msg, build);
                 }
 
-                string cmdMsg = reg.Registrar != null
-                    ? $" {reg.Registrar.CommandCount} commands registered."
-                    : "";
-                ed?.WriteMessage($"\n{pluginName} dev-reloaded.{cmdMsg}");
+                ed?.WriteMessage($"\n{pluginName} dev-reloaded.{CommandSuffix(reg)}");
+                return Result(reg, success: true, "dev-reloaded", build);
             }
             catch (Exception ex)
             {
                 ed?.WriteMessage($"\n{pluginName} dev-reload error: {ex.Message}");
                 ed?.WriteMessage($"\n{ex}");
+                return Result(reg, success: false,
+                    $"dev-reload error: {ex.GetType().Name}: {ex.Message}", build);
             }
         }
 
-        public static void Unload(string pluginName)
+        public static PluginActionResult Unload(string pluginName)
         {
             var ed = GetEditor();
+            if (!_plugins.TryGetValue(pluginName, out var reg))
+                return new PluginActionResult(pluginName, false, 0, false, "not registered");
+
+            if (!reg.Host.IsLoaded)
+            {
+                ed?.WriteMessage($"\n{pluginName} is not loaded.");
+                return Result(reg, success: true, "not loaded");
+            }
+
             try
             {
-                var reg = GetRegistration(pluginName);
-
-                if (!reg.Host.IsLoaded)
-                {
-                    ed?.WriteMessage($"\n{pluginName} is not loaded.");
-                    return;
-                }
-
                 TearDown(reg);
                 ed?.WriteMessage($"\n{pluginName} unloaded.");
+                return Result(reg, success: true, "unloaded");
             }
             catch (Exception ex)
             {
                 ed?.WriteMessage($"\n{pluginName} unload error: {ex.Message}");
                 ed?.WriteMessage($"\n{ex}");
+                return Result(reg, success: false,
+                    $"unload error: {ex.GetType().Name}: {ex.Message}");
             }
         }
 
-        public static void UnloadAll()
+        public static UnloadAllResult UnloadAll()
         {
+            var loadedBefore = _plugins.Values
+                .Where(r => r.Host.IsLoaded)
+                .Select(r => r.PluginName)
+                .ToList();
             foreach (var reg in _plugins.Values)
             {
                 try { TearDown(reg); }
                 catch { /* best-effort during shutdown */ }
             }
+            return new UnloadAllResult(
+                Total: _plugins.Count,
+                UnloadedNow: loadedBefore.Count,
+                PluginNames: loadedBefore);
         }
+
+        private static string CommandSuffix(PluginRegistration reg) =>
+            reg.Registrar != null
+                ? $" {reg.Registrar.CommandCount} commands registered."
+                : "";
+
+        private static PluginActionResult Result(
+            PluginRegistration reg, bool success, string message, BuildResult? build = null) =>
+            new(
+                PluginName: reg.PluginName,
+                Success: success,
+                CommandCount: reg.Registrar?.CommandCount ?? 0,
+                Loaded: reg.Host.IsLoaded,
+                Message: message,
+                Build: build);
 
         // ── Public query + management API ─────────────────────────────
 
@@ -155,14 +195,81 @@ namespace DevReload
         public static bool IsLoaded(string pluginName)
             => _plugins.TryGetValue(pluginName, out var reg) && reg.Host.IsLoaded;
 
-        public static void Unregister(string pluginName)
+        /// <summary>Project the registration into a serializable snapshot
+        /// for the RPC tool surface. Returns null if not registered.</summary>
+        public static PluginInfo? SnapshotRegistration(string pluginName)
         {
-            if (!_plugins.TryGetValue(pluginName, out var reg))
-                return;
+            if (!_plugins.TryGetValue(pluginName, out var reg)) return null;
+            return SnapshotOf(reg);
+        }
 
-            TearDown(reg);
-            UnregisterLoaderCommands(reg);
-            _plugins.Remove(pluginName);
+        /// <summary>Snapshot every registered plugin. Same shape as
+        /// <see cref="SnapshotRegistration"/>; for callers (palette + RPC)
+        /// that want the whole list.</summary>
+        public static IReadOnlyList<PluginInfo> ListPluginSnapshots() =>
+            _plugins.Values.Select(SnapshotOf).ToList();
+
+        private static PluginInfo SnapshotOf(PluginRegistration reg) =>
+            new(
+                Name: reg.PluginName,
+                Loaded: reg.Host.IsLoaded,
+                BuildConfiguration: reg.BuildConfiguration,
+                DllPath: reg.DllPath,
+                ProjectFilePath: reg.ProjectFilePath,
+                ActiveWorktreePath: reg.ActiveWorktreePath,
+                CommandCount: reg.Registrar?.CommandCount ?? 0);
+
+        /// <summary>Project the loaded assembly's metadata into a serializable
+        /// shape. Returns a record with Loaded=false if the plugin is not
+        /// loaded (or not registered).</summary>
+        public static PluginAssemblyInfo GetAssemblyInfo(string pluginName)
+        {
+            if (!_plugins.TryGetValue(pluginName, out var reg) ||
+                !reg.Host.IsLoaded ||
+                reg.Host.LoadedAssembly == null)
+            {
+                return new PluginAssemblyInfo(
+                    PluginName: pluginName,
+                    Loaded: false,
+                    AssemblyName: null,
+                    Version: null,
+                    Location: null,
+                    LastWriteUtc: null);
+            }
+            var asm = reg.Host.LoadedAssembly;
+            var name = asm.GetName();
+            string? loc = string.IsNullOrEmpty(asm.Location) ? null : asm.Location;
+            string? when = loc != null && File.Exists(loc)
+                ? File.GetLastWriteTimeUtc(loc).ToString("O")
+                : null;
+            return new PluginAssemblyInfo(
+                PluginName: pluginName,
+                Loaded: true,
+                AssemblyName: name.Name,
+                Version: name.Version?.ToString(),
+                Location: loc,
+                LastWriteUtc: when);
+        }
+
+        public static PluginActionResult Unregister(string pluginName)
+        {
+            bool wasRegistered = _plugins.ContainsKey(pluginName);
+            if (_plugins.TryGetValue(pluginName, out var reg))
+            {
+                TearDown(reg);
+                UnregisterLoaderCommands(reg);
+                _plugins.Remove(pluginName);
+            }
+            bool fileRemoved = PluginConfigLoader.RemovePluginEntry(pluginName);
+            string message = wasRegistered
+                ? (fileRemoved ? "unregistered and removed from plugins.json" : "unregistered")
+                : (fileRemoved ? "removed from plugins.json only" : "was not registered");
+            return new PluginActionResult(
+                PluginName: pluginName,
+                Success: wasRegistered || fileRemoved,
+                CommandCount: 0,
+                Loaded: false,
+                Message: message);
         }
 
         // ── Loader-level command registration ─────────────────────────
@@ -214,6 +321,19 @@ namespace DevReload
             // there, this build has no shared assemblies, period.
             string pluginDir = Path.GetDirectoryName(dllPath)!;
             var sharedConfig = SharedAssembliesFile.Read(pluginDir);
+
+            // Auto-inject Acad.Rpc.Core into every plugin's effective shared
+            // list. Required for plugins that contribute MCP tools: their
+            // [AcadRpcSurface] / [AcadRpcTool] attribute references must
+            // resolve to the SAME loaded Acad.Rpc.Core instance DevReload uses,
+            // otherwise the singleton host's registry never sees them.
+            // Plugin authors don't need to remember to add it.
+            const string AcadRpcCore = "Acad.Rpc.Core";
+            if (!sharedConfig.SharedAssemblies.Contains(AcadRpcCore, StringComparer.OrdinalIgnoreCase))
+                sharedConfig.SharedAssemblies.Add(AcadRpcCore);
+            if (!sharedConfig.StreamedAssemblies.Contains(AcadRpcCore, StringComparer.OrdinalIgnoreCase))
+                sharedConfig.StreamedAssemblies.Add(AcadRpcCore);
+
             string[] sharedNames = sharedConfig.SharedAssemblies.ToArray();
 
             if (sharedNames.Length > 0)
@@ -251,10 +371,41 @@ namespace DevReload
             {
                 reg.Registrar.RegisterFromAssembly(reg.Host.LoadedAssembly!);
             }
+
+            // Register the freshly-loaded assembly's tools into the
+            // unified MCP surface. AutoCAD has already invoked the
+            // plugin's IExtensionApplication.Initialize() via its
+            // AssemblyLoad-event-driven scan; tool registration happens
+            // immediately after so the new tools become visible to the
+            // agent as soon as Initialize completes its work.
+            try
+            {
+                if (AcadRpcHost.IsInitialized && reg.Host.LoadedAssembly != null)
+                {
+                    AcadRpcHost.Current.RegisterAssembly(reg.Host.LoadedAssembly);
+                }
+            }
+            catch (Exception ex)
+            {
+                GetEditor()?.WriteMessage(
+                    $"\n[DevReload] RPC RegisterAssembly failed: {ex.Message}");
+            }
         }
 
         private static void TearDown(PluginRegistration reg)
         {
+            // RPC unregister fires FIRST so any inbound agent call lands
+            // after the SDK has already removed the tool. The plugin's
+            // Terminate then runs with no inbound RPC traffic possible.
+            try
+            {
+                if (AcadRpcHost.IsInitialized && reg.Host.LoadedAssembly != null)
+                {
+                    AcadRpcHost.Current.UnregisterAssembly(reg.Host.LoadedAssembly);
+                }
+            }
+            catch { /* best-effort during teardown */ }
+
             reg.Registrar?.UnregisterAll();
 
             if (reg.Host.IsLoaded)
@@ -370,16 +521,61 @@ namespace DevReload
             return Application.DocumentManager.MdiActiveDocument?.Editor;
         }
 
-        public static void UpdateBuildConfiguration(string pluginName, string buildConfiguration)
+        // ── Mutations: single funnel for UI + RPC ─────────────────────
+        //
+        // Both the palette ViewModel and the MCP tool surface call these
+        // methods. They update the live registration AND persist to
+        // plugins.json so the change survives an AutoCAD restart. There
+        // is no separate "RPC persistence path"; the UI got a second
+        // path before this refactor, which was the bug.
+
+        public static PluginActionResult UpdateBuildConfiguration(
+            string pluginName, string buildConfiguration)
         {
+            bool inMemory = false;
             if (_plugins.TryGetValue(pluginName, out var reg))
+            {
                 reg.BuildConfiguration = buildConfiguration;
+                inMemory = true;
+            }
+            bool persisted = PluginConfigLoader.UpdatePluginEntry(
+                pluginName, e => e.BuildConfiguration = buildConfiguration);
+            return ResultForUpdate(pluginName, inMemory, persisted,
+                $"build config -> {buildConfiguration}");
         }
 
-        public static void UpdateActiveWorktree(string pluginName, string? worktreePath)
+        public static PluginActionResult UpdateActiveWorktree(
+            string pluginName, string? worktreePath)
         {
+            bool inMemory = false;
             if (_plugins.TryGetValue(pluginName, out var reg))
+            {
                 reg.ActiveWorktreePath = worktreePath;
+                inMemory = true;
+            }
+            bool persisted = PluginConfigLoader.UpdatePluginEntry(
+                pluginName, e => e.ActiveWorktreePath = worktreePath);
+            return ResultForUpdate(pluginName, inMemory, persisted,
+                $"worktree -> {worktreePath ?? "(main)"}");
+        }
+
+        private static PluginActionResult ResultForUpdate(
+            string pluginName, bool inMemory, bool persisted, string action)
+        {
+            var snap = SnapshotRegistration(pluginName);
+            string suffix = (inMemory, persisted) switch
+            {
+                (true, true)   => " (live + persisted)",
+                (true, false)  => " (live only; no plugins.json entry)",
+                (false, true)  => " (persisted; not registered live)",
+                (false, false) => " (no live registration, no plugins.json entry)",
+            };
+            return new PluginActionResult(
+                PluginName: pluginName,
+                Success: inMemory || persisted,
+                CommandCount: snap?.CommandCount ?? 0,
+                Loaded: snap?.Loaded ?? false,
+                Message: action + suffix);
         }
 
         internal static void AddRegistration(PluginRegistration reg)

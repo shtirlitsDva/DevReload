@@ -1,12 +1,15 @@
 using System;
 using System.Drawing;
 using System.Linq;
+using System.Threading;
 
+using Acad.Rpc.Core;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Runtime;
 using Autodesk.AutoCAD.Windows;
 
+using DevReload.Rpc;
 using DevReload.Views;
 
 [assembly: CommandClass(typeof(DevReload.DevReloaderCommands))]
@@ -33,9 +36,55 @@ namespace DevReload
         private static readonly Guid MgmtPaletteGuid =
             new("fb1be221-4d6f-48ff-a0d3-39dc935bf749");
 
+        private static AcadIdlePumpDispatcher? _dispatcher;
+
         public void Initialize()
         {
+            // First-line file log so we can verify autoload at all,
+            // independent of whether an editor is attached at Initialize.
+            DevReloadLog.Info("DevReloaderCommands.Initialize entered");
+
+            // Bridge AutoCAD's .NET 8 host runtime to our bundled
+            // dependency graph (MCP SDK + Microsoft.Extensions.* 10.x
+            // need probing help from a directory the default ALC
+            // doesn't know about).
+            AssemblyResolver.Install();
+
             Editor? ed = Application.DocumentManager.MdiActiveDocument?.Editor;
+
+            // Bring up the Acad.Rpc host before any plugin loads. The
+            // host is alive for the whole AutoCAD session; plugins
+            // register/unregister their tools into its single
+            // ToolCollection on load/unload.
+            try
+            {
+                _dispatcher = new AcadIdlePumpDispatcher();
+                int pid = System.Diagnostics.Process.GetCurrentProcess().Id;
+                var host = AcadRpcHost.Initialize(new AcadRpcHostOptions(
+                    PipeName: $"acad-rpc-{pid}",
+                    MainThreadDispatcher: _dispatcher,
+                    Log: DevReloadLog.Info));
+
+                // Zero-glue plugin contribution: any assembly in any
+                // non-collectible ALC with an [AcadRpcSurface] gets
+                // auto-registered. Catches DevReload itself, NETLOAD'd
+                // plugins (default ALC), NSLOAD'd plugins (isolated
+                // non-collectible ALCs). Plugins loaded into a
+                // collectible ALC via DevReload are registered
+                // explicitly by PluginManager.LoadCore, because the
+                // hot-reload lifecycle owns register/unregister.
+                host.EnableAutoDiscovery();
+
+                _ = host.StartAsync(CancellationToken.None);
+                DevReloadLog.Info($"RPC pipe opening at \\\\.\\pipe\\acad-rpc-{pid}");
+                ed?.WriteMessage(
+                    $"\nDevReload: RPC pipe opened at \\\\.\\pipe\\acad-rpc-{pid}");
+            }
+            catch (System.Exception ex)
+            {
+                DevReloadLog.Info($"RPC host failed to start: {ex}");
+                ed?.WriteMessage($"\nDevReload: RPC host failed to start: {ex.Message}");
+            }
 
             var config = PluginConfigLoader.Load();
             if (config == null || config.Plugins.Count == 0)
@@ -63,7 +112,13 @@ namespace DevReload
                 $"\nDevReload: {names.Count} plugin(s) registered, {loaded} auto-loaded.");
         }
 
-        public void Terminate() => PluginManager.UnloadAll();
+        public void Terminate()
+        {
+            try { AcadRpcHost.Current.ShutdownAsync().GetAwaiter().GetResult(); }
+            catch { }
+            try { _dispatcher?.Dispose(); } catch { }
+            PluginManager.UnloadAll();
+        }
 
         // ── Management palette ────────────────────────────────────────
 
@@ -89,7 +144,9 @@ namespace DevReload
         /// <summary>
         /// Register a single plugin from a <see cref="PluginEntry"/> config
         /// entry. Creates the PluginManager registration and the 3 loader
-        /// commands ({prefix}LOAD/DEV/UNLOAD).
+        /// commands ({prefix}LOAD/DEV/UNLOAD). Same call site for both
+        /// the palette UI (ConfirmAddPlugin) and the RPC tool surface
+        /// (via PluginConfigLoader.RegisterNewPlugin).
         /// </summary>
         internal static void RegisterFromConfig(PluginEntry entry)
         {

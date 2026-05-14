@@ -74,9 +74,13 @@ namespace DevReload.ViewModels
 
         private void OnPluginPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName is nameof(PluginItemViewModel.LoadOnStartup)
-                                  or nameof(PluginItemViewModel.IsReleaseBuild)
-                                  or nameof(PluginItemViewModel.SelectedWorktree))
+            // LoadOnStartup is the only mutable property NOT routed through
+            // PluginManager — it has no runtime state, only file state. The
+            // other properties (IsReleaseBuild, SelectedWorktree) are
+            // already persisted inside PluginManager.UpdateX; saving here
+            // would be a redundant duplicate write. Keep the safety net
+            // tight so the UI and RPC genuinely share one persistence path.
+            if (e.PropertyName == nameof(PluginItemViewModel.LoadOnStartup))
                 SaveConfig();
         }
 
@@ -141,10 +145,6 @@ namespace DevReload.ViewModels
 
             string name = NewPluginName.Trim();
 
-            if (_config.Plugins.Any(p =>
-                    p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
-                return;
-
             var entry = new PluginEntry
             {
                 Name = name,
@@ -156,11 +156,16 @@ namespace DevReload.ViewModels
                 LoadOnStartup = NewPluginLoadOnStartup,
             };
 
-            _config.Plugins.Add(entry);
-            SaveConfig();
+            // Same unified call the RPC tool register_new_plugin uses:
+            // persists to plugins.json AND wires the registration into
+            // PluginManager + creates the LOAD/DEV/UNLOAD commands. No
+            // separate "palette persistence" path.
+            var result = PluginConfigLoader.RegisterNewPlugin(entry);
+            if (!result.Success) return;
 
-            // Register with PluginManager + create LOAD/DEV/UNLOAD commands
-            DevReloaderCommands.RegisterFromConfig(entry);
+            // Refresh the binding source (_config) so the new entry shows
+            // up in the palette. The disk file is already current.
+            _config.Plugins.Add(entry);
 
             var vm = new PluginItemViewModel(entry);
             vm.PropertyChanged += OnPluginPropertyChanged;
@@ -183,13 +188,12 @@ namespace DevReload.ViewModels
             var vm = Plugins.FirstOrDefault(p => p.Name == name);
             if (vm == null) return;
 
-            // Unregister from PluginManager (tears down + removes commands)
+            // PluginManager.Unregister handles both the in-memory teardown
+            // AND the plugins.json removal — same call the RPC unregister
+            // tool makes. We only need to refresh the binding source.
             PluginManager.Unregister(name);
-
-            // Remove from config + save
             _config.Plugins.RemoveAll(e =>
                 e.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-            SaveConfig();
 
             vm.PropertyChanged -= OnPluginPropertyChanged;
             Plugins.Remove(vm);
