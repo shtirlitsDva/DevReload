@@ -123,7 +123,7 @@ namespace DevReload.ViewModels
             var displayNames = projects.Select(p =>
                 multipleInstances ? $"{p.SolutionName}:{p.Name}" : p.Name).ToList();
 
-            string selection = IntersectUtilities.StringGridFormCaller.Call(
+            string? selection = IntersectUtilities.StringGridFormCaller.Call(
                 displayNames, "Select a project to register:");
             if (string.IsNullOrEmpty(selection)) return;
 
@@ -357,7 +357,7 @@ namespace DevReload.ViewModels
 
             // Build display list and let the developer pick the target app
             var displayNames = apps.Select(a => a.Name).ToList();
-            string selection = IntersectUtilities.StringGridFormCaller.Call(
+            string? selection = IntersectUtilities.StringGridFormCaller.Call(
                 displayNames,
                 $"Push shared assemblies for '{name}' to which production app?");
             if (string.IsNullOrEmpty(selection)) return;

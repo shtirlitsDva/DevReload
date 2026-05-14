@@ -270,7 +270,7 @@ namespace DevReload
             {
                 // Multiple matches - ask user via StringGridForm
                 var solNames = matches.Select(m => m.solutionName).ToList();
-                string selection = IntersectUtilities.StringGridFormCaller.Call(
+                string? selection = IntersectUtilities.StringGridFormCaller.Call(
                     solNames,
                     $"Project '{projectName}' found in {matches.Count} instances. Select:");
 
@@ -457,7 +457,7 @@ namespace DevReload
 
         private class WaitCursorScope : IDisposable
         {
-            private readonly Cursor _savedCursor;
+            private readonly Cursor? _savedCursor;
 
             public WaitCursorScope()
             {

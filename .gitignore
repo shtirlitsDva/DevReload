@@ -85,3 +85,9 @@ Directory.Build.props.user
 
 # Bundle output
 Deploy/
+
+# Claude Code per-project state
+.claude/
+
+# Smoke run outputs (ephemeral)
+tests/smoke/results.json

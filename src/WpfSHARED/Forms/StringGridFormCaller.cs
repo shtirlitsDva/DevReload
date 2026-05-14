@@ -6,7 +6,7 @@ namespace IntersectUtilities
 {
     public static class StringGridFormCaller
     {
-        public static string Call(IEnumerable<string> list, string message)
+        public static string? Call(IEnumerable<string> list, string message)
         {
             if (list == null || !list.Any())
                 throw new ArgumentException("List cannot be null or empty.", nameof(list));
