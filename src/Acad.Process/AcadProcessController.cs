@@ -56,21 +56,22 @@ public sealed class AcadProcessController
         var psi = new SysProcessStartInfo
         {
             FileName = install.ExePath,
-            UseShellExecute = false,
+            // ShellExecute (no handle inheritance) — UseShellExecute=false
+            // forces bInheritHandles=TRUE in CreateProcess, which lets
+            // AutoCAD inherit our live JSON-RPC stdin pipe from the agent
+            // and deadlocks during init (reliably reproduces on Civil 3D
+            // even though the stdout/stderr redirect kept those streams
+            // off the wire). Going through ShellExecute mirrors a manual
+            // Explorer launch: no inherited handles at all, so AutoCAD's
+            // native diagnostic prints (e.g. AcCm "m_kernelList still
+            // has N entries." at shutdown) cannot reach our stdout
+            // either — the redirect-and-drain that used to be here is
+            // redundant once we stop inheriting.
+            UseShellExecute = true,
             WorkingDirectory = install.InstallPath,
             WindowStyle = options.Visible
                 ? SysProcessWindowStyle.Normal
                 : SysProcessWindowStyle.Minimized,
-            // Redirect AutoCAD's stdio away from our own stdio. The
-            // bridge (likely caller) uses stdout to speak JSON-RPC over
-            // the MCP wire — if AutoCAD inherits those handles, its
-            // native diagnostic prints ("m_kernelList still has N
-            // entries." etc., emitted at shutdown by AcCm or similar)
-            // land in the agent's tool-call response stream and break
-            // JSON parsing. Discarding both streams immediately on the
-            // child side is the right fix.
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
         };
 
         if (!string.IsNullOrEmpty(install.ProductCmdLineArg))
@@ -102,17 +103,8 @@ public sealed class AcadProcessController
             AppendArg(psi, $"/b \"{scriptPath}\"");
         }
 
-        // Drain handlers — empty bodies, just to prevent the redirected
-        // pipe buffer from filling (otherwise AutoCAD's prints
-        // eventually block its main thread).
-        var proc = new SysProcess { StartInfo = psi };
-        proc.OutputDataReceived += static (_, _) => { };
-        proc.ErrorDataReceived += static (_, _) => { };
-        if (!proc.Start())
-            throw new InvalidOperationException("Process.Start returned false");
-        proc.BeginOutputReadLine();
-        proc.BeginErrorReadLine();
-        return proc;
+        return SysProcess.Start(psi)
+            ?? throw new InvalidOperationException("Process.Start returned null");
     }
 
     private static string WriteStartupScript(string commands)
