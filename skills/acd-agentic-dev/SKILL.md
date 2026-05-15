@@ -85,6 +85,25 @@ Lessons that bite repeatedly. Each is directly actionable from this skill.
 10. **Cold Civil 3D startup is slow.** Default `acad_wait_quiescent(300)` is right for first boot. Don't drop it below 60 on any path.
 </gotchas>
 
+<binding-lifecycle>
+The bridge process holds **at most one bound AutoCAD pid at a time**. The binding is in-memory — it does NOT persist across bridge restarts. Restarts happen any time you:
+
+- Resume a previous session (`claude -r`).
+- Run `/reload-plugins` or update the devreload plugin via `/plugin`.
+- Kill the bridge directly (or it crashes).
+
+After a restart, the bridge starts fresh:
+
+1. **Single running AutoCAD with the DevReload pipe up** → bridge **auto-attaches** to it silently. No agent action needed; `devreload_*` tools come back online once the pipe forwarder reconnects (sub-second). This is `AutoAttach` in `Acad.Rpc.Bridge\AutoAttach.cs`.
+2. **Zero running AutoCADs** → bridge stays unbound. Call `acad_start` to launch one.
+3. **Multiple running AutoCADs** → bridge stays unbound (ambiguous). Run `acad_list_instances`, then `acad_attach <pid>` to pick.
+4. **AutoCAD running but pipe not up** (DevReload not loaded yet) → bridge stays unbound. Either NETLOAD DevReload manually or `acad_quit` and `acad_start` it fresh.
+
+**If `devreload_*` tools show "offline" after a restart:** the bridge is unbound. This is NOT a broken plugin — it's a missing binding. Run `acad_list_instances`. If exactly one healthy instance shows `isBound=false`, call `acad_attach <pid>`; the tools come back online.
+
+**Never assume your tool catalog survives a session resume verbatim.** When in doubt: `acad_list_instances` is the cheap first probe.
+</binding-lifecycle>
+
 <engineering-rules-anchored>
 The user's global rules (`~/.claude/CLAUDE.md` `<engineering-rules-strict>`) apply with extra force here:
 

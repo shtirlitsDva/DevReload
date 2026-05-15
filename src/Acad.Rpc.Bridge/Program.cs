@@ -76,6 +76,14 @@ internal static class Program
                 pipeName: initialPipe,
                 out _);
         }
+        else
+        {
+            // No explicit binding requested — try the resume case: if
+            // exactly one running AutoCAD already has DevReload's pipe
+            // up, bind to it silently. Multiple candidates or none → stay
+            // unbound and let the agent pick via acad_attach.
+            AutoAttach.TryAttach(() => controller.EnumerateProcesses(), binding, Log);
+        }
 
         using var host = new BridgeRpcHost(core, forwarder, Log);
         using var stdin = Console.OpenStandardInput();
