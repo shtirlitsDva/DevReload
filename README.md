@@ -45,18 +45,13 @@ If you're iterating on the bridge or the skill, run `.\scripts\Pack-Plugin.ps1` 
 ## Quickstart
 
 **Prepare your plugin** (prevents stale commands on reload):
-We add a `#if DEBUG`guarded empty class that prevents autocad from registering [CommandMethods] when the .dll is (re)loaded.
-`DevReload` manages the registering and unregistering of commands on load/reload.
-This also means that you cannot have `Release` build loaded before running `Debug` build.
+We add an empty `NoCommands` marker class that prevents AutoCAD from registering `[CommandMethod]`s when the DLL is (re)loaded.
+`DevReload` manages registering and unregistering of commands on load/reload via `Utils.AddCommand`, which is the only mechanism AutoCAD exposes that supports unregistration.
 
 ```csharp
-#if DEBUG
-[assembly: CommandClass(typeof(YourNamespace.NoAutoCommands))]
-#endif
+[assembly: CommandClass(typeof(YourNamespace.NoCommands))]
 // ...
-#if DEBUG
-public class NoAutoCommands { }
-#endif
+public class NoCommands { }
 ```
 
 Your plugin must implement `IExtensionApplication`. DevReload calls `Terminate()` when unloading a plugin before reloading. All event subscriptions and other AutoCAD references must be unregistered in `Terminate()` using *static* fields, because AutoCAD and DevReload create separate instances of your class (see Dual-Instance Problem below).
@@ -92,59 +87,34 @@ Note: This was written by AI, I don't actually know which of these are actually 
 </PropertyGroup>
 ```
 
-## Dual-Mode: Release vs Debug
+## Plugin Lifecycle
 
-Plugins work in **two modes** from the same DLL:
-- **Release** (for users): loaded via `NETLOAD` — AutoCAD calls `IExtensionApplication.Initialize()` and registers commands normally
-- **Debug** (for you): loaded via DevReload — AutoCAD *still* calls `Initialize()` automatically, but command registration is suppressed
+Plugins built for DevReload are **always loaded through DevReload** — there is no separate `NETLOAD` release path to keep working. That simplifies the lifecycle to two facts you have to internalize.
 
 ### Dual-Instance Problem & Static State
 
 AutoCAD and DevReload create **separate instances** of your plugin class:
-- **Instance A**: AutoCAD creates via `[assembly: ExtensionApplication]` → calls `Initialize()`
-- **Instance B**: DevReload creates via `Activator.CreateInstance` → calls `Terminate()` on unload
+- **Instance A**: AutoCAD's `ExtensionLoader` scans every loaded assembly for `IExtensionApplication` implementations, instantiates each one, and calls `Initialize()`. (`[assembly: ExtensionApplication(typeof(MyPlugin))]` is the explicit form; the scan happens regardless.)
+- **Instance B**: DevReload creates its own instance via `Activator.CreateInstance` so it can hold a typed reference, and calls `Terminate()` on that instance when unloading.
 
-These are different objects. Instance fields set in `Initialize()` on Instance A are NOT visible to `Terminate()` on Instance B. **Use static fields for anything that needs cleanup.** The `AcadEventManager` (see below) solves this for event subscriptions.
+These are different objects. Instance fields set in `Initialize()` on Instance A are NOT visible to `Terminate()` on Instance B. **Use static fields for anything cleanup touches.** The `AcadEventManager` (see below) solves this for event subscriptions.
 
-### CommandClass Suppression (Required for Debug)
+### CommandClass Suppression
 
 AutoCAD's `ExtensionLoader` scans loaded assemblies for `[CommandMethod]` attributes and registers them via `CommandClass.AddCommand`. These registrations are **permanent** — no public API to remove them. On reload, this causes `eDuplicateKey` errors and stale commands.
 
-To prevent this, plugin assemblies must suppress AutoCAD's command scanning in Debug builds:
+Suppress the scan by pointing it at an empty marker class (canonical name `NoCommands`):
 
 ```csharp
-#if DEBUG
-[assembly: CommandClass(typeof(MyNamespace.NoAutoCommands))]
-#endif
+[assembly: CommandClass(typeof(MyNamespace.NoCommands))]
 
 namespace MyNamespace
 {
-#if DEBUG
-    public class NoAutoCommands { }
-#endif
+    public class NoCommands { }
 }
 ```
 
-- **Debug**: AutoCAD sees `CommandClass(typeof(NoAutoCommands))`, scans only that empty class, finds no commands. DevReload's `CommandRegistrar` handles registration via `Utils.AddCommand` (which CAN be unregistered on reload).
-- **Release**: No `CommandClass` attribute → AutoCAD scans all types and registers commands normally via `NETLOAD`.
-
-If your plugin already has a custom `[assembly: CommandClass]` for Release, guard it:
-
-```csharp
-#if DEBUG
-[assembly: CommandClass(typeof(NoAutoCommands))]
-#else
-[assembly: CommandClass(typeof(MyProductionCommands))]
-#endif
-```
-
-### Lifecycle Summary
-
-| Method | NETLOAD (Release) | DevReload (Debug) |
-|--------|-------------------|-------------------|
-| `Initialize()` | AutoCAD calls it | AutoCAD calls it (DevReload skips) |
-| `Terminate()` | AutoCAD calls on shutdown | DevReload calls on unload/reload |
-| Commands | AutoCAD registers via `CommandClass.AddCommand` | DevReload registers via `Utils.AddCommand` |
+With this attribute present, AutoCAD scans ONLY `NoCommands` and finds zero commands. DevReload's `CommandRegistrar` then enumerates the assembly's exported types itself and registers each `[CommandMethod]` via the removable `Utils.AddCommand` path. Apply this unconditionally.
 
 ## AcadEventManager
 
@@ -164,7 +134,7 @@ _events.Track(doc, () => doc.CommandEnded -= OnCommandEnded);
 _events.Dispose();
 ```
 
-Works in both Release (NETLOAD) and Debug (DevReload) modes. Multiple documents can have independent subscriptions. Closed documents are cleaned up automatically.
+Multiple documents can have independent subscriptions. Closed documents are cleaned up automatically.
 
 ## Implement IExtensionApplication
 
@@ -176,16 +146,11 @@ using Autodesk.AutoCAD.Windows;
 using EventManager;
 
 [assembly: ExtensionApplication(typeof(MyNamespace.MyPlugin))]
-
-#if DEBUG
-[assembly: CommandClass(typeof(MyNamespace.NoAutoCommands))]
-#endif
+[assembly: CommandClass(typeof(MyNamespace.NoCommands))]
 
 namespace MyNamespace
 {
-#if DEBUG
-    public class NoAutoCommands { }
-#endif
+    public class NoCommands { }
 
     public class MyPlugin : IExtensionApplication
     {
