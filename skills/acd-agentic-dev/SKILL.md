@@ -70,11 +70,111 @@ Plugin lifecycle, build, and configuration. `devreload_*` prefix.
 </devreload-group>
 </mcp-tools>
 
+<reload-safe-plugin-shape>
+A plugin that DevReload can reload cleanly has THREE invariants: command registration is removable, the assembly is unpinned by `Terminate()`, and cleanup state survives the dual-instance lifecycle. Miss any one and `devreload_reload` either throws `eDuplicateKey`, leaks the old DLL (old commands keep firing alongside the new ones), or silently keeps stale event handlers wired up.
+
+When extending or fixing an existing plugin, AUDIT the plugin's entry class against this section before the first reload — a buggy `Terminate()` will silently corrupt every subsequent iteration of `<the-loop>` and make diagnosis hard. When generating a new plugin, follow this shape from the first commit.
+
+<suppress-autocad-command-scan>
+AutoCAD's `ExtensionLoader` permanently registers every `[CommandMethod]` it discovers on assembly load — there is no public API to unregister, so the second reload throws `eDuplicateKey`. Block the scan by pointing it at an empty marker class (canonical name: `NoCommands`):
+
+```csharp
+[assembly: CommandClass(typeof(MyNamespace.NoCommands))]
+
+namespace MyNamespace
+{
+    public class NoCommands { }
+}
+```
+
+With this assembly attribute present, AutoCAD scans ONLY `NoCommands` and finds zero commands. DevReload's `CommandRegistrar` then enumerates the assembly's exported types itself and registers commands via the removable `Utils.AddCommand` path. Apply this unconditionally — plugins built for this system are always loaded through DevReload (both during development and at deployment); there is no `NETLOAD`-only release configuration to keep working.
+
+Symptom of missing suppression: first `devreload_reload` works; second one fails with `eDuplicateKey` naming one of the plugin's own commands.
+</suppress-autocad-command-scan>
+
+<terminate-must-unpin-everything>
+The collectible ALC unloads only when nothing in the default ALC still references it. Anything the plugin handed to AutoCAD — palette windows, event handlers, overrules, transient graphics, document-level idle/quiescent hooks — roots the assembly and prevents unload. The OLD plugin then keeps running alongside the NEW one: every event fires through both old and new delegates, palettes and overrules from the old build stay alive, and any timer/callback the old code armed keeps firing into dead objects.
+
+`Terminate()` MUST release every such reference. Concrete checklist:
+
+- **PaletteSets**: `Close()` then `Dispose()` then null out the static field. A live `PaletteSet` is rooted by AutoCAD's window manager.
+- **Event subscriptions**: every `+=` needs the matching `-=` before `Terminate()` returns. Use `AcadEventManager` (see below) — never rely on manual unsubscribe lists.
+- **Overrules** (`DrawableOverrule`, `ObjectOverrule`, etc.): call `Overrule.RemoveOverrule(...)` then `Dispose()`.
+- **Transient graphics**: `TransientManager.CurrentTransientManager.EraseTransient(...)` for every entity you added.
+- **Static caches holding `DBObject`/`Document`/`Editor` references**: clear them.
+
+When in doubt whether something pins the assembly: ask "does AutoCAD hold a delegate or COM reference to anything in my DLL after Initialize returns?" If yes, that reference must be released in `Terminate()`.
+
+**Why commands are NOT a useful symptom.** AutoCAD's command dispatcher resolves a command name to its LATEST registration — load a second assembly with the same `[CommandMethod("MYCMD")]` and `MYCMD` runs the new one, regardless of whether the old DLL is still pinned. So if you ship a code change and `acad_send_command("MYCMD\n")` produces the new behaviour, that proves NOTHING about whether `Terminate()` unpinned the old assembly. Use events, palette visibility, and memory growth as the diagnostic signals instead. Confirm the loaded DLL via `devreload_get_assembly_info`; if its timestamp matches the just-built one, the bug is in `Terminate()`, not in the build.
+</terminate-must-unpin-everything>
+
+<use-static-fields-for-cleanup-state>
+On assembly load, AutoCAD's `ExtensionLoader` scans for `IExtensionApplication` implementations, instantiates each, and calls `Initialize()`. DevReload, on the unload path, holds its own instance of the same class (created via `Activator.CreateInstance` so it can hold a typed reference) and calls `Terminate()` on THAT one. **The two instances are different objects** — instance fields written in `Initialize()` are invisible to `Terminate()`. (`[assembly: ExtensionApplication]` is optional; AutoCAD finds the type via the interface scan regardless.)
+
+The workaround is mechanical: put every piece of cleanup state in a `static` field, and `Initialize()` / `Terminate()` can do as much wiring/teardown as the plugin needs.
+
+```csharp
+public class MyPlugin : IExtensionApplication
+{
+    private static PaletteSet? _palette;
+    internal static AcadEventManager? Events { get; private set; }
+
+    public void Initialize()
+    {
+        Events = new AcadEventManager();
+        // ...wire services, register lifecycle hooks, hand
+        // dependencies to your AppContext / DI root, etc.
+    }
+
+    public void Terminate()
+    {
+        Events?.Dispose();
+        Events = null;
+
+        if (_palette != null)
+        {
+            _palette.Close();
+            _palette.Dispose();
+            _palette = null;
+        }
+        // ...null any other app-scope static slots the plugin populated.
+    }
+}
+```
+
+Rich `Initialize()` / `Terminate()` bodies are the norm in production plugins (palettes, lifecycle hooks, dependency-injection root wiring, MessagePack/QuestPDF setup, service registrations). The dual-instance constraint just means **every named slot the teardown touches must be `static`** — nothing more.
+
+Symptom of an instance-field mistake: `Terminate()` runs (you see the log line) but the palette stays open and the events keep firing, because the fields it nulled out were on the wrong instance.
+</use-static-fields-for-cleanup-state>
+
+<event-subscriptions-via-acadeventmanager>
+DevReload ships `src/EventManager/AcadEventManager.cs` as a **shared project** — import it via `<Import Project="..\..\src\EventManager\EventManager.projitems" />` (or equivalent). It compiles into the plugin DLL, no NuGet, no extra dependency.
+
+It exists because naive event cleanup breaks in two ways that are silent in Release and lethal in Debug:
+
+1. You captured `Application.DocumentManager.MdiActiveDocument` to unsubscribe from in `Terminate()` — the user switched documents in the meantime, so `MdiActiveDocument -= handler` targets the wrong doc and the original handler stays bound across reloads.
+2. You stored the original `Document` reference — but the user closed that document, so the stored reference is dead and `-=` is a silent no-op.
+
+`AcadEventManager` records an unsubscribe `Action` per `Document`, auto-cleans on `DocumentToBeDestroyed`, and bulk-cleans on `Dispose()`. Pattern:
+
+```csharp
+var doc = Application.DocumentManager.MdiActiveDocument;
+doc.CommandEnded += OnCommandEnded;
+MyPlugin.Events!.Track(doc, () => doc.CommandEnded -= OnCommandEnded);
+
+// In Terminate():
+_events?.Dispose();   // unsubscribes every tracked handler across every document
+```
+
+Use it for every event subscription touching AutoCAD's `Application.*`, `DocumentManager.*`, or per-`Document` events. If you find yourself writing a manual `List<Action> _unsubscribes` field, stop — that's what `AcadEventManager` is.
+</event-subscriptions-via-acadeventmanager>
+</reload-safe-plugin-shape>
+
 <gotchas>
 Lessons that bite repeatedly. Each is directly actionable from this skill.
 
 1. **Build/test loop is `acad_start` → `acad_wait_pipe` → `devreload_register_new_plugin` (first time only) → `devreload_reload` → `acad_send_command`.** Memorise this sequence; deviating wastes round-trips.
-2. **Commands MUST register via `Utils.AddCommand`, not `CommandClass.AddCommand`.** First is removable; second is permanent for the process and produces `eDuplicateKey` on the second `devreload_reload`. DevReload's own `CommandRegistrar` scans `[CommandMethod]` and uses the removable path — if you hand-roll command registration in a plugin, mirror that.
+2. **Commands MUST register via `Utils.AddCommand`, not `CommandClass.AddCommand`.** First is removable; second is permanent for the process and produces `eDuplicateKey` on the second `devreload_reload`. DevReload's own `CommandRegistrar` scans `[CommandMethod]` and uses the removable path — if you hand-roll command registration in a plugin, mirror that. Plugin assemblies MUST also suppress AutoCAD's own scan with `NoCommands` — see `<reload-safe-plugin-shape>`.
 3. **`Assembly.Location` is empty under stream-loading.** Code that reads sidecar files via `Path.GetDirectoryName(typeof(X).Assembly.Location)` returns `""` then NREs. Use `AppDomain.BaseDirectory` or store the path at load time via assembly metadata.
 4. **WPF XAML resolves types in the DEFAULT ALC, not the plugin ALC.** Anything referenced from XAML (custom controls, converters, value-template targets) MUST be in shared-assemblies via `devreload_write_shared_assemblies`. Symptom: `XamlParseException` naming a type that compiles fine.
 5. **`Database.Dispose()` does NOT synchronously release the OS file handle** (finalizer-driven). Open-dispose-then-reopen-for-write races the OS share rules. Use `FileShare.ReadWrite` when a `SaveAs` is in the future. `FileShare.Read` BLOCKS a future writer — it is NOT "the safe default."
