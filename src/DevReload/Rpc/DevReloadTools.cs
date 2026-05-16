@@ -22,7 +22,7 @@ namespace DevReload.Rpc
         [AcadRpcTool, RunOnAcadMainThread,
          Description("Build the plugin from source and load (or reload) it into a fresh isolated ALC. Equivalent to clicking 'Reload' in the palette. If the build fails, the response carries the full build log under 'build'.")]
         public static PluginActionResult Reload(
-            [Description("Registered plugin name as in plugins.json (e.g. \"DevReloadTest\")")] string name) =>
+            [Description("Registered plugin name as in plugins.json (e.g. \"MyPlugin\")")] string name) =>
             PluginManager.DevReload(name);
 
         [AcadRpcTool, RunOnAcadMainThread,

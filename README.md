@@ -91,7 +91,6 @@ Note: This was written by AI, I don't actually know which of these are actually 
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
 </PropertyGroup>
 ```
-See `example/DevReloadTest/DevReloadTest.csproj` for a complete working example.
 
 ## Dual-Mode: Release vs Debug
 

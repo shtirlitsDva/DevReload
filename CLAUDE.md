@@ -12,9 +12,6 @@ DevReload is a hot-reload plugin system for AutoCAD 2025. It uses .NET 8 collect
 # Build the main DevReload project (requires AutoCAD 2025 assemblies)
 dotnet build src/DevReload/DevReload.csproj -c Debug -p:Platform=x64
 
-# Build the example plugin
-dotnet build example/DevReloadTest/DevReloadTest.csproj -c Debug -p:Platform=x64
-
 # Build entire solution
 dotnet build DevReload.sln -c Debug -p:Platform=x64
 
