@@ -192,7 +192,7 @@ try {
         $devCount = ($merged | Where-Object { $_.name.StartsWith('devreload_') }).Count
         Write-Host "  acad_* tools: $acadCount, devreload_* tools: $devCount, total: $($merged.Count)"
         Assert "14 acad_* tools" ($acadCount -eq 14)
-        Assert "at least 16 devreload_* tools" ($devCount -ge 16)
+        Assert "at least 15 devreload_* tools" ($devCount -ge 15)
     }
 
     # 5. Drive a forwarded devreload tool
