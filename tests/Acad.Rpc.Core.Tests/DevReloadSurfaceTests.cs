@@ -95,7 +95,7 @@ public class DevReloadSurfaceTests
     [InlineData("devreload_list_worktrees", "repoRoot")]
     [InlineData("devreload_read_shared_assemblies", "buildDir")]
     [InlineData("devreload_write_shared_assemblies", "buildDir", "sharedAssemblies", "mixedModeAssemblies", "streamedAssemblies")]
-    [InlineData("devreload_register_new_plugin", "name", "projectFilePath", "dllPath", "buildConfiguration", "commandPrefix", "loadOnStartup")]
+    [InlineData("devreload_register_new_plugin", "projectFilePath", "buildConfiguration", "commandPrefix", "loadOnStartup")]
     public async System.Threading.Tasks.Task DevReloadTool_HasExpectedInputSchemaProperties(string toolName, params string[] expectedProps)
     {
         var host = NewHost();

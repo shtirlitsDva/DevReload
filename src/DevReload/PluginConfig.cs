@@ -79,37 +79,63 @@ namespace DevReload
         }
 
         /// <summary>
-        /// Add a plugin entry to plugins.json and register it with
-        /// PluginManager + create its loader commands. The "add plugin"
-        /// flow as a single call, consolidating what the palette UI does
-        /// across <see cref="DevReloaderCommands.RegisterFromConfig"/>
-        /// and <see cref="Save"/>.
-        /// Idempotent on the plugin name: already-registered names
-        /// return Success=false rather than throw, so the agent can
-        /// safely re-issue.
+        /// Add a plugin to plugins.json and register it with PluginManager
+        /// + create its loader commands. Sole entry point for "add a new
+        /// plugin" — palette UI and MCP register_new_plugin tool both call
+        /// this. Plugin name is the csproj file name (renaming is not
+        /// supported); dllPath is resolved via MSBuild's TargetPath for
+        /// the requested configuration.
+        /// Idempotent: already-registered names return Success=false
+        /// rather than throw, so the caller can safely re-issue.
         /// </summary>
-        public static RegisterPluginResult RegisterNewPlugin(PluginEntry entry)
+        public static RegisterPluginResult RegisterNewPlugin(
+            string projectFilePath,
+            string buildConfiguration = "Debug",
+            string? commandPrefix = null,
+            bool loadOnStartup = false)
         {
-            if (entry == null) throw new ArgumentNullException(nameof(entry));
-            if (string.IsNullOrWhiteSpace(entry.Name))
-                return new RegisterPluginResult(false, "", "name is required");
-            if (string.IsNullOrWhiteSpace(entry.ProjectFilePath))
-                return new RegisterPluginResult(false, entry.Name, "projectFilePath is required");
+            if (string.IsNullOrWhiteSpace(projectFilePath))
+                return new RegisterPluginResult(false, "", "projectFilePath is required");
 
-            if (PluginManager.IsRegistered(entry.Name))
-                return new RegisterPluginResult(false, entry.Name, "already registered");
+            string name = Path.GetFileNameWithoutExtension(projectFilePath);
+            if (string.IsNullOrWhiteSpace(name))
+                return new RegisterPluginResult(false, "",
+                    $"could not derive plugin name from '{projectFilePath}'");
+
+            string? dllPath = DevReloadService.QueryMsBuildProperty(
+                projectFilePath, "TargetPath", buildConfiguration);
+            if (string.IsNullOrEmpty(dllPath))
+                return new RegisterPluginResult(false, name,
+                    $"could not resolve TargetPath for '{name}' ({buildConfiguration}). " +
+                    "Restore/build the project at least once and try again.");
+
+            if (PluginManager.IsRegistered(name))
+                return new RegisterPluginResult(false, name, "already registered");
 
             PluginConfig config = Load() ?? new PluginConfig();
             if (config.Plugins.Any(p =>
-                    p.Name.Equals(entry.Name, StringComparison.OrdinalIgnoreCase)))
+                    p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
             {
-                return new RegisterPluginResult(false, entry.Name, "already in plugins.json");
+                return new RegisterPluginResult(false, name, "already in plugins.json");
             }
+
+            var entry = new PluginEntry
+            {
+                Name = name,
+                ProjectFilePath = projectFilePath,
+                DllPath = dllPath,
+                BuildConfiguration = buildConfiguration,
+                CommandPrefix = string.IsNullOrWhiteSpace(commandPrefix)
+                    ? null
+                    : commandPrefix.Trim().ToUpperInvariant(),
+                LoadOnStartup = loadOnStartup,
+            };
+
             config.Plugins.Add(entry);
             Save(config);
 
             DevReloaderCommands.RegisterFromConfig(entry);
-            return new RegisterPluginResult(true, entry.Name, "registered");
+            return new RegisterPluginResult(true, name, "registered");
         }
 
         /// <summary>Update a single plugin entry in plugins.json and

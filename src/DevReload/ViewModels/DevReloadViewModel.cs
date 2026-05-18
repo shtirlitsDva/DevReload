@@ -41,8 +41,7 @@ namespace DevReload.ViewModels
         [ObservableProperty] private string _newPluginPrefix = "";
         [ObservableProperty] private bool _newPluginLoadOnStartup;
 
-        private sealed record PendingPlugin(string CsprojPath, string DllPath);
-        private PendingPlugin? _pendingPlugin;
+        private string? _pendingCsprojPath;
 
         // ── Construction ──────────────────────────────────────────────
 
@@ -114,8 +113,6 @@ namespace DevReload.ViewModels
         [RelayCommand]
         private void ShowAddPlugin()
         {
-            var ed = Application.DocumentManager.MdiActiveDocument?.Editor;
-
             var dialog = new Microsoft.Win32.OpenFileDialog
             {
                 Title = "Select a .csproj to register as a DevReload plugin",
@@ -124,31 +121,8 @@ namespace DevReload.ViewModels
             };
             if (dialog.ShowDialog() != true) return;
 
-            string csproj = dialog.FileName;
-            string projectName = Path.GetFileNameWithoutExtension(csproj);
-
-            if (_config.Plugins.Any(p =>
-                    p.Name.Equals(projectName, StringComparison.OrdinalIgnoreCase)))
-            {
-                ed?.WriteMessage($"\nA plugin named '{projectName}' is already registered.");
-                return;
-            }
-
-            // Ask MSBuild where the assembly will land — same path the build
-            // flow uses. If the project hasn't been restored at least once
-            // the property comes back empty; we refuse to register a half-
-            // configured entry rather than guess at bin\Debug.
-            string? dllPath = DevReloadService.QueryMsBuildProperty(csproj, "TargetPath", "Debug");
-            if (string.IsNullOrEmpty(dllPath))
-            {
-                ed?.WriteMessage(
-                    $"\nFailed to resolve TargetPath for '{projectName}'. " +
-                    "Restore/build the project at least once and try again.");
-                return;
-            }
-
-            _pendingPlugin = new PendingPlugin(csproj, dllPath);
-            NewPluginName = projectName;
+            _pendingCsprojPath = dialog.FileName;
+            NewPluginName = Path.GetFileNameWithoutExtension(_pendingCsprojPath);
             NewPluginPrefix = "";
             NewPluginLoadOnStartup = false;
             IsAddingPlugin = true;
@@ -157,30 +131,43 @@ namespace DevReload.ViewModels
         [RelayCommand]
         private void ConfirmAddPlugin()
         {
-            if (_pendingPlugin == null || string.IsNullOrWhiteSpace(NewPluginName))
+            if (string.IsNullOrWhiteSpace(_pendingCsprojPath))
                 return;
 
-            string name = NewPluginName.Trim();
+            var ed = Application.DocumentManager.MdiActiveDocument?.Editor;
 
-            var entry = new PluginEntry
+            // Same single entry point the MCP register_new_plugin tool uses:
+            // derives name from the csproj filename, resolves dllPath via
+            // MSBuild, persists to plugins.json, wires PluginManager and the
+            // LOAD/DEV/UNLOAD commands.
+            var result = PluginConfigLoader.RegisterNewPlugin(
+                _pendingCsprojPath,
+                buildConfiguration: "Debug",
+                commandPrefix: string.IsNullOrWhiteSpace(NewPluginPrefix)
+                    ? null : NewPluginPrefix,
+                loadOnStartup: NewPluginLoadOnStartup);
+
+            if (!result.Success)
             {
-                Name = name,
-                CommandPrefix = string.IsNullOrWhiteSpace(NewPluginPrefix)
-                    ? null : NewPluginPrefix.Trim().ToUpperInvariant(),
-                DllPath = _pendingPlugin.DllPath,
-                ProjectFilePath = _pendingPlugin.CsprojPath,
-                LoadOnStartup = NewPluginLoadOnStartup,
-            };
+                ed?.WriteMessage($"\nAdd Plugin failed: {result.Message}");
+                return;
+            }
 
-            // Same unified call the RPC tool register_new_plugin uses:
-            // persists to plugins.json AND wires the registration into
-            // PluginManager + creates the LOAD/DEV/UNLOAD commands. No
-            // separate "palette persistence" path.
-            var result = PluginConfigLoader.RegisterNewPlugin(entry);
-            if (!result.Success) return;
+            // The disk + PluginManager + command tables are all current.
+            // Mirror the registered entry into the bound _config so the
+            // palette's other state (NSLOAD csv path, etc.) survives, and
+            // append a single VM for the new plugin.
+            var fresh = PluginConfigLoader.Load() ?? new PluginConfig();
+            var entry = fresh.Plugins.FirstOrDefault(
+                p => p.Name.Equals(result.Name, StringComparison.OrdinalIgnoreCase));
+            if (entry == null)
+            {
+                ed?.WriteMessage(
+                    $"\nAdd Plugin: registration reported success but '{result.Name}' " +
+                    "not found in plugins.json on re-read.");
+                return;
+            }
 
-            // Refresh the binding source (_config) so the new entry shows
-            // up in the palette. The disk file is already current.
             _config.Plugins.Add(entry);
 
             var vm = new PluginItemViewModel(entry);
@@ -189,12 +176,14 @@ namespace DevReload.ViewModels
             Plugins.Add(vm);
             HasPlugins = true;
 
+            _pendingCsprojPath = null;
             IsAddingPlugin = false;
         }
 
         [RelayCommand]
         private void CancelAddPlugin()
         {
+            _pendingCsprojPath = null;
             IsAddingPlugin = false;
         }
 

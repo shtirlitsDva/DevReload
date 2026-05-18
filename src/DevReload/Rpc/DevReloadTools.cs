@@ -136,23 +136,14 @@ namespace DevReload.Rpc
         // ── Registration ─────────────────────────────────────────────
 
         [AcadRpcTool, RunOnAcadMainThread,
-         Description("Register a new plugin with DevReload and persist it to plugins.json. After this call the plugin is available for load via this surface's load_plugin tool or the generated AutoCAD {prefix}LOAD command.")]
+         Description("Register a new plugin with DevReload and persist it to plugins.json. The plugin name is the csproj filename (renaming is not supported); dllPath is resolved via MSBuild's TargetPath for the requested configuration, so the project must have been restored/built at least once. After this call the plugin is available for load via this surface's load_plugin tool or the generated AutoCAD {prefix}LOAD command.")]
         public static RegisterPluginResult RegisterNewPlugin(
-            [Description("Plugin display name; also the registered key")] string name,
-            [Description("Absolute path to the .csproj")] string projectFilePath,
-            [Description("Absolute path to the built DLL (typically bin/Debug/{config}/{assembly}.dll)")] string dllPath,
-            [Description("'Debug' or 'Release' (default Debug)")] string buildConfiguration = "Debug",
+            [Description("Absolute path to the .csproj. The plugin name is the file name without extension; renaming is not supported.")] string projectFilePath,
+            [Description("'Debug' or 'Release' (default Debug). Determines which TargetPath MSBuild resolves for the auto-derived dllPath.")] string buildConfiguration = "Debug",
             [Description("Optional command prefix for the generated {prefix}LOAD/DEV/UNLOAD commands")] string? commandPrefix = null,
             [Description("Auto-load at AutoCAD startup")] bool loadOnStartup = false) =>
-            PluginConfigLoader.RegisterNewPlugin(new PluginEntry
-            {
-                Name = name,
-                ProjectFilePath = projectFilePath,
-                DllPath = dllPath,
-                BuildConfiguration = buildConfiguration,
-                CommandPrefix = commandPrefix,
-                LoadOnStartup = loadOnStartup,
-            });
+            PluginConfigLoader.RegisterNewPlugin(
+                projectFilePath, buildConfiguration, commandPrefix, loadOnStartup);
 
     }
 }
