@@ -6,9 +6,8 @@ using System.Runtime.InteropServices.ComTypes;
 namespace Acad.Process;
 
 /// <summary>
-/// Enumerates entries in the COM Running Object Table — the same
-/// mechanism <c>VsInstanceFinder</c> uses for VS DTE discovery. Each
-/// yielded entry is (moniker display name, live object). Callers are
+/// Enumerates entries in the COM Running Object Table. Each yielded
+/// entry is (moniker display name, live object). Callers are
 /// responsible for releasing objects they keep references to.
 /// </summary>
 internal static class RotEnumerator

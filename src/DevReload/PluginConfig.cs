@@ -19,7 +19,6 @@ namespace DevReload
     {
         public string Name { get; set; } = "";
         public string? DllPath { get; set; }
-        public string? VsProject { get; set; }
         public string? CommandPrefix { get; set; }
         public bool LoadOnStartup { get; set; }
         public string? ProductionTarget { get; set; }

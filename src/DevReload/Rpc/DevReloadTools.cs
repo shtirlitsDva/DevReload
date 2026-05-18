@@ -97,11 +97,6 @@ namespace DevReload.Rpc
             [Description("Configuration: 'Debug' or 'Release'")] string buildConfiguration) =>
             DevReloadService.BuildProject(csprojPath, buildConfiguration, ed: null);
 
-        [AcadRpcTool, RunOnAcadMainThread,
-         Description("Enumerate projects in running Visual Studio instances via COM. Returns project name + Debug-config DLL path + .csproj.")]
-        public static IReadOnlyList<VsProjectInfo> GetAvailableProjects() =>
-            DevReloadService.GetAvailableProjects(ed: null);
-
         // ── Worktree ─────────────────────────────────────────────────
 
         [AcadRpcTool,

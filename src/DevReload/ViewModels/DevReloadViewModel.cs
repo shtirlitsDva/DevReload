@@ -1,11 +1,9 @@
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
 using System.Windows.Data;
 
 using Autodesk.AutoCAD.ApplicationServices;
@@ -43,7 +41,8 @@ namespace DevReload.ViewModels
         [ObservableProperty] private string _newPluginPrefix = "";
         [ObservableProperty] private bool _newPluginLoadOnStartup;
 
-        private VsProjectInfo? _selectedProject;
+        private sealed record PendingPlugin(string CsprojPath, string DllPath);
+        private PendingPlugin? _pendingPlugin;
 
         // ── Construction ──────────────────────────────────────────────
 
@@ -116,22 +115,40 @@ namespace DevReload.ViewModels
         private void ShowAddPlugin()
         {
             var ed = Application.DocumentManager.MdiActiveDocument?.Editor;
-            var projects = DevReloadService.GetAvailableProjects(ed);
-            if (projects.Count == 0) return;
 
-            bool multipleInstances = projects.Select(p => p.SolutionName).Distinct().Count() > 1;
-            var displayNames = projects.Select(p =>
-                multipleInstances ? $"{p.SolutionName}:{p.Name}" : p.Name).ToList();
+            var dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Select a .csproj to register as a DevReload plugin",
+                Filter = "C# project (*.csproj)|*.csproj",
+                CheckFileExists = true,
+            };
+            if (dialog.ShowDialog() != true) return;
 
-            string? selection = IntersectUtilities.StringGridFormCaller.Call(
-                displayNames, "Select a project to register:");
-            if (string.IsNullOrEmpty(selection)) return;
+            string csproj = dialog.FileName;
+            string projectName = Path.GetFileNameWithoutExtension(csproj);
 
-            int idx = displayNames.IndexOf(selection);
-            if (idx < 0) return;
+            if (_config.Plugins.Any(p =>
+                    p.Name.Equals(projectName, StringComparison.OrdinalIgnoreCase)))
+            {
+                ed?.WriteMessage($"\nA plugin named '{projectName}' is already registered.");
+                return;
+            }
 
-            _selectedProject = projects[idx];
-            NewPluginName = _selectedProject.Name;
+            // Ask MSBuild where the assembly will land — same path the build
+            // flow uses. If the project hasn't been restored at least once
+            // the property comes back empty; we refuse to register a half-
+            // configured entry rather than guess at bin\Debug.
+            string? dllPath = DevReloadService.QueryMsBuildProperty(csproj, "TargetPath", "Debug");
+            if (string.IsNullOrEmpty(dllPath))
+            {
+                ed?.WriteMessage(
+                    $"\nFailed to resolve TargetPath for '{projectName}'. " +
+                    "Restore/build the project at least once and try again.");
+                return;
+            }
+
+            _pendingPlugin = new PendingPlugin(csproj, dllPath);
+            NewPluginName = projectName;
             NewPluginPrefix = "";
             NewPluginLoadOnStartup = false;
             IsAddingPlugin = true;
@@ -140,7 +157,7 @@ namespace DevReload.ViewModels
         [RelayCommand]
         private void ConfirmAddPlugin()
         {
-            if (_selectedProject == null || string.IsNullOrWhiteSpace(NewPluginName))
+            if (_pendingPlugin == null || string.IsNullOrWhiteSpace(NewPluginName))
                 return;
 
             string name = NewPluginName.Trim();
@@ -150,9 +167,8 @@ namespace DevReload.ViewModels
                 Name = name,
                 CommandPrefix = string.IsNullOrWhiteSpace(NewPluginPrefix)
                     ? null : NewPluginPrefix.Trim().ToUpperInvariant(),
-                DllPath = _selectedProject.DebugDllPath,
-                VsProject = _selectedProject.Name,
-                ProjectFilePath = _selectedProject.ProjectFilePath,
+                DllPath = _pendingPlugin.DllPath,
+                ProjectFilePath = _pendingPlugin.CsprojPath,
                 LoadOnStartup = NewPluginLoadOnStartup,
             };
 
