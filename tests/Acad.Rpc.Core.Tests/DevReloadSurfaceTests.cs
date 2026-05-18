@@ -40,7 +40,6 @@ public class DevReloadSurfaceTests
         "devreload_update_active_worktree",
         // Build
         "devreload_build_project",
-        "devreload_get_available_projects",
         // Worktree
         "devreload_list_worktrees",
         // Shared assemblies

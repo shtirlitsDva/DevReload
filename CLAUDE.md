@@ -35,7 +35,6 @@ The system has a clear layered architecture centered around plugin lifecycle man
 **Build system** (`DevReloadService`):
 - Queries output path via `dotnet msbuild -getProperty:TargetPath`
 - Builds via `dotnet build "{csproj}" -c {config} -p:Platform=x64`
-- Also handles VS COM project discovery for the "Add Plugin" flow (`GetAvailableProjects`)
 
 **Command registration** (`CommandRegistrar`):
 - Scans loaded assemblies for `[CommandMethod]` attributes
@@ -44,7 +43,6 @@ The system has a clear layered architecture centered around plugin lifecycle man
 
 **Supporting services**:
 - `GitWorktreeService` — detects worktrees, remaps `.csproj` paths for worktree builds
-- `VsInstanceFinder` — COM ROT enumeration to find running VS instances
 - `PluginConfigLoader` — JSON serialization of `plugins.json`, includes migration logic for old config format
 - `NsloadAppRegistry` — reads NSLOAD's CSV + config.json for "Push to Production" feature
 
