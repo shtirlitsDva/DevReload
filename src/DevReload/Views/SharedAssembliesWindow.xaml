@@ -2,51 +2,73 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Shared Assemblies"
-        Width="520" Height="500"
+        Width="520" Height="540"
         WindowStartupLocation="CenterScreen"
-        Background="#3B4453">
+        Style="{DynamicResource RootWindow}">
     <Window.Resources>
-        <SolidColorBrush x:Key="FgBrush" Color="#E2E8F0"/>
-        <SolidColorBrush x:Key="MutedBrush" Color="#A0AEC0"/>
-        <SolidColorBrush x:Key="SurfaceBrush" Color="#2D3442"/>
-        <SolidColorBrush x:Key="AccentBrush" Color="#63B3ED"/>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Relative path (NOT pack://...;component) — required for the
+                     dictionary to resolve when loaded by AutoCAD. -->
+                <ResourceDictionary Source="../Themes/Theme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
     </Window.Resources>
 
     <DockPanel Margin="12">
         <!-- Header -->
         <TextBlock DockPanel.Dock="Top"
                    Text="Select assemblies to load into the default ALC"
-                   Foreground="{StaticResource MutedBrush}"
-                   FontSize="12" Margin="0,0,0,4"/>
+                   Style="{StaticResource Hint}" Margin="0,0,0,10"/>
+
+        <!-- Copy-from row -->
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,8"
+              Visibility="{Binding HasSources, Converter={StaticResource BoolToVis}}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="Copy config from:"
+                       Style="{StaticResource Caption}"
+                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <ComboBox Grid.Column="1"
+                      Style="{StaticResource DarkComboBox}"
+                      ItemsSource="{Binding Sources}"
+                      SelectedItem="{Binding SelectedSource}"
+                      VerticalAlignment="Center"/>
+            <Button Grid.Column="2"
+                    Style="{StaticResource RowSurfaceBtn}"
+                    Content="Copy"
+                    Margin="8,0,0,0"
+                    Command="{Binding CopyFromCommand}"
+                    ToolTip="Copy the shared-assembly selection from the chosen branch (DLLs missing here are skipped)"/>
+        </Grid>
+
+        <!-- Copy result / warning -->
         <TextBlock DockPanel.Dock="Top"
-                   Text="(required for WPF XAML-referenced NuGets like OxyPlot)"
-                   Foreground="{StaticResource MutedBrush}"
-                   FontSize="11" FontStyle="Italic" Margin="0,0,0,10"/>
+                   Text="{Binding CopyStatus}"
+                   Style="{StaticResource Caption}"
+                   TextWrapping="Wrap" Margin="0,0,0,8"
+                   Visibility="{Binding HasCopyStatus, Converter={StaticResource BoolToVis}}"/>
 
         <!-- Buttons -->
         <StackPanel DockPanel.Dock="Bottom"
                     Orientation="Horizontal"
                     HorizontalAlignment="Right"
                     Margin="0,10,0,0">
-            <Button Content="Cancel" Padding="12,6"
-                    Background="{StaticResource SurfaceBrush}"
-                    Foreground="{StaticResource FgBrush}"
-                    BorderThickness="0" Cursor="Hand"
+            <Button Content="Cancel"
+                    Style="{StaticResource DialogSurfaceBtn}"
                     Click="Cancel_Click" Margin="0,0,8,0"/>
-            <Button Content="Save" Padding="12,6"
-                    Background="{StaticResource AccentBrush}"
-                    Foreground="White" FontWeight="SemiBold"
-                    BorderThickness="0" Cursor="Hand"
+            <Button Content="Save"
+                    Style="{StaticResource DialogAccentBtn}"
                     Command="{Binding SaveCommand}"
                     Click="Save_Click"/>
         </StackPanel>
 
         <!-- Assembly list -->
-        <Border Background="{StaticResource SurfaceBrush}"
-                CornerRadius="4" Padding="4">
+        <Border Style="{StaticResource ListPanel}">
             <ListBox ItemsSource="{Binding Assemblies}"
-                     Background="Transparent"
-                     BorderThickness="0"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
@@ -59,39 +81,24 @@
                             <CheckBox Grid.Column="0"
                                       IsChecked="{Binding IsSelected}"
                                       Content="{Binding Name}"
-                                      Foreground="{StaticResource FgBrush}"
-                                      FontSize="12" Margin="4,3"/>
+                                      Margin="4,3"/>
                             <CheckBox Grid.Column="1"
+                                      Style="{StaticResource CaptionCheckBox}"
                                       IsChecked="{Binding IsMixedMode}"
                                       Content="C++/CLI"
-                                      Foreground="{StaticResource MutedBrush}"
-                                      FontSize="10" Margin="4,3"
+                                      Margin="4,3"
                                       IsEnabled="{Binding CanEnableMixedMode}"
                                       ToolTip="Mark as mixed-mode (C++/CLI) assembly — auto-creates runtimeconfig.json"/>
                             <CheckBox Grid.Column="2"
+                                      Style="{StaticResource CaptionCheckBox}"
                                       IsChecked="{Binding IsStreamed}"
                                       Content="Stream (no lock)"
-                                      Foreground="{StaticResource MutedBrush}"
-                                      FontSize="10" Margin="4,3"
+                                      Margin="4,3"
                                       IsEnabled="{Binding CanEnableStreamed}"
                                       ToolTip="Load via Assembly.Load(byte[]) — releases the DLL file lock so the project can be rebuilt without restarting AutoCAD. The running image stays loaded; restart AutoCAD to pick up code changes."/>
                         </Grid>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
-                <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
-                        <Setter Property="Background" Value="Transparent"/>
-                        <Setter Property="Padding" Value="0"/>
-                        <Setter Property="Margin" Value="0"/>
-                        <Setter Property="Template">
-                            <Setter.Value>
-                                <ControlTemplate TargetType="ListBoxItem">
-                                    <ContentPresenter/>
-                                </ControlTemplate>
-                            </Setter.Value>
-                        </Setter>
-                    </Style>
-                </ListBox.ItemContainerStyle>
             </ListBox>
         </Border>
     </DockPanel>

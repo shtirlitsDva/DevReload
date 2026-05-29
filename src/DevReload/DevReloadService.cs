@@ -89,9 +89,25 @@ namespace DevReload
             return new BuildResult(true, targetPath, summary.Warnings, summary.Errors, log);
         }
 
-        // Internal so DevReloadViewModel.SharedAssemblies can ask MSBuild for the
-        // effective TargetPath without depending on a stale entry.DllPath. Reading
-        // an MSBuild property does not invoke a full build, so this stays cheap.
+        // Build output directory for a plugin selection (worktree + configuration),
+        // or null when MSBuild can't resolve it yet (e.g. the worktree has never
+        // been built/restored). NO fallback: null means "not resolvable / not
+        // built" and the caller must handle it (e.g. tell the user to build first).
+        internal static string? ResolveBuildDir(
+            string projectFilePath, string? activeWorktreePath, string buildConfiguration)
+        {
+            string csproj = GitWorktreeService.ResolveActiveCsproj(
+                projectFilePath, activeWorktreePath);
+            string? targetPath = QueryMsBuildProperty(
+                csproj, "TargetPath", buildConfiguration);
+            return string.IsNullOrEmpty(targetPath)
+                ? null
+                : Path.GetDirectoryName(targetPath);
+        }
+
+        // Asks MSBuild for an evaluated property (e.g. TargetPath) without a stale
+        // entry.DllPath. Reading a property does not invoke a full build, so this
+        // stays cheap. Wrapped by ResolveBuildDir and used by BuildProject.
         internal static string? QueryMsBuildProperty(
             string csprojPath, string propertyName, string buildConfiguration)
         {

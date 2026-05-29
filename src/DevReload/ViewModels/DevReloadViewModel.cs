@@ -1,10 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Data;
+using System.Windows.Threading;
 
 using Autodesk.AutoCAD.ApplicationServices;
 
@@ -99,6 +102,18 @@ namespace DevReload.ViewModels
 
             var vm = Plugins.FirstOrDefault(p => p.Name == name);
             vm?.RefreshWorktrees();
+        }
+
+        // "Build only" flyout: build the current selection without loading, so a
+        // freshly-selected worktree gets its DLLs and Shared can be configured.
+        [RelayCommand]
+        private void BuildOnlyPlugin(string name)
+        {
+            PluginManager.BuildOnly(name);
+            RefreshStates();
+
+            var vm = Plugins.FirstOrDefault(p => p.Name == name);
+            vm?.RefreshSharedConfig();
         }
 
         [RelayCommand]
@@ -241,77 +256,112 @@ namespace DevReload.ViewModels
                 p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
             if (entry == null) return;
 
-            // Resolve the build directory via the csproj's MSBuild TargetPath
-            // (worktree-aware). The file we read/write lives inside that dir,
-            // so the dialog automatically reflects the active worktree.
-            string pluginDir = ResolveEffectivePluginDir(entry);
-
-            if (string.IsNullOrEmpty(pluginDir) || !Directory.Exists(pluginDir))
+            if (string.IsNullOrEmpty(entry.ProjectFilePath))
             {
                 System.Windows.MessageBox.Show(
-                    $"Plugin directory not found:\n{pluginDir}",
+                    "No project file is recorded for this plugin, so its build " +
+                    "directory can't be resolved.",
                     "Shared Assemblies",
                     System.Windows.MessageBoxButton.OK,
                     System.Windows.MessageBoxImage.Warning);
                 return;
             }
 
+            string? buildDir;
+            try
+            {
+                buildDir = DevReloadService.ResolveBuildDir(
+                    entry.ProjectFilePath, entry.ActiveWorktreePath,
+                    entry.BuildConfiguration);
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show(
+                    ex.Message, "Shared Assemblies",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+                return;
+            }
+
+            // Build-first: the dialog configures the worktree's REAL DLLs, so the
+            // selected branch/config must have been built. If not, send the user
+            // to the Reload flyout's "Build only" — no guessing, no fallback dir.
+            if (string.IsNullOrEmpty(buildDir)
+                || !Directory.Exists(buildDir)
+                || !Directory.EnumerateFiles(buildDir, "*.dll").Any())
+            {
+                System.Windows.MessageBox.Show(
+                    "This branch / configuration hasn't been built yet, so there " +
+                    "are no assemblies to configure.\n\n" +
+                    "Build it first via the Reload ▾ menu → \"Build only\", " +
+                    "then open Shared again.",
+                    "Shared Assemblies",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Information);
+                return;
+            }
+
             // Seed dialog state from the per-build config file. Missing file =
             // empty seed; no fallback to plugins.json.
-            var current = SharedAssembliesFile.Read(pluginDir);
+            var current = SharedAssembliesFile.Read(buildDir);
+            var sources = DiscoverCopyFromSources(entry, buildDir);
+
             var vm = new SharedAssembliesViewModel(
-                pluginDir,
+                buildDir,
                 current.SharedAssemblies,
                 current.MixedModeAssemblies,
-                current.StreamedAssemblies);
+                current.StreamedAssemblies,
+                sources);
             var win = new SharedAssembliesWindow { DataContext = vm };
 
             if (win.ShowDialog() == true && vm.Saved)
             {
                 SharedAssembliesFile.Write(
-                    pluginDir,
+                    buildDir,
                     vm.GetSelectedNames(),
                     vm.GetMixedModeNames(),
                     vm.GetStreamedNames());
+
+                Plugins.FirstOrDefault(p => p.Name == name)?.RefreshSharedConfig();
             }
         }
 
-        // Returns the directory whose SharedAssemblies.Config.json is the
-        // configuration source for the currently-selected build of this
-        // plugin: csproj → worktree-remapped csproj → MSBuild TargetPath →
-        // parent directory. Last-resort safety net: entry.DllPath's directory
-        // for cases where MSBuild can't be queried (no csproj recorded,
-        // repo-root lookup fails, dotnet not on PATH, etc.).
-        private static string ResolveEffectivePluginDir(PluginEntry entry)
+        // Other worktrees/branches whose build dir already holds a
+        // SharedAssemblies.Config.json the user can copy from. The repo-relative
+        // bin path is identical across worktrees, so we derive each candidate's
+        // build dir by swapping the worktree root onto the current build dir — no
+        // extra MSBuild queries. Only dirs whose config file actually exists are
+        // offered.
+        private static List<SharedConfigSource> DiscoverCopyFromSources(
+            PluginEntry entry, string currentBuildDir)
         {
-            string Fallback() =>
-                !string.IsNullOrEmpty(entry.DllPath)
-                    ? Path.GetDirectoryName(entry.DllPath)!
-                    : "";
+            var sources = new List<SharedConfigSource>();
+            if (string.IsNullOrEmpty(entry.ProjectFilePath)) return sources;
 
-            if (string.IsNullOrEmpty(entry.ProjectFilePath))
-                return Fallback();
+            string? projectDir = Path.GetDirectoryName(entry.ProjectFilePath);
+            if (projectDir == null) return sources;
 
-            string csproj = entry.ProjectFilePath!;
+            string? repoRoot = GitWorktreeService.GetRepoRoot(projectDir);
+            if (repoRoot == null) return sources;
 
-            if (!string.IsNullOrEmpty(entry.ActiveWorktreePath))
+            string currentRoot = string.IsNullOrEmpty(entry.ActiveWorktreePath)
+                ? repoRoot
+                : entry.ActiveWorktreePath!;
+            string relBin = Path.GetRelativePath(currentRoot, currentBuildDir);
+
+            foreach (var wt in GitWorktreeService.ListWorktrees(repoRoot))
             {
-                string? repoRoot = GitWorktreeService.GetRepoRoot(
-                    Path.GetDirectoryName(csproj)!);
-                if (repoRoot != null)
-                {
-                    csproj = GitWorktreeService.RemapToWorktree(
-                        entry.ProjectFilePath!, repoRoot, entry.ActiveWorktreePath!);
-                }
+                string candidateDir = Path.GetFullPath(Path.Combine(wt.Path, relBin));
+                if (candidateDir.Equals(currentBuildDir, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (!File.Exists(SharedAssembliesFile.PathFor(candidateDir)))
+                    continue;
+
+                string label = wt.IsMain ? $"{wt.Branch} (main)" : wt.Branch;
+                sources.Add(new SharedConfigSource(label, candidateDir));
             }
 
-            string? targetPath = DevReloadService.QueryMsBuildProperty(
-                csproj, "TargetPath", entry.BuildConfiguration);
-
-            if (string.IsNullOrEmpty(targetPath))
-                return Fallback();
-
-            return Path.GetDirectoryName(targetPath)!;
+            return sources;
         }
 
         [RelayCommand]
@@ -321,9 +371,35 @@ namespace DevReload.ViewModels
                 p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
             if (entry == null) return;
 
+            if (string.IsNullOrEmpty(entry.ProjectFilePath))
+            {
+                System.Windows.MessageBox.Show(
+                    "No project file is recorded for this plugin, so its build " +
+                    "directory can't be resolved.",
+                    "Push to Production",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
             // The dev build's SharedAssemblies.Config.json is the source —
             // we copy its contents to the chosen production app's directory.
-            string pluginDir = ResolveEffectivePluginDir(entry);
+            string? pluginDir;
+            try
+            {
+                pluginDir = DevReloadService.ResolveBuildDir(
+                    entry.ProjectFilePath, entry.ActiveWorktreePath,
+                    entry.BuildConfiguration);
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show(
+                    ex.Message, "Push to Production",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+                return;
+            }
+
             if (string.IsNullOrEmpty(pluginDir) || !Directory.Exists(pluginDir))
             {
                 System.Windows.MessageBox.Show(
@@ -454,6 +530,12 @@ namespace DevReload.ViewModels
         [ObservableProperty] private bool _isReleaseBuild;
         [ObservableProperty] private WorktreeItem? _selectedWorktree;
 
+        // Green-tints the "Shared" button when the current branch+config build dir
+        // already has a SharedAssemblies.Config.json.
+        [ObservableProperty] private bool _hasSharedConfig;
+
+        private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
+
         public ObservableCollection<WorktreeItem> Worktrees { get; } = new();
 
         public PluginItemViewModel(PluginEntry entry)
@@ -462,6 +544,8 @@ namespace DevReload.ViewModels
             _loadOnStartup = entry.LoadOnStartup;
             _isReleaseBuild = entry.BuildConfiguration
                 .Equals("Release", StringComparison.OrdinalIgnoreCase);
+
+            RefreshSharedConfig();
         }
 
         partial void OnLoadOnStartupChanged(bool value)
@@ -473,13 +557,60 @@ namespace DevReload.ViewModels
         {
             Entry.BuildConfiguration = value ? "Release" : "Debug";
             PluginManager.UpdateBuildConfiguration(Name, Entry.BuildConfiguration);
+            RefreshSharedConfig();
         }
 
         partial void OnSelectedWorktreeChanged(WorktreeItem? value)
         {
             if (value == null) return;
-            Entry.ActiveWorktreePath = value.IsMain ? null : value.Path;
+
+            string? newPath = value.IsMain ? null : value.Path;
+            bool changed = !string.Equals(
+                Entry.ActiveWorktreePath, newPath, StringComparison.OrdinalIgnoreCase);
+
+            Entry.ActiveWorktreePath = newPath;
+
+            // RefreshWorktrees re-sets the selection on every refresh; only react
+            // to a genuine branch switch (avoids redundant dotnet queries).
+            if (!changed) return;
+
             PluginManager.UpdateActiveWorktree(Name, Entry.ActiveWorktreePath);
+            RefreshSharedConfig();
+        }
+
+        // Recompute (off the UI thread) whether the current branch+config build dir
+        // holds a SharedAssemblies.Config.json, then tint the Shared button. The
+        // MSBuild query can spawn dotnet, so it must not run on the UI thread.
+        // Best-effort decoration: on any resolution error we just show no tint.
+        public void RefreshSharedConfig()
+        {
+            if (string.IsNullOrEmpty(Entry.ProjectFilePath))
+            {
+                HasSharedConfig = false;
+                return;
+            }
+
+            string projectFile = Entry.ProjectFilePath!;
+            string? worktree = Entry.ActiveWorktreePath;
+            string config = Entry.BuildConfiguration;
+
+            Task.Run(() =>
+            {
+                bool present = false;
+                try
+                {
+                    string? buildDir = DevReloadService.ResolveBuildDir(
+                        projectFile, worktree, config);
+                    present = !string.IsNullOrEmpty(buildDir)
+                        && File.Exists(SharedAssembliesFile.PathFor(buildDir));
+                }
+                catch
+                {
+                    present = false;
+                }
+
+                _dispatcher.Invoke(() => HasSharedConfig = present);
+            });
         }
 
         public void RefreshState()

@@ -125,6 +125,38 @@ namespace DevReload
             }
         }
 
+        // Build the plugin's current selection (worktree + config) WITHOUT loading
+        // it. Used by the "Build only" flyout so a freshly-selected worktree can be
+        // built — producing its DLLs — before the user configures shared assemblies
+        // and reloads. Loading is intentionally skipped: a wrong/empty shared config
+        // would otherwise wedge the session.
+        public static PluginActionResult BuildOnly(string pluginName)
+        {
+            var ed = GetEditor();
+            if (!_plugins.TryGetValue(pluginName, out var reg))
+                return new PluginActionResult(pluginName, false, 0, false, "not registered");
+
+            try
+            {
+                string csprojPath = GetEffectiveCsprojPath(reg);
+                var build = DevReloadService.BuildProject(
+                    csprojPath, reg.BuildConfiguration, ed);
+                if (!build.Success || build.OutputPath == null)
+                    return Result(reg, success: false, "build failed", build);
+
+                reg.DllPath = build.OutputPath;
+                ed?.WriteMessage($"\n{pluginName} built (not loaded).");
+                return Result(reg, success: true, "built", build);
+            }
+            catch (Exception ex)
+            {
+                ed?.WriteMessage($"\n{pluginName} build error: {ex.Message}");
+                ed?.WriteMessage($"\n{ex}");
+                return Result(reg, success: false,
+                    $"build error: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
         public static PluginActionResult Unload(string pluginName)
         {
             var ed = GetEditor();
@@ -494,18 +526,8 @@ namespace DevReload
         }
 
         private static string GetEffectiveCsprojPath(PluginRegistration reg)
-        {
-            if (string.IsNullOrEmpty(reg.ActiveWorktreePath))
-                return reg.ProjectFilePath;
-
-            string? repoRoot = GitWorktreeService.GetRepoRoot(
-                Path.GetDirectoryName(reg.ProjectFilePath)!);
-            if (repoRoot == null)
-                return reg.ProjectFilePath;
-
-            return GitWorktreeService.RemapToWorktree(
-                reg.ProjectFilePath, repoRoot, reg.ActiveWorktreePath);
-        }
+            => GitWorktreeService.ResolveActiveCsproj(
+                reg.ProjectFilePath, reg.ActiveWorktreePath);
 
         private static PluginRegistration GetRegistration(string pluginName)
         {

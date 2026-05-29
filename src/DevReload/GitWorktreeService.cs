@@ -83,6 +83,25 @@ namespace DevReload
             return Path.GetFullPath(Path.Combine(worktreePath, relativePath));
         }
 
+        // Maps a main-checkout csproj into the active worktree, or returns it
+        // unchanged when no worktree is active. Throws when a worktree IS active
+        // but its git repo root can't be resolved — NO silent fallback to the
+        // main checkout (that would build/configure the wrong tree).
+        public static string ResolveActiveCsproj(
+            string projectFilePath, string? activeWorktreePath)
+        {
+            if (string.IsNullOrEmpty(activeWorktreePath))
+                return projectFilePath;
+
+            string? repoRoot = GetRepoRoot(Path.GetDirectoryName(projectFilePath)!);
+            if (repoRoot == null)
+                throw new InvalidOperationException(
+                    $"Active worktree '{activeWorktreePath}' is set, but the git " +
+                    $"repo root for '{projectFilePath}' could not be resolved.");
+
+            return RemapToWorktree(projectFilePath, repoRoot, activeWorktreePath);
+        }
+
         private static string? RunGit(string workingDir, string arguments)
         {
             try
