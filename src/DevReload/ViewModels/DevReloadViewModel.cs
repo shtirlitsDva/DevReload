@@ -32,6 +32,7 @@ namespace DevReload.ViewModels
     public partial class DevReloadViewModel : ObservableObject
     {
         private PluginConfig _config = new();
+        private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
 
         public ObservableCollection<PluginItemViewModel> Plugins { get; } = new();
 
@@ -51,6 +52,66 @@ namespace DevReload.ViewModels
         public DevReloadViewModel()
         {
             LoadFromConfig();
+
+            // The card list is a projection of PluginManager's registry. By
+            // subscribing here, a plugin registered out-of-band — e.g. via the
+            // MCP register_new_plugin tool while this palette is open — shows up
+            // as a card without a restart, and an unregister drops its card.
+            // Both the palette singleton and PluginManager live for the whole
+            // AutoCAD session, so no unsubscribe is needed.
+            PluginManager.PluginRegistered += OnPluginRegistered;
+            PluginManager.PluginUnregistered += OnPluginUnregistered;
+        }
+
+        // Registry events can fire on any thread (MCP tools run on the AutoCAD
+        // main thread, but treat the source as untrusted and marshal to the UI
+        // thread before touching the ObservableCollection).
+        private void OnPluginRegistered(string name)
+        {
+            if (!_dispatcher.CheckAccess())
+            {
+                _dispatcher.Invoke(() => OnPluginRegistered(name));
+                return;
+            }
+
+            if (Plugins.Any(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                return; // already projected (e.g. registered from this palette)
+
+            // The registry is the trigger; plugins.json is the entry store and
+            // is always written before registration, so the entry is on disk.
+            var entry = (PluginConfigLoader.Load()?.Plugins ?? new())
+                .FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (entry == null) return;
+
+            if (!_config.Plugins.Any(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                _config.Plugins.Add(entry);
+
+            var vm = new PluginItemViewModel(entry);
+            vm.PropertyChanged += OnPluginPropertyChanged;
+            vm.RefreshState();
+            Plugins.Add(vm);
+            HasPlugins = true;
+        }
+
+        private void OnPluginUnregistered(string name)
+        {
+            if (!_dispatcher.CheckAccess())
+            {
+                _dispatcher.Invoke(() => OnPluginUnregistered(name));
+                return;
+            }
+
+            _config.Plugins.RemoveAll(
+                p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+
+            var vm = Plugins.FirstOrDefault(
+                p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (vm != null)
+            {
+                vm.PropertyChanged -= OnPluginPropertyChanged;
+                Plugins.Remove(vm);
+            }
+            HasPlugins = Plugins.Count > 0;
         }
 
         private void LoadFromConfig()
@@ -168,29 +229,9 @@ namespace DevReload.ViewModels
                 return;
             }
 
-            // The disk + PluginManager + command tables are all current.
-            // Mirror the registered entry into the bound _config so the
-            // palette's other state (NSLOAD csv path, etc.) survives, and
-            // append a single VM for the new plugin.
-            var fresh = PluginConfigLoader.Load() ?? new PluginConfig();
-            var entry = fresh.Plugins.FirstOrDefault(
-                p => p.Name.Equals(result.Name, StringComparison.OrdinalIgnoreCase));
-            if (entry == null)
-            {
-                ed?.WriteMessage(
-                    $"\nAdd Plugin: registration reported success but '{result.Name}' " +
-                    "not found in plugins.json on re-read.");
-                return;
-            }
-
-            _config.Plugins.Add(entry);
-
-            var vm = new PluginItemViewModel(entry);
-            vm.PropertyChanged += OnPluginPropertyChanged;
-            vm.RefreshState();
-            Plugins.Add(vm);
-            HasPlugins = true;
-
+            // RegisterNewPlugin → RegisterFromConfig → PluginManager registry,
+            // which raised PluginRegistered; OnPluginRegistered already added the
+            // card and mirrored the entry into _config. Just close the form.
             _pendingCsprojPath = null;
             IsAddingPlugin = false;
         }
@@ -205,19 +246,11 @@ namespace DevReload.ViewModels
         [RelayCommand]
         private void RemovePlugin(string name)
         {
-            var vm = Plugins.FirstOrDefault(p => p.Name == name);
-            if (vm == null) return;
-
-            // PluginManager.Unregister handles both the in-memory teardown
-            // AND the plugins.json removal — same call the RPC unregister
-            // tool makes. We only need to refresh the binding source.
+            // PluginManager.Unregister tears down in memory AND removes the
+            // plugins.json entry — same call the RPC unregister tool makes — and
+            // raises PluginUnregistered, which OnPluginUnregistered handles by
+            // dropping the card and the _config entry. Nothing else to do here.
             PluginManager.Unregister(name);
-            _config.Plugins.RemoveAll(e =>
-                e.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-
-            vm.PropertyChanged -= OnPluginPropertyChanged;
-            Plugins.Remove(vm);
-            HasPlugins = Plugins.Count > 0;
         }
 
         // ── Settings ─────────────────────────────────────────────────
@@ -478,25 +511,36 @@ namespace DevReload.ViewModels
         [RelayCommand]
         private void ReloadConfig()
         {
-            // Unregister all current plugins
+            // Resync the in-memory registry to plugins.json on disk.
+            //
+            // CRITICAL: use UnregisterInMemory, NOT Unregister. The public
+            // Unregister ALSO deletes the entry from plugins.json, so calling it
+            // in a loop here wiped the entire file before LoadFromConfig could
+            // re-read it — leaving an empty config and zero cards.
+            var fresh = PluginConfigLoader.Load() ?? new PluginConfig();
+            PluginConfigLoader.MigrateIfNeeded(fresh);
+
+            var onDisk = new HashSet<string>(
+                fresh.Plugins.Select(p => p.Name), StringComparer.OrdinalIgnoreCase);
+
+            // Drop registry entries that are no longer in the file (memory only).
             foreach (var name in PluginManager.GetRegisteredPluginNames().ToList())
-                PluginManager.Unregister(name);
+                if (!onDisk.Contains(name))
+                    PluginManager.UnregisterInMemory(name);
 
-            // Re-read config and register fresh
-            LoadFromConfig();
-
-            foreach (var entry in _config.Plugins)
-            {
+            // Register entries present in the file but not yet in the registry.
+            foreach (var entry in fresh.Plugins)
                 if (!PluginManager.IsRegistered(entry.Name))
                     DevReloaderCommands.RegisterFromConfig(entry);
-            }
+
+            // Rebuild every card from the freshly-read file so edits to existing
+            // entries (build config, worktree) are reflected too.
+            LoadFromConfig();
 
             // Auto-load plugins with loadOnStartup
             foreach (var entry in _config.Plugins.Where(e => e.LoadOnStartup))
-            {
                 if (!PluginManager.IsLoaded(entry.Name))
                     PluginManager.Load(entry.Name);
-            }
 
             RefreshStates();
         }

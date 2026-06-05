@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -21,6 +20,19 @@ namespace DevReload
     public static class PluginManager
     {
         private static readonly Dictionary<string, PluginRegistration> _plugins = new();
+
+        /// <summary>Raised after a plugin enters the in-memory registry, from
+        /// EVERY registration path (startup, palette add, MCP register, config
+        /// reload). The palette ViewModel subscribes so a card appears even when
+        /// the registration was triggered out-of-band (e.g. the MCP tool) while
+        /// the palette is already open. The registry is the single source of
+        /// truth; the UI is a projection of it.</summary>
+        public static event Action<string>? PluginRegistered;
+
+        /// <summary>Raised after a plugin leaves the in-memory registry, from
+        /// both Unregister and UnregisterInMemory. Lets the palette drop the
+        /// card reactively.</summary>
+        public static event Action<string>? PluginUnregistered;
 
         public static PluginRegistrationBuilder Register(string pluginName)
         {
@@ -285,13 +297,7 @@ namespace DevReload
 
         public static PluginActionResult Unregister(string pluginName)
         {
-            bool wasRegistered = _plugins.ContainsKey(pluginName);
-            if (_plugins.TryGetValue(pluginName, out var reg))
-            {
-                TearDown(reg);
-                UnregisterLoaderCommands(reg);
-                _plugins.Remove(pluginName);
-            }
+            bool wasRegistered = UnregisterInMemory(pluginName);
             bool fileRemoved = PluginConfigLoader.RemovePluginEntry(pluginName);
             string message = wasRegistered
                 ? (fileRemoved ? "unregistered and removed from plugins.json" : "unregistered")
@@ -302,6 +308,23 @@ namespace DevReload
                 CommandCount: 0,
                 Loaded: false,
                 Message: message);
+        }
+
+        /// <summary>Tear down a plugin's runtime state and drop it from the
+        /// in-memory registry WITHOUT touching plugins.json. Raises
+        /// PluginUnregistered. Returns whether it was registered.
+        /// Used by the palette's "Reload Config" to resync the registry to the
+        /// file: that path must NOT delete file entries — calling the public
+        /// Unregister in a loop there previously wiped the entire config.</summary>
+        internal static bool UnregisterInMemory(string pluginName)
+        {
+            if (!_plugins.TryGetValue(pluginName, out var reg))
+                return false;
+            TearDown(reg);
+            UnregisterLoaderCommands(reg);
+            _plugins.Remove(pluginName);
+            PluginUnregistered?.Invoke(pluginName);
+            return true;
         }
 
         // ── Loader-level command registration ─────────────────────────
@@ -603,6 +626,7 @@ namespace DevReload
         internal static void AddRegistration(PluginRegistration reg)
         {
             _plugins[reg.PluginName] = reg;
+            PluginRegistered?.Invoke(reg.PluginName);
         }
     }
 
