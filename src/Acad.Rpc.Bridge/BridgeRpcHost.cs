@@ -148,8 +148,7 @@ public sealed class BridgeRpcHost : IDisposable
 
                 if (!_forwarder.IsConnected)
                     return McpProtocol.CallToolResultText(
-                        $"tool '{toolName}' is not a local tool, and the bridge is not connected to an AutoCAD instance. " +
-                        $"Start one with acad_start or attach to a running one with acad_attach.",
+                        $"cannot run '{toolName}': {_forwarder.DescribeNotConnected()}",
                         isError: true);
 
                 try

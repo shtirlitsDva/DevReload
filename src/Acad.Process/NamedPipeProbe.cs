@@ -10,9 +10,11 @@ namespace Acad.Process;
 /// work — Windows reports valid pipes as non-existent until you actually
 /// open them. The canonical pattern is to enumerate the pipe-namespace
 /// directory and match by filename. Used by both
-/// <see cref="AcadComClient"/> and <see cref="AcadProcessController"/>.
+/// <see cref="AcadComClient"/> and <see cref="AcadProcessController"/>,
+/// and by the bridge to distinguish "pipe is up but held by another
+/// bridge" from "pipe was never created".
 /// </summary>
-internal static class NamedPipeProbe
+public static class NamedPipeProbe
 {
     public static bool Exists(string pipeName)
     {

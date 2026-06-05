@@ -185,6 +185,16 @@ Lessons that bite repeatedly. Each is directly actionable from this skill.
 10. **Cold Civil 3D startup is slow.** Default `acad_wait_quiescent(300)` is right for first boot. Don't drop it below 60 on any path.
 </gotchas>
 
+<one-agent-one-autocad>
+**Each agent drives its OWN AutoCAD. Never share one AutoCAD across two agents.**
+
+The in-AutoCAD RPC pipe (`acad-rpc-<pid>`) accepts a **single connection at a time**. The first bridge to connect holds that slot for its whole session; a second bridge (a second agent, a second worktree, or a stale bridge left over from a resumed session) **cannot attach to the same pipe**. When that happens its `devreload_*` / plugin tool calls fail with a message that names the cause:
+
+> *AutoCAD pid N's DevReload pipe is already held by ANOTHER bridge … Start your OWN instance with acad_start instead of this one.*
+
+If you ever see that message — or any "pipe is taken / not up / no AutoCAD bound" error from a `devreload_*` tool — do **not** conclude the MCP is broken. The fix is always the same: **launch your own AutoCAD with `acad_start`** (with `startupCommands` to NETLOAD DevReload at boot), then `acad_wait_pipe`. Do not retry the failing tool against the shared instance; it will never connect.
+</one-agent-one-autocad>
+
 <binding-lifecycle>
 The bridge process holds **at most one bound AutoCAD pid at a time**. The binding is in-memory — it does NOT persist across bridge restarts. Restarts happen any time you:
 
@@ -194,7 +204,7 @@ The bridge process holds **at most one bound AutoCAD pid at a time**. The bindin
 
 After a restart, the bridge starts fresh:
 
-1. **Single running AutoCAD with the DevReload pipe up** → bridge **auto-attaches** to it silently. No agent action needed; `devreload_*` tools come back online once the pipe forwarder reconnects (sub-second). This is `AutoAttach` in `Acad.Rpc.Bridge\AutoAttach.cs`.
+1. **Single running AutoCAD with the DevReload pipe up** → bridge **auto-attaches** to it. If that pipe is free, `devreload_*` tools come back online once the forwarder reconnects (sub-second). This is `AutoAttach` in `Acad.Rpc.Bridge\AutoAttach.cs`. **Caveat:** if that pipe is already held by another bridge (a second agent, or a stale bridge from a prior session — see `<one-agent-one-autocad>`), the forwarder can't connect and `devreload_*` calls return the "pipe is taken — start your own with `acad_start`" message. Don't fight it; launch your own.
 2. **Zero running AutoCADs** → bridge stays unbound. Call `acad_start` to launch one.
 3. **Multiple running AutoCADs** → bridge stays unbound (ambiguous). Run `acad_list_instances`, then `acad_attach <pid>` to pick.
 4. **AutoCAD running but pipe not up** (DevReload not loaded yet) → bridge stays unbound. Either NETLOAD DevReload manually or `acad_quit` and `acad_start` it fresh.

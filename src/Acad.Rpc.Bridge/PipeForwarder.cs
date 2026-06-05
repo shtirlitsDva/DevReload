@@ -9,6 +9,8 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Acad.Process;
+
 namespace Acad.Rpc.Bridge;
 
 /// <summary>
@@ -53,6 +55,44 @@ public sealed class PipeForwarder : IDisposable
     public string? ConnectedPipeName
     {
         get { lock (_gate) return _connectedPipeName; }
+    }
+
+    /// <summary>
+    /// Plain-language reason this forwarder can't reach an in-AutoCAD
+    /// pipe right now, written for the agent that just had a
+    /// <c>devreload_*</c> / plugin tool call fail. Distinguishes the
+    /// three states the agent must act on differently:
+    /// <list type="bullet">
+    ///   <item>nothing bound → launch your own AutoCAD;</item>
+    ///   <item>bound but no pipe → DevReload isn't loaded there;</item>
+    ///   <item>bound, pipe present, but we're not connected → the pipe is
+    ///   already held by ANOTHER bridge (single-connection only) → start
+    ///   your own instance instead of sharing this one.</item>
+    /// </list>
+    /// The in-AutoCAD pipe accepts exactly one client, so two agents
+    /// cannot share one AutoCAD — each must drive its own.
+    /// </summary>
+    public string DescribeNotConnected()
+    {
+        var bound = _binding.Current;
+        if (bound == null)
+            return "no AutoCAD is bound to this bridge. Each agent drives its OWN AutoCAD — " +
+                   "launch one with acad_start (it auto-binds and can NETLOAD DevReload at boot " +
+                   "via startupCommands), then acad_wait_pipe.";
+
+        if (!NamedPipeProbe.Exists(bound.PipeName))
+            return $"bridge is bound to AutoCAD pid {bound.Pid}, but its DevReload pipe " +
+                   $"('{bound.PipeName}') is not up — DevReload isn't loaded in that instance. " +
+                   "NETLOAD it, or acad_quit then acad_start a clean instance of your own.";
+
+        // Pipe name is present yet we (a forwarder that retries on bind)
+        // are not connected: the single server slot is held by another
+        // bridge. This is the "shared AutoCAD" anti-pattern.
+        return $"AutoCAD pid {bound.Pid}'s DevReload pipe ('{bound.PipeName}') is already held by " +
+               "ANOTHER bridge — the in-AutoCAD pipe accepts a single connection at a time, so two " +
+               "agents cannot share one AutoCAD. Start your OWN instance with acad_start instead of " +
+               "this one. (If you just launched it, wait a moment and retry — the connection may " +
+               "still be coming up.)";
     }
 
     public PipeForwarder(AcadInstanceBinding binding, Action<string>? log = null)
