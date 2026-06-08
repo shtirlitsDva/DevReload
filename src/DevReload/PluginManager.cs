@@ -34,6 +34,15 @@ namespace DevReload
         /// card reactively.</summary>
         public static event Action<string>? PluginUnregistered;
 
+        /// <summary>Raised after a plugin's load state may have changed — load,
+        /// reload, or unload — regardless of who triggered it (the palette's own
+        /// buttons or the out-of-band MCP tool surface an agent drives). The
+        /// palette refreshes the matching card so its loaded indicator reflects
+        /// the change even when it didn't initiate it. Same projection principle
+        /// as <see cref="PluginRegistered"/>: the registry is the single source
+        /// of truth, the UI follows it.</summary>
+        public static event Action<string>? PluginStateChanged;
+
         public static PluginRegistrationBuilder Register(string pluginName)
         {
             return new PluginRegistrationBuilder(pluginName);
@@ -207,6 +216,10 @@ namespace DevReload
                 try { TearDown(reg); }
                 catch { /* best-effort during shutdown */ }
             }
+            // UnloadAll doesn't route through Result(), so notify the palette
+            // here for every card that actually flipped to unloaded.
+            foreach (var name in loadedBefore)
+                PluginStateChanged?.Invoke(name);
             return new UnloadAllResult(
                 Total: _plugins.Count,
                 UnloadedNow: loadedBefore.Count,
@@ -219,14 +232,23 @@ namespace DevReload
                 : "";
 
         private static PluginActionResult Result(
-            PluginRegistration reg, bool success, string message, BuildResult? build = null) =>
-            new(
+            PluginRegistration reg, bool success, string message, BuildResult? build = null)
+        {
+            // Every lifecycle op (Load/DevReload/Unload/BuildOnly) returns
+            // through here, so this is the single funnel where the palette must
+            // be told the load state may have moved — including when an agent
+            // triggered it via the MCP tool surface rather than a palette button.
+            // RefreshState on the card reads the live registry and is idempotent,
+            // so firing on no-op returns (e.g. "already loaded") is harmless.
+            PluginStateChanged?.Invoke(reg.PluginName);
+            return new(
                 PluginName: reg.PluginName,
                 Success: success,
                 CommandCount: reg.Registrar?.CommandCount ?? 0,
                 Loaded: reg.Host.IsLoaded,
                 Message: message,
                 Build: build);
+        }
 
         // ── Public query + management API ─────────────────────────────
 

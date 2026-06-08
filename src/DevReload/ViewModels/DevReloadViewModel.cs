@@ -61,6 +61,26 @@ namespace DevReload.ViewModels
             // AutoCAD session, so no unsubscribe is needed.
             PluginManager.PluginRegistered += OnPluginRegistered;
             PluginManager.PluginUnregistered += OnPluginUnregistered;
+            PluginManager.PluginStateChanged += OnPluginStateChanged;
+        }
+
+        // Load/reload/unload can be driven out-of-band — by the MCP tool surface
+        // an agent uses, not just the palette buttons. The card's loaded
+        // indicator is a projection of PluginManager's registry, so refresh the
+        // matching card whenever the registry reports a state change, whoever
+        // caused it. Marshal to the UI thread for the same reason as the other
+        // registry handlers.
+        private void OnPluginStateChanged(string name)
+        {
+            if (!_dispatcher.CheckAccess())
+            {
+                _dispatcher.Invoke(() => OnPluginStateChanged(name));
+                return;
+            }
+
+            Plugins.FirstOrDefault(
+                    p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                ?.RefreshState();
         }
 
         // Registry events can fire on any thread (MCP tools run on the AutoCAD
@@ -148,22 +168,16 @@ namespace DevReload.ViewModels
 
         // ── Plugin lifecycle commands ─────────────────────────────────
 
-        [RelayCommand]
-        private void LoadPlugin(string name)
-        {
-            PluginManager.Load(name);
-            RefreshStates();
-        }
+        // The card refresh after each of these is driven reactively by
+        // PluginManager.PluginStateChanged (see OnPluginStateChanged) — the same
+        // path the MCP tool surface goes through — so there's no explicit
+        // RefreshStates() call here. RefreshState() also re-reads worktrees.
 
         [RelayCommand]
-        private void DevReloadPlugin(string name)
-        {
-            PluginManager.DevReload(name);
-            RefreshStates();
+        private void LoadPlugin(string name) => PluginManager.Load(name);
 
-            var vm = Plugins.FirstOrDefault(p => p.Name == name);
-            vm?.RefreshWorktrees();
-        }
+        [RelayCommand]
+        private void DevReloadPlugin(string name) => PluginManager.DevReload(name);
 
         // "Build only" flyout: build the current selection without loading, so a
         // freshly-selected worktree gets its DLLs and Shared can be configured.
@@ -171,18 +185,15 @@ namespace DevReload.ViewModels
         private void BuildOnlyPlugin(string name)
         {
             PluginManager.BuildOnly(name);
-            RefreshStates();
 
-            var vm = Plugins.FirstOrDefault(p => p.Name == name);
-            vm?.RefreshSharedConfig();
+            // Build state isn't load state: the event-driven RefreshState won't
+            // pick up that this build just produced the shared-assemblies config,
+            // so refresh that decoration explicitly.
+            Plugins.FirstOrDefault(p => p.Name == name)?.RefreshSharedConfig();
         }
 
         [RelayCommand]
-        private void UnloadPlugin(string name)
-        {
-            PluginManager.Unload(name);
-            RefreshStates();
-        }
+        private void UnloadPlugin(string name) => PluginManager.Unload(name);
 
         // ── Add / Remove ─────────────────────────────────────────────
 
