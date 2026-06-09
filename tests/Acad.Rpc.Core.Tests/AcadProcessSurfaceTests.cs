@@ -37,6 +37,8 @@ public class AcadProcessSurfaceTests
         "acad_open_drawing",
         "acad_new_drawing",
         "acad_close_active_drawing",
+        "acad_list_open_documents",
+        "acad_activate_document",
     };
 
     [Fact]
@@ -84,6 +86,8 @@ public class AcadProcessSurfaceTests
     [InlineData("acad_open_drawing", "path", "readOnly", "pid")]
     [InlineData("acad_new_drawing", "templatePath", "pid")]
     [InlineData("acad_close_active_drawing", "saveChanges", "pid")]
+    [InlineData("acad_list_open_documents", "pid")]
+    [InlineData("acad_activate_document", "documentId", "pid")]
     public async System.Threading.Tasks.Task AcadProcessTool_HasExpectedInputSchemaProperties(string toolName, params string[] expectedProps)
     {
         var host = NewHost();

@@ -274,6 +274,26 @@ public static class AcadProcessTools
         return "closed";
     }
 
+    [AcadRpcTool, Description("List every open drawing in the bound AutoCAD, with its unique identifier. 'fullName' is the path on disk and is what you pass to acad_activate_document; a never-saved drawing has an empty fullName and is identified by 'name' instead. 'isActive' marks the current document; 'saved' is false when it has unsaved changes.")]
+    public static IReadOnlyList<AcadDocumentInfo> ListOpenDocuments(
+        [Description("Pid of the target instance. Omit to use the bound pid.")] int pid = 0)
+    {
+        int resolved = BridgeServices.Binding.ResolvePid(pid > 0 ? pid : null);
+        using var client = RequireClient(resolved);
+        return client.ListDocuments();
+    }
+
+    [AcadRpcTool, Description("Switch the active document to an already-open drawing. Identify it by the 'fullName' (full path) from acad_list_open_documents; for a never-saved drawing with no path, pass its 'name'. Errors if no open document matches or if the identifier is ambiguous.")]
+    public static string ActivateDocument(
+        [Description("The drawing's fullName (full path), or its name if it has never been saved.")] string documentId,
+        [Description("Pid of the target instance. Omit to use the bound pid.")] int pid = 0)
+    {
+        int resolved = BridgeServices.Binding.ResolvePid(pid > 0 ? pid : null);
+        using var client = RequireClient(resolved);
+        client.ActivateDocument(documentId);
+        return "activated";
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────
 
     private static AcadComClient RequireClient(int pid)

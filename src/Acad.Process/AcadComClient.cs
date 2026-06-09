@@ -239,6 +239,100 @@ public sealed class AcadComClient : IDisposable
         }
     }
 
+    /// <summary>
+    /// Snapshot every open document with the fields needed to pick one for
+    /// activation. The unique identity is <c>FullName</c> (the path on disk);
+    /// a never-saved drawing has an empty FullName and is unique by
+    /// <c>Name</c> instead. Best-effort: a document that throws mid-read is
+    /// skipped rather than failing the whole listing.
+    /// </summary>
+    public IReadOnlyList<AcadDocumentInfo> ListDocuments()
+    {
+        EnsureNotDisposed();
+        var result = new List<AcadDocumentInfo>();
+
+        dynamic docs;
+        try { docs = _app!.Documents; }
+        catch { return result; }
+
+        // Capture the active document's identity once, then flag matches by it.
+        // Comparing COM references for identity is unreliable through IDispatch,
+        // so we compare on the same key we expose for activation.
+        string activeFullName =
+            TryReadString(() => (string)_app!.ActiveDocument.FullName) ?? string.Empty;
+        string activeName =
+            TryReadString(() => (string)_app!.ActiveDocument.Name) ?? string.Empty;
+
+        int count;
+        try { count = (int)docs.Count; }
+        catch { return result; }
+
+        for (int i = 0; i < count; i++)
+        {
+            dynamic doc;
+            try { doc = docs.Item(i); }
+            catch { continue; }
+
+            string name = TryReadString(() => (string)doc.Name) ?? string.Empty;
+            string fullName = TryReadString(() => (string)doc.FullName) ?? string.Empty;
+            bool saved = true;
+            try { saved = (bool)doc.Saved; } catch { /* property not exposed */ }
+
+            bool isActive = fullName.Length > 0
+                ? string.Equals(fullName, activeFullName, StringComparison.OrdinalIgnoreCase)
+                : string.Equals(name, activeName, StringComparison.OrdinalIgnoreCase);
+
+            result.Add(new AcadDocumentInfo(name, fullName, isActive, saved));
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Activate an already-open document, identified by its <c>FullName</c>
+    /// (full path) or — for a never-saved drawing with no path — its
+    /// <c>Name</c>. A saved drawing matches ONLY by full path: matching saved
+    /// drawings by bare name would reintroduce the same-filename-different-
+    /// folder ambiguity this identity scheme exists to avoid. Throws if no
+    /// open document matches, or (defensively) if more than one does.
+    /// </summary>
+    public void ActivateDocument(string documentId)
+    {
+        EnsureNotDisposed();
+        if (string.IsNullOrWhiteSpace(documentId))
+            throw new ArgumentException("documentId is required", nameof(documentId));
+
+        dynamic docs = _app!.Documents;
+        int count = (int)docs.Count;
+
+        var matches = new List<dynamic>();
+        for (int i = 0; i < count; i++)
+        {
+            dynamic doc;
+            try { doc = docs.Item(i); }
+            catch { continue; }
+
+            string name = TryReadString(() => (string)doc.Name) ?? string.Empty;
+            string fullName = TryReadString(() => (string)doc.FullName) ?? string.Empty;
+
+            bool isMatch = fullName.Length > 0
+                ? string.Equals(fullName, documentId, StringComparison.OrdinalIgnoreCase)
+                : string.Equals(name, documentId, StringComparison.OrdinalIgnoreCase);
+
+            if (isMatch) matches.Add(doc);
+        }
+
+        if (matches.Count == 0)
+            throw new InvalidOperationException(
+                $"No open document matches '{documentId}'. " +
+                "Call acad_list_open_documents for valid identifiers.");
+        if (matches.Count > 1)
+            throw new InvalidOperationException(
+                $"Ambiguous: {matches.Count} open documents match '{documentId}'.");
+
+        matches[0].Activate();
+    }
+
     // ── Quit ──────────────────────────────────────────────────────────
 
     public void Quit()

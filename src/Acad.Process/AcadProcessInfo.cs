@@ -26,6 +26,20 @@ public sealed record AcadProcessState(
     string ProductName,
     bool Visible);
 
+/// <summary>
+/// One open drawing in a bound AutoCAD instance. <see cref="FullName"/> is
+/// the path on disk and is the unique identifier you pass to
+/// acad_activate_document; it is empty for a never-saved drawing, which is
+/// instead unique by <see cref="Name"/>. <see cref="IsActive"/> marks the
+/// current ActiveDocument; <see cref="Saved"/> is false when the drawing has
+/// unsaved changes.
+/// </summary>
+public sealed record AcadDocumentInfo(
+    string Name,
+    string FullName,
+    bool IsActive,
+    bool Saved);
+
 public enum AcadQuitOutcome
 {
     Graceful,
