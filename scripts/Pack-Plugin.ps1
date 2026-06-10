@@ -18,7 +18,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$bridgeCsproj = Join-Path $repoRoot 'src\Acad.Rpc.Bridge\Acad.Rpc.Bridge.csproj'
+$bridgeCsproj = Join-Path $repoRoot 'src\Autocad\Acad.Rpc.Bridge\Acad.Rpc.Bridge.csproj'
 $serverDir = Join-Path $repoRoot 'server'
 
 if (-not (Test-Path $bridgeCsproj)) {

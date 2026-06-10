@@ -5,21 +5,21 @@ VisualStudioVersion = 18.3.11520.95
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{AE3D5623-4BCD-4510-8529-B35335B4F56F}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DevReload", "src\DevReload\DevReload.csproj", "{F20D38A6-0AA5-13A5-7AA3-D587D97DBFFB}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DevReload", "src\Autocad\DevReload\DevReload.csproj", "{F20D38A6-0AA5-13A5-7AA3-D587D97DBFFB}"
 EndProject
-Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "EventManager", "src\EventManager\EventManager.shproj", "{B2C3D4E5-F6A7-8901-BCDE-F23456789012}"
+Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "EventManager", "src\Autocad\EventManager\EventManager.shproj", "{B2C3D4E5-F6A7-8901-BCDE-F23456789012}"
 EndProject
-Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "WpfSHARED", "src\WpfSHARED\WpfSHARED.shproj", "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}"
+Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "WpfSHARED", "src\Shared\WpfSHARED\WpfSHARED.shproj", "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Acad.Rpc.Core", "src\Acad.Rpc.Core\Acad.Rpc.Core.csproj", "{BC4B33EF-ED84-44FF-BDAD-719AEA03A85A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Acad.Rpc.Core", "src\Shared\Acad.Rpc.Core\Acad.Rpc.Core.csproj", "{BC4B33EF-ED84-44FF-BDAD-719AEA03A85A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Acad.Rpc.Bridge", "src\Acad.Rpc.Bridge\Acad.Rpc.Bridge.csproj", "{392F1B3E-8068-42BC-9B8D-AAF65DD76F87}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Acad.Rpc.Bridge", "src\Autocad\Acad.Rpc.Bridge\Acad.Rpc.Bridge.csproj", "{392F1B3E-8068-42BC-9B8D-AAF65DD76F87}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Acad.Rpc.Core.Tests", "tests\Acad.Rpc.Core.Tests\Acad.Rpc.Core.Tests.csproj", "{325E0E4E-9ABB-471F-9C0A-50325FE69997}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Acad.Process", "src\Acad.Process\Acad.Process.csproj", "{8AB9FAE3-EE04-46B0-B664-177802DFF7A0}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Acad.Process", "src\Autocad\Acad.Process\Acad.Process.csproj", "{8AB9FAE3-EE04-46B0-B664-177802DFF7A0}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -108,8 +108,8 @@ Global
 		SolutionGuid = {B9FE737A-3C4C-42DA-8F21-4E632E47BC7A}
 	EndGlobalSection
 	GlobalSection(SharedMSBuildProjectFiles) = preSolution
-		src\WpfSHARED\WpfSHARED.projitems*{a1b2c3d4-e5f6-7890-abcd-ef1234567890}*SharedItemsImports = 13
-		src\EventManager\EventManager.projitems*{b2c3d4e5-f6a7-8901-bcde-f23456789012}*SharedItemsImports = 13
-		src\WpfSHARED\WpfSHARED.projitems*{f20d38a6-0aa5-13a5-7aa3-d587d97dbffb}*SharedItemsImports = 5
+		src\Shared\WpfSHARED\WpfSHARED.projitems*{a1b2c3d4-e5f6-7890-abcd-ef1234567890}*SharedItemsImports = 13
+		src\Autocad\EventManager\EventManager.projitems*{b2c3d4e5-f6a7-8901-bcde-f23456789012}*SharedItemsImports = 13
+		src\Shared\WpfSHARED\WpfSHARED.projitems*{f20d38a6-0aa5-13a5-7aa3-d587d97dbffb}*SharedItemsImports = 5
 	EndGlobalSection
 EndGlobal

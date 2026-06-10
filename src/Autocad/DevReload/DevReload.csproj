@@ -15,7 +15,7 @@
 		<DebugType>full</DebugType>
 	</PropertyGroup>
 	<PropertyGroup>
-		<BundleDir>$(MSBuildProjectDirectory)\..\..\Deploy\DevReload.bundle</BundleDir>
+		<BundleDir>$(MSBuildProjectDirectory)\..\..\..\Deploy\DevReload.bundle</BundleDir>
 		<BundleContentsDir>$(BundleDir)\Contents\Win64</BundleContentsDir>
 	</PropertyGroup>
 	<ItemGroup>
@@ -40,12 +40,12 @@
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
 	</ItemGroup>
 	<ItemGroup>
-		<ProjectReference Include="..\Acad.Rpc.Core\Acad.Rpc.Core.csproj" />
+		<ProjectReference Include="..\..\Shared\Acad.Rpc.Core\Acad.Rpc.Core.csproj" />
 	</ItemGroup>
 	<ItemGroup>
 		<None Include="PackageContents.xml" CopyToOutputDirectory="Never" />
 	</ItemGroup>
-	<Import Project="..\WpfSHARED\WpfSHARED.projitems" Label="Shared" />
+	<Import Project="..\..\Shared\WpfSHARED\WpfSHARED.projitems" Label="Shared" />
 
 	<Target Name="CreateBundle" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
 		<MakeDir Directories="$(BundleContentsDir)" />

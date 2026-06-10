@@ -10,14 +10,20 @@ DevReload is a hot-reload plugin system for AutoCAD 2025. It uses .NET 8 collect
 
 ```bash
 # Build the main DevReload project (requires AutoCAD 2025 assemblies)
-dotnet build src/DevReload/DevReload.csproj -c Debug -p:Platform=x64
+dotnet build src/Autocad/DevReload/DevReload.csproj -c Debug -p:Platform=x64
 
 # Build entire solution
 dotnet build DevReload.sln -c Debug -p:Platform=x64
 
 # Release build (also creates Deploy/DevReload.bundle)
-dotnet build src/DevReload/DevReload.csproj -c Release -p:Platform=x64
+dotnet build src/Autocad/DevReload/DevReload.csproj -c Release -p:Platform=x64
 ```
+
+## Repo Layout
+
+- `src/Autocad/` — AutoCAD host: `DevReload` (plugin + palette), `EventManager` (AcadEventManager shproj), `Acad.Process`, `Acad.Rpc.Bridge`
+- `src/Shared/` — host-agnostic: `Acad.Rpc.Core` (MCP/RPC engine; legacy name, used by both hosts), `WpfSHARED` (shproj)
+- `src/Revit/` — Revit host: per-version add-in projects (`RevitDevReload.R22`…) over a shared `.shproj`
 
 The AutoCAD path defaults to `C:\Program Files\Autodesk\AutoCAD 2025`. Override it by copying `Directory.Build.props.user.example` to `Directory.Build.props.user` and setting your path, or via `-p:AutoCADPath="..."`.
 

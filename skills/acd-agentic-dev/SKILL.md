@@ -148,7 +148,7 @@ Symptom of an instance-field mistake: `Terminate()` runs (you see the log line) 
 </use-static-fields-for-cleanup-state>
 
 <event-subscriptions-via-acadeventmanager>
-DevReload ships `src/EventManager/AcadEventManager.cs` as a **shared project** — import it via `<Import Project="..\..\src\EventManager\EventManager.projitems" />` (or equivalent). It compiles into the plugin DLL, no NuGet, no extra dependency.
+DevReload ships `src/Autocad/EventManager/AcadEventManager.cs` as a **shared project** — import it via `<Import Project="..\..\src\Autocad\EventManager\EventManager.projitems" />` (or equivalent). It compiles into the plugin DLL, no NuGet, no extra dependency.
 
 It exists because naive event cleanup breaks in two ways that are silent in Release and lethal in Debug:
 

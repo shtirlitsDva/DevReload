@@ -21,7 +21,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Acad.Rpc.Core\Acad.Rpc.Core.csproj" />
+    <ProjectReference Include="..\..\Shared\Acad.Rpc.Core\Acad.Rpc.Core.csproj" />
     <ProjectReference Include="..\Acad.Process\Acad.Process.csproj" />
   </ItemGroup>
 </Project>

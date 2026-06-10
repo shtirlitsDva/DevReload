@@ -29,8 +29,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Acad.Rpc.Core\Acad.Rpc.Core.csproj" />
-    <ProjectReference Include="..\..\src\Acad.Process\Acad.Process.csproj" />
-    <ProjectReference Include="..\..\src\Acad.Rpc.Bridge\Acad.Rpc.Bridge.csproj" />
+    <ProjectReference Include="..\..\src\Shared\Acad.Rpc.Core\Acad.Rpc.Core.csproj" />
+    <ProjectReference Include="..\..\src\Autocad\Acad.Process\Acad.Process.csproj" />
+    <ProjectReference Include="..\..\src\Autocad\Acad.Rpc.Bridge\Acad.Rpc.Bridge.csproj" />
   </ItemGroup>
 </Project>

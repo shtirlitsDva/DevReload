@@ -155,7 +155,7 @@ public class DevReloadSurfaceTests
             throw new InvalidOperationException(
                 "Could not locate DevReload.sln walking up from " + testDir);
 
-        string candidate = Path.Combine(cursor, "src", "DevReload", "bin", "Debug", "DevReload.dll");
+        string candidate = Path.Combine(cursor, "src", "Autocad", "DevReload", "bin", "Debug", "DevReload.dll");
         if (!File.Exists(candidate))
             throw new InvalidOperationException(
                 $"DevReload.dll not found at {candidate}. Build DevReload (Debug|x64) before running tests.");
