@@ -42,7 +42,25 @@ namespace Revit.Cli
             _thread = new Thread(WatchLoop) { IsBackground = true, Name = "DialogWatcher" };
         }
 
-        public void Start() => _thread.Start();
+        private bool _started;
+
+        public void Start()
+        {
+            _started = true;
+            _thread.Start();
+        }
+
+        // One synchronous pass — used by the click-allow diagnostic command.
+        public bool ScanOnce()
+        {
+            using var automation = new UIA3Automation();
+            int before = _clickCount;
+            foreach (int pid in PidFamily(_rootPid))
+                ScanProcessWindows(automation, pid);
+            return _clickCount > before;
+        }
+
+        private int _clickCount;
 
         private void WatchLoop()
         {
@@ -66,34 +84,52 @@ namespace Revit.Cli
         private void ScanProcessWindows(UIA3Automation automation, int pid)
         {
             var desktop = automation.GetDesktop();
-            var windows = desktop.FindAllChildren(cf => cf.ByProcessId(pid));
-            foreach (var window in windows)
+            var topWindows = desktop.FindAllChildren(cf => cf.ByProcessId(pid));
+            foreach (var top in topWindows)
             {
-                string title = SafeName(window);
-                if (!_dialogTitleParts.Any(part =>
-                        title.IndexOf(part, StringComparison.OrdinalIgnoreCase) >= 0))
-                    continue;
+                // Revit hosts its security prompt as a CHILD Window element
+                // inside the (often unnamed) main window — title matching
+                // must look at descendants, not just top-level windows.
+                var candidates = new List<AutomationElement>();
+                if (TitleMatches(SafeName(top)))
+                    candidates.Add(top);
+                candidates.AddRange(top
+                    .FindAllDescendants(cf => cf.ByControlType(
+                        FlaUI.Core.Definitions.ControlType.Window))
+                    .Where(w => TitleMatches(SafeName(w))));
 
-                var buttons = window.FindAllDescendants(
-                    cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.Button));
+                foreach (var dialog in candidates)
+                    ClickAllowButton(dialog);
+            }
+        }
 
-                foreach (string allow in _allowButtons)
+        private static bool TitleMatches(string title) =>
+            title.Length > 0 && _dialogTitleParts.Any(part =>
+                title.IndexOf(part, StringComparison.OrdinalIgnoreCase) >= 0);
+
+        private void ClickAllowButton(AutomationElement dialog)
+        {
+            string title = SafeName(dialog);
+            var buttons = dialog.FindAllDescendants(
+                cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.Button));
+
+            foreach (string allow in _allowButtons)
+            {
+                var button = buttons.FirstOrDefault(b =>
+                    SafeName(b).IndexOf(allow, StringComparison.OrdinalIgnoreCase) >= 0);
+                if (button == null) continue;
+
+                try
                 {
-                    var button = buttons.FirstOrDefault(b =>
-                        SafeName(b).IndexOf(allow, StringComparison.OrdinalIgnoreCase) >= 0);
-                    if (button == null) continue;
-
-                    try
-                    {
-                        button.AsButton().Invoke();
-                        Clicked?.Invoke($"dialog '{title}' → clicked '{SafeName(button)}'");
-                    }
-                    catch (Exception ex)
-                    {
-                        Clicked?.Invoke($"dialog '{title}' → click failed: {ex.Message}");
-                    }
-                    break;
+                    button.AsButton().Invoke();
+                    _clickCount++;
+                    Clicked?.Invoke($"dialog '{title}' → clicked '{SafeName(button)}'");
                 }
+                catch (Exception ex)
+                {
+                    Clicked?.Invoke($"dialog '{title}' → click failed: {ex.Message}");
+                }
+                break;
             }
         }
 
@@ -116,7 +152,7 @@ namespace Revit.Cli
         public void Dispose()
         {
             _cts.Cancel();
-            _thread.Join(2000);
+            if (_started) _thread.Join(2000);
             _cts.Dispose();
         }
     }

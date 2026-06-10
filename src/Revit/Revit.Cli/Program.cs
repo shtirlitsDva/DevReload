@@ -42,6 +42,8 @@ namespace Revit.Cli
                     "wait-pipe" => WaitPipe(ParseOptions(args)),
                     "send" => Send(ParseOptions(args)),
                     "stop" => Stop(),
+                    "dump-ui" => DumpUi(),
+                    "click-allow" => ClickAllow(),
                     _ => Fail($"unknown command '{args[0]}'"),
                 };
             }
@@ -231,6 +233,46 @@ namespace Revit.Cli
                 // already gone — the graceful path worked
             }
             return 0;
+        }
+
+        // Diagnostic: print every visible window of every Revit process with
+        // its descendant control names — for tuning DialogWatcher matching.
+        private static int DumpUi()
+        {
+            using var automation = new FlaUI.UIA3.UIA3Automation();
+            var desktop = automation.GetDesktop();
+            foreach (var proc in Process.GetProcessesByName("Revit"))
+            {
+                Console.WriteLine($"-- pid {proc.Id}");
+                foreach (var window in desktop.FindAllChildren(
+                             cf => cf.ByProcessId(proc.Id)))
+                {
+                    Console.WriteLine($"window: '{window.Name}' [{window.ControlType}]");
+                    foreach (var el in window.FindAllDescendants())
+                    {
+                        string name;
+                        string type;
+                        try { name = el.Name; type = el.ControlType.ToString(); }
+                        catch { continue; }
+                        if (!string.IsNullOrWhiteSpace(name))
+                            Console.WriteLine($"  [{type}] '{name}'");
+                    }
+                }
+            }
+            return 0;
+        }
+
+        private static int ClickAllow()
+        {
+            foreach (var proc in Process.GetProcessesByName("Revit"))
+            {
+                using var watcher = new DialogWatcher(proc.Id);
+                watcher.Clicked += msg => Console.WriteLine("[click] " + msg);
+                if (watcher.ScanOnce())
+                    return 0;
+            }
+            Console.WriteLine("no matching dialog found");
+            return 1;
         }
 
         // ── helpers ──────────────────────────────────────────────────

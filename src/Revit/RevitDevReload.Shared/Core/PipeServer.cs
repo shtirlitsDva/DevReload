@@ -74,10 +74,11 @@ namespace RevitDevReload.Core
                 }
                 finally
                 {
-                    try
-                    {
-                        if (server.IsConnected) server.Disconnect();
-                    }
+                    // UNCONDITIONAL: after a client goes away IsConnected may
+                    // already read false, but the server end still requires
+                    // Disconnect() before the next WaitForConnection — skipping
+                    // it wedges the pipe forever (every later connect times out).
+                    try { server.Disconnect(); }
                     catch { }
                 }
             }

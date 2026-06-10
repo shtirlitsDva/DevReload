@@ -108,15 +108,23 @@ namespace RevitDevReload.Tests
             using var server = new PipeServer(pipeName, (cmd, args) => new { ok = true });
             server.Start();
 
-            for (int i = 0; i < 2; i++)
+            // The delay between clients matters: it gives the server time to
+            // observe the disconnect (IsConnected -> false) before recycling.
+            // Without an unconditional Disconnect() in the server loop this
+            // exact sequence wedged the pipe in production (Revit answered the
+            // first CLI call, then every later connect timed out).
+            for (int i = 0; i < 3; i++)
             {
-                using var client = new NamedPipeClientStream(
-                    ".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-                await Task.Run(() => client.Connect(5000));
-                using var reader = new System.IO.StreamReader(client);
-                using var writer = new System.IO.StreamWriter(client) { AutoFlush = true };
-                await writer.WriteLineAsync("{\"id\":1,\"cmd\":\"x\"}");
-                Assert.NotNull(await ReadLineWithTimeout(reader));
+                using (var client = new NamedPipeClientStream(
+                    ".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous))
+                {
+                    await Task.Run(() => client.Connect(5000));
+                    using var reader = new System.IO.StreamReader(client);
+                    using var writer = new System.IO.StreamWriter(client) { AutoFlush = true };
+                    await writer.WriteLineAsync("{\"id\":1,\"cmd\":\"x\"}");
+                    Assert.NotNull(await ReadLineWithTimeout(reader));
+                }
+                await Task.Delay(400);
             }
         }
 
