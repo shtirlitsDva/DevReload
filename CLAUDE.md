@@ -34,7 +34,10 @@ dotnet build src/Revit/RevitDevReload.R25/RevitDevReload.R25.csproj -c Debug -p:
 # Unit tests (dual-target net8 + net48; covers loaders, pipe, config, manifest)
 dotnet test tests/RevitDevReload.Tests/RevitDevReload.Tests.csproj -c Debug
 
-# Deploy + drive a live Revit (builds host, writes .addin, auto-clicks security dialogs)
+# Release install (copies binaries + relative-path .addin into %APPDATA%\Autodesk\Revit\Addins\<year>)
+pwsh scripts/Deploy-RevitAddins.ps1
+
+# Dev-loop deploy + drive a live Revit (manifest points at Debug bin; auto-clicks security dialogs)
 src/Revit/Revit.Cli/bin/Debug/revit-cli.exe deploy --rvt 2025
 src/Revit/Revit.Cli/bin/Debug/revit-cli.exe start --rvt 2025 --watch-dialogs --wait-pipe 300
 src/Revit/Revit.Cli/bin/Debug/revit-cli.exe send --cmd ping
