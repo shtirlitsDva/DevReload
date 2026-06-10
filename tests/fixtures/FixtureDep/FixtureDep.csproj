@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework></TargetFramework>
+    <TargetFrameworks>net8.0;net48</TargetFrameworks>
+    <SupportedOSPlatformVersion></SupportedOSPlatformVersion>
+    <AppendTargetFrameworkToOutputPath>true</AppendTargetFrameworkToOutputPath>
+    <UseWPF>false</UseWPF>
+    <UseWindowsForms>false</UseWindowsForms>
+    <ImportWindowsDesktopTargets>false</ImportWindowsDesktopTargets>
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+</Project>

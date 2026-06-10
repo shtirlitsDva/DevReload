@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Dual-target: net8 exercises the ALC loader path (Revit 2025),
+         net48 exercises the legacy loader path (Revit 2022-2024).
+         Directory.Build.props pins TargetFramework — reset it so the
+         plural form takes effect. -->
+    <TargetFramework></TargetFramework>
+    <TargetFrameworks>net8.0-windows;net48</TargetFrameworks>
+    <SupportedOSPlatformVersion></SupportedOSPlatformVersion>
+    <AppendTargetFrameworkToOutputPath>true</AppendTargetFrameworkToOutputPath>
+    <OutputType>Library</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <UseWPF>false</UseWPF>
+    <UseWindowsForms>false</UseWindowsForms>
+    <ImportWindowsDesktopTargets>false</ImportWindowsDesktopTargets>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+    <DebugType>full</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+    <Reference Include="System.Net.Http" />
+  </ItemGroup>
+
+  <!-- Revit-independent sources under test, link-included so RevitAPI never
+       enters the test build (repo convention; see skills/acd-agentic-dev). -->
+  <ItemGroup>
+    <Compile Include="..\..\src\Revit\RevitDevReload.Shared\Core\RevitPluginConfig.cs" Link="Sut\RevitPluginConfig.cs" />
+    <Compile Include="..\..\src\Revit\RevitDevReload.Shared\Core\AddinManifestWriter.cs" Link="Sut\AddinManifestWriter.cs" />
+    <Compile Include="..\..\src\Revit\RevitDevReload.Shared\Core\CommandScanner.cs" Link="Sut\CommandScanner.cs" />
+    <Compile Include="..\..\src\Revit\RevitDevReload.Shared\Core\PipeProtocol.cs" Link="Sut\PipeProtocol.cs" />
+    <Compile Include="..\..\src\Revit\RevitDevReload.Shared\Core\PipeServer.cs" Link="Sut\PipeServer.cs" />
+    <Compile Include="..\..\src\Revit\RevitDevReload.Shared\Core\DevReloadLogBuffer.cs" Link="Sut\DevReloadLogBuffer.cs" />
+    <Compile Include="..\..\src\Revit\RevitDevReload.Shared\Core\AlcPluginLoader.cs" Link="Sut\AlcPluginLoader.cs" />
+    <Compile Include="..\..\src\Revit\RevitDevReload.Shared\Core\LegacyPluginLoader.cs" Link="Sut\LegacyPluginLoader.cs" />
+    <Compile Include="..\..\src\Revit\RevitDevReload.Shared\Core\IPluginLoader.cs" Link="Sut\IPluginLoader.cs" />
+  </ItemGroup>
+
+  <Import Project="..\..\src\Shared\DevReload.BuildCore\DevReload.BuildCore.projitems" Label="Shared" />
+</Project>
