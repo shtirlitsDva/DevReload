@@ -124,7 +124,11 @@ public sealed class BridgeRpcHost : IDisposable
         switch (method)
         {
             case "initialize":
-                return McpProtocol.InitializeResult(serverName: "acad-agent", serverVersion: _core.ApiVersion);
+                return McpProtocol.InitializeResult(
+                    serverName: "acad-agent",
+                    serverVersion: _core.ApiVersion,
+                    protocolVersion: McpProtocol.NegotiateVersion(
+                        @params?["protocolVersion"]?.GetValue<string>()));
 
             case "notifications/initialized":
                 return null;

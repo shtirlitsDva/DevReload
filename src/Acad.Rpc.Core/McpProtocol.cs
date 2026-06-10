@@ -19,19 +19,40 @@ namespace Acad.Rpc.Core;
 /// </summary>
 public static class McpProtocol
 {
-    public const string ProtocolVersion = "2025-03-26";
+    public const string LatestProtocolVersion = "2025-11-25";
+
+    // Versions whose required server-side behavior (for a tools-only
+    // server over a line-delimited pipe) we actually implement.
+    private static readonly HashSet<string> SupportedVersions = new(StringComparer.Ordinal)
+    {
+        "2025-11-25", "2025-06-18", "2025-03-26",
+    };
+
+    /// <summary>
+    /// Spec negotiation rule: if the client's requested version is
+    /// supported, echo it back; otherwise answer with our latest and
+    /// let the client decide whether to proceed.
+    /// </summary>
+    public static string NegotiateVersion(string? requested) =>
+        requested != null && SupportedVersions.Contains(requested)
+            ? requested
+            : LatestProtocolVersion;
 
     public static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = false,
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+        // Output goes over a pipe to an MCP client, never into HTML — relaxed
+        // escaping keeps '>' and non-ASCII readable instead of \uXXXX.
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
-    public static JsonObject InitializeResult(string serverName, string serverVersion)
+    public static JsonObject InitializeResult(
+        string serverName, string serverVersion, string protocolVersion)
     {
         return new JsonObject
         {
-            ["protocolVersion"] = ProtocolVersion,
+            ["protocolVersion"] = protocolVersion,
             ["capabilities"] = new JsonObject
             {
                 ["tools"] = new JsonObject { ["listChanged"] = true },
@@ -61,6 +82,18 @@ public static class McpProtocol
             },
             ["isError"] = isError,
         };
+    }
+
+    /// <summary>
+    /// Tool result carrying both the structured object (spec ≥ 2025-06-18)
+    /// and its text serialization (required for backward compatibility).
+    /// Older clients ignore the unknown structuredContent field.
+    /// </summary>
+    public static JsonObject CallToolResultStructured(string text, JsonObject structuredContent)
+    {
+        var result = CallToolResultText(text, isError: false);
+        result["structuredContent"] = structuredContent;
+        return result;
     }
 
     public static JsonObject MakeRequest(string method, JsonObject? @params, int id)

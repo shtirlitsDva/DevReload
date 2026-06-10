@@ -182,7 +182,11 @@ public sealed class RpcCore
         switch (method)
         {
             case "initialize":
-                return McpProtocol.InitializeResult(serverName: _serverName, serverVersion: ApiVersion);
+                return McpProtocol.InitializeResult(
+                    serverName: _serverName,
+                    serverVersion: ApiVersion,
+                    protocolVersion: McpProtocol.NegotiateVersion(
+                        @params?["protocolVersion"]?.GetValue<string>()));
 
             case "notifications/initialized":
                 return null;
@@ -222,8 +226,10 @@ public sealed class RpcCore
                 JsonObject args = (@params?["arguments"] as JsonObject) ?? new JsonObject();
                 try
                 {
-                    var resultText = await InvokeToolAsync(tool, args, ct).ConfigureAwait(false);
-                    return McpProtocol.CallToolResultText(resultText, isError: false);
+                    var (text, structured) = await InvokeToolAsync(tool, args, ct).ConfigureAwait(false);
+                    return structured != null
+                        ? McpProtocol.CallToolResultStructured(text, structured)
+                        : McpProtocol.CallToolResultText(text, isError: false);
                 }
                 catch (Exception ex)
                 {
@@ -236,7 +242,8 @@ public sealed class RpcCore
         }
     }
 
-    private async Task<string> InvokeToolAsync(RegisteredTool tool, JsonObject args, CancellationToken ct)
+    private async Task<(string Text, JsonObject? Structured)> InvokeToolAsync(
+        RegisteredTool tool, JsonObject args, CancellationToken ct)
     {
         var parameters = tool.Method.GetParameters();
         var bound = new object?[parameters.Length];
@@ -283,12 +290,21 @@ public sealed class RpcCore
             else invokeResult = null;
         }
 
+        // Spec: structuredContent must be a JSON *object*, so arrays and
+        // primitives travel as text only.
         return invokeResult switch
         {
-            null => "",
-            string s => s,
-            _ => JsonSerializer.Serialize(invokeResult, McpProtocol.JsonOptions),
+            null => ("", null),
+            string s => (s, null),
+            _ => Materialize(invokeResult),
         };
+
+        static (string, JsonObject?) Materialize(object value)
+        {
+            JsonNode? node = JsonSerializer.SerializeToNode(value, McpProtocol.JsonOptions);
+            string text = node?.ToJsonString(McpProtocol.JsonOptions) ?? "";
+            return (text, node as JsonObject);
+        }
     }
 
     /// <summary>Test-only entry that exercises tool invocation without
@@ -300,7 +316,7 @@ public sealed class RpcCore
         RegisteredTool? tool;
         lock (_gate) { _toolsByName.TryGetValue(toolName, out tool); }
         if (tool == null) throw new InvalidOperationException($"unknown tool: {toolName}");
-        return await InvokeToolAsync(tool, args, ct).ConfigureAwait(false);
+        return (await InvokeToolAsync(tool, args, ct).ConfigureAwait(false)).Text;
     }
 
     // ── Attribute scan ────────────────────────────────────────────────

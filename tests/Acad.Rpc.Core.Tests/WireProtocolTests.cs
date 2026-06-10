@@ -17,6 +17,11 @@ public static class WireFixture
 
     [AcadRpcTool, System.ComponentModel.Description("Add two ints")]
     public static int Sum(int a, int b) => a + b;
+
+    public record WireInfo(string Name, int Count);
+
+    [AcadRpcTool, System.ComponentModel.Description("Return a structured object")]
+    public static WireInfo Info() => new("widget", 7);
 }
 
 [Collection("AcadRpcHostSingleton")]
@@ -45,6 +50,8 @@ public class WireProtocolTests
         Assert.NotNull(initLine);
         var initResp = JsonNode.Parse(initLine!)!.AsObject();
         Assert.Equal("Acad.Rpc", initResp["result"]!["serverInfo"]!["name"]!.GetValue<string>());
+        // Server echoes a supported requested version instead of forcing its own.
+        Assert.Equal("2025-03-26", initResp["result"]!["protocolVersion"]!.GetValue<string>());
 
         // tools/list
         await writer.WriteLineAsync("""{"jsonrpc":"2.0","id":2,"method":"tools/list"}""");
@@ -69,6 +76,28 @@ public class WireProtocolTests
         var addText = addResp["result"]!["content"]!.AsArray()[0]!["text"]!.GetValue<string>();
         Assert.Equal("5", addText);
 
+        // tools/call info — object results carry structuredContent alongside text
+        await writer.WriteLineAsync("{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"wirefixture_info\",\"arguments\":{}}}");
+        var infoLine = await reader.ReadLineAsync(cts.Token);
+        var infoResp = JsonNode.Parse(infoLine!)!.AsObject();
+        var infoResult = infoResp["result"]!.AsObject();
+        var structured = infoResult["structuredContent"]!.AsObject();
+        Assert.Equal("widget", structured["name"]!.GetValue<string>());
+        Assert.Equal(7, structured["count"]!.GetValue<int>());
+        var infoText = infoResult["content"]!.AsArray()[0]!["text"]!.GetValue<string>();
+        Assert.Equal(structured.ToJsonString(), JsonNode.Parse(infoText)!.ToJsonString());
+
         await host.ShutdownAsync();
+    }
+
+    [Theory]
+    [InlineData("2025-11-25", "2025-11-25")] // latest, echoed
+    [InlineData("2025-06-18", "2025-06-18")] // older but supported, echoed
+    [InlineData("2099-01-01", "2025-11-25")] // unknown → our latest
+    [InlineData(null, "2025-11-25")]         // absent → our latest
+    public void NegotiateVersion_EchoesSupported_FallsBackToLatest(
+        string? requested, string expected)
+    {
+        Assert.Equal(expected, McpProtocol.NegotiateVersion(requested));
     }
 }
