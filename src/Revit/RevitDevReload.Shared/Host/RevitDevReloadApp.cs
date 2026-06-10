@@ -23,7 +23,9 @@ namespace RevitDevReload
         {
             RevitContext.UiCtrlApp = application;
             RevitContext.UiSync = SynchronizationContext.Current;
-            RevitContext.MainWindowHandle = Process.GetCurrentProcess().MainWindowHandle;
+            // NOT Process.MainWindowHandle — that is IntPtr.Zero while Revit
+            // is still splash-screening through OnStartup.
+            RevitContext.MainWindowHandle = application.MainWindowHandle;
             RevitContext.RevitVersionYear = int.Parse(
                 application.ControlledApplication.VersionNumber);
 

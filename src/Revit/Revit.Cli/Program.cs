@@ -197,29 +197,38 @@ namespace Revit.Cli
 
         private static int Stop()
         {
+            // Only ever touch the Revit that answers OUR pipe — never sweep
+            // all Revit processes (one of them may be a human's session).
             int? pid = PipeClient.FindPidWithPipe();
-            if (pid.HasValue)
+            if (pid == null)
             {
-                try
-                {
-                    PipeClient.Send(pid.Value, "{\"id\":1,\"cmd\":\"quit\"}");
-                    Console.WriteLine($"quit sent to pid {pid}");
-                }
-                catch
-                {
-                    // response may be cut off by the exit — that's fine
-                }
-                // Give the graceful path a moment, then make sure.
-                Thread.Sleep(3000);
+                Console.WriteLine("no RevitDevReload pipe found — nothing stopped");
+                return 0;
             }
 
-            foreach (var proc in Process.GetProcessesByName("Revit"))
+            try
             {
+                PipeClient.Send(pid.Value, "{\"id\":1,\"cmd\":\"quit\"}");
+                Console.WriteLine($"quit sent to pid {pid}");
+            }
+            catch
+            {
+                // response may be cut off by the exit — that's fine
+            }
+            Thread.Sleep(3000);
+
+            try
+            {
+                var proc = Process.GetProcessById(pid.Value);
                 if (!proc.HasExited)
                 {
                     proc.Kill(entireProcessTree: true);
-                    Console.WriteLine($"killed pid {proc.Id}");
+                    Console.WriteLine($"killed pid {pid}");
                 }
+            }
+            catch (ArgumentException)
+            {
+                // already gone — the graceful path worked
             }
             return 0;
         }
