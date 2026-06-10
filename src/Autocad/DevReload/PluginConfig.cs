@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using DevReload.Core;
 using DevReload.Rpc;
 
 namespace DevReload
@@ -102,8 +103,8 @@ namespace DevReload
                 return new RegisterPluginResult(false, "",
                     $"could not derive plugin name from '{projectFilePath}'");
 
-            string? dllPath = DevReloadService.QueryMsBuildProperty(
-                projectFilePath, "TargetPath", buildConfiguration);
+            string? dllPath = BuildService.QueryMsBuildProperty(
+                projectFilePath, "TargetPath", buildConfiguration, AcadBuild.Platform);
             if (string.IsNullOrEmpty(dllPath))
                 return new RegisterPluginResult(false, name,
                     $"could not resolve TargetPath for '{name}' ({buildConfiguration}). " +

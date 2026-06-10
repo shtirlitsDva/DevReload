@@ -11,6 +11,7 @@ using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Internal;
 using Autodesk.AutoCAD.Runtime;
 
+using DevReload.Core;
 using DevReload.Rpc;
 
 using Exception = System.Exception;
@@ -69,7 +70,7 @@ namespace DevReload
                 {
                     string csprojPath = GetEffectiveCsprojPath(reg);
                     ed?.WriteMessage($"\n{pluginName} DLL not found, building...");
-                    build = DevReloadService.BuildProject(
+                    build = AcadBuild.Build(
                         csprojPath, reg.BuildConfiguration, ed);
                     if (!build.Success || build.OutputPath == null)
                         return Result(reg, success: false, "build failed", build);
@@ -85,7 +86,7 @@ namespace DevReload
                 {
                     ed?.WriteMessage($"\nStale plugin detected, rebuilding...");
                     string csprojPath = GetEffectiveCsprojPath(reg);
-                    build = DevReloadService.BuildProject(
+                    build = AcadBuild.Build(
                         csprojPath, reg.BuildConfiguration, ed);
                     if (!build.Success || build.OutputPath == null)
                         return Result(reg, success: false, "rebuild failed", build);
@@ -116,7 +117,7 @@ namespace DevReload
             try
             {
                 string csprojPath = GetEffectiveCsprojPath(reg);
-                build = DevReloadService.BuildProject(
+                build = AcadBuild.Build(
                     csprojPath, reg.BuildConfiguration, ed);
                 if (!build.Success || build.OutputPath == null)
                     return Result(reg, success: false, "build failed", build);
@@ -160,7 +161,7 @@ namespace DevReload
             try
             {
                 string csprojPath = GetEffectiveCsprojPath(reg);
-                var build = DevReloadService.BuildProject(
+                var build = AcadBuild.Build(
                     csprojPath, reg.BuildConfiguration, ed);
                 if (!build.Success || build.OutputPath == null)
                     return Result(reg, success: false, "build failed", build);

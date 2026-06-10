@@ -14,4 +14,14 @@
     <Compile Include="$(MSBuildThisFileDirectory)Forms\StringGridFormCaller.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Forms\TGridFormCaller.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Shared dark theme — compiled into each consuming assembly at the
+         logical path "Themes/Theme.xaml" so in-assembly relative URIs
+         (e.g. "../Themes/Theme.xaml" from a Views folder) keep working. -->
+    <Page Include="$(MSBuildThisFileDirectory)Themes\Theme.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+      <Link>Themes\Theme.xaml</Link>
+    </Page>
+  </ItemGroup>
 </Project>

@@ -7,6 +7,8 @@ using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
+using DevReload.Core;
+
 namespace DevReload.ViewModels
 {
     // A branch/worktree whose build dir already holds a SharedAssemblies.Config.json

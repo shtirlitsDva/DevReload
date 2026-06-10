@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 
-namespace DevReload
+namespace DevReload.Core
 {
     public record WorktreeInfo(string Path, string Branch, bool IsMain);
 
@@ -79,7 +79,7 @@ namespace DevReload
         public static string RemapToWorktree(
             string csprojPath, string mainRepoRoot, string worktreePath)
         {
-            string relativePath = Path.GetRelativePath(mainRepoRoot, csprojPath);
+            string relativePath = GetRelativePath(mainRepoRoot, csprojPath);
             return Path.GetFullPath(Path.Combine(worktreePath, relativePath));
         }
 
@@ -100,6 +100,21 @@ namespace DevReload
                     $"repo root for '{projectFilePath}' could not be resolved.");
 
             return RemapToWorktree(projectFilePath, repoRoot, activeWorktreePath);
+        }
+
+        private static string GetRelativePath(string relativeTo, string path)
+        {
+#if NET5_0_OR_GREATER
+            return Path.GetRelativePath(relativeTo, path);
+#else
+            // net48 has no Path.GetRelativePath — Uri-based equivalent.
+            string baseDir = relativeTo.EndsWith("\\") ? relativeTo : relativeTo + "\\";
+            var baseUri = new Uri(baseDir);
+            var pathUri = new Uri(path);
+            string rel = Uri.UnescapeDataString(
+                baseUri.MakeRelativeUri(pathUri).ToString());
+            return rel.Replace('/', '\\');
+#endif
         }
 
         private static string? RunGit(string workingDir, string arguments)

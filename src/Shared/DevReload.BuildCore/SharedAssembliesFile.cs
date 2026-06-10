@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
-namespace DevReload
+namespace DevReload.Core
 {
     // Single canonical reader/writer for SharedAssemblies.Config.json — the file
     // that records which DLLs in a build directory should be pre-loaded into the

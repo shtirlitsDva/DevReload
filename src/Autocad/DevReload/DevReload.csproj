@@ -46,6 +46,7 @@
 		<None Include="PackageContents.xml" CopyToOutputDirectory="Never" />
 	</ItemGroup>
 	<Import Project="..\..\Shared\WpfSHARED\WpfSHARED.projitems" Label="Shared" />
+	<Import Project="..\..\Shared\DevReload.BuildCore\DevReload.BuildCore.projitems" Label="Shared" />
 
 	<Target Name="CreateBundle" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
 		<MakeDir Directories="$(BundleContentsDir)" />

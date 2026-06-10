@@ -14,6 +14,7 @@ using Autodesk.AutoCAD.ApplicationServices;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
+using DevReload.Core;
 using DevReload.Views;
 
 namespace DevReload
@@ -314,9 +315,9 @@ namespace DevReload.ViewModels
             string? buildDir;
             try
             {
-                buildDir = DevReloadService.ResolveBuildDir(
+                buildDir = BuildService.ResolveBuildDir(
                     entry.ProjectFilePath, entry.ActiveWorktreePath,
-                    entry.BuildConfiguration);
+                    entry.BuildConfiguration, AcadBuild.Platform);
             }
             catch (Exception ex)
             {
@@ -431,9 +432,9 @@ namespace DevReload.ViewModels
             string? pluginDir;
             try
             {
-                pluginDir = DevReloadService.ResolveBuildDir(
+                pluginDir = BuildService.ResolveBuildDir(
                     entry.ProjectFilePath, entry.ActiveWorktreePath,
-                    entry.BuildConfiguration);
+                    entry.BuildConfiguration, AcadBuild.Platform);
             }
             catch (Exception ex)
             {
@@ -654,8 +655,8 @@ namespace DevReload.ViewModels
                 bool present = false;
                 try
                 {
-                    string? buildDir = DevReloadService.ResolveBuildDir(
-                        projectFile, worktree, config);
+                    string? buildDir = BuildService.ResolveBuildDir(
+                        projectFile, worktree, config, AcadBuild.Platform);
                     present = !string.IsNullOrEmpty(buildDir)
                         && File.Exists(SharedAssembliesFile.PathFor(buildDir));
                 }

@@ -1,10 +1,14 @@
+// Collectible-ALC plugin isolation — .NET 8 hosts only (AutoCAD 2025+,
+// Revit 2025+). net48 consumers compile this file to nothing and use their
+// legacy loader instead.
+#if NET8_0_OR_GREATER
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Runtime.Loader;
 
-namespace DevReload
+namespace DevReload.Core
 {
     public class IsolatedPluginContext : AssemblyLoadContext
     {
@@ -84,3 +88,4 @@ namespace DevReload
         }
     }
 }
+#endif

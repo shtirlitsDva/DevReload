@@ -4,6 +4,8 @@ using System.Linq;
 
 using Acad.Rpc.Core;
 
+using DevReload.Core;
+
 namespace DevReload.Rpc
 {
     /// <summary>
@@ -95,7 +97,7 @@ namespace DevReload.Rpc
         public static BuildResult BuildProject(
             [Description("Absolute path to the .csproj")] string csprojPath,
             [Description("Configuration: 'Debug' or 'Release'")] string buildConfiguration) =>
-            DevReloadService.BuildProject(csprojPath, buildConfiguration, ed: null);
+            BuildService.BuildProject(csprojPath, buildConfiguration, AcadBuild.Platform, progress: null);
 
         // ── Worktree ─────────────────────────────────────────────────
 

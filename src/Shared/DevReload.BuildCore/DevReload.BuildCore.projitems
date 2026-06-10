@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <MSBuildAllProjects Condition="'$(MSBuildVersion)' == '' Or '$(MSBuildVersion)' &lt; '16.0'">$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
+    <HasSharedItems>true</HasSharedItems>
+    <SharedGUID>780b2a93-28cd-435a-8aaf-3d7cdac044ca</SharedGUID>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration">
+    <Import_RootNamespace>DevReload.Core</Import_RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)BuildResult.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)BuildService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Compat.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)GitWorktreeService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)IsolatedPluginContext.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SharedAssembliesFile.cs" />
+  </ItemGroup>
+</Project>

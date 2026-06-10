@@ -1,3 +1,5 @@
+using DevReload.Core;
+
 namespace DevReload.Rpc
 {
     // Records returned by the DevReload MCP tool surface. They serialize
@@ -47,13 +49,6 @@ namespace DevReload.Rpc
         string SourceAssembly,
         string ToolName,
         string? Description);
-
-    public sealed record BuildResult(
-        bool Success,
-        string? OutputPath,
-        int Warnings,
-        int Errors,
-        string Log);
 
     public sealed record SharedAssembliesConfig(
         System.Collections.Generic.IReadOnlyList<string> SharedAssemblies,
