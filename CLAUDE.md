@@ -22,8 +22,32 @@ dotnet build src/Autocad/DevReload/DevReload.csproj -c Release -p:Platform=x64
 ## Repo Layout
 
 - `src/Autocad/` — AutoCAD host: `DevReload` (plugin + palette), `EventManager` (AcadEventManager shproj), `Acad.Process`, `Acad.Rpc.Bridge`
-- `src/Shared/` — host-agnostic: `Acad.Rpc.Core` (MCP/RPC engine; legacy name, used by both hosts), `WpfSHARED` (shproj)
-- `src/Revit/` — Revit host: per-version add-in projects (`RevitDevReload.R22`…) over a shared `.shproj`
+- `src/Shared/` — host-agnostic: `Acad.Rpc.Core` (MCP/RPC engine; legacy name, used by both hosts), `WpfSHARED` (shproj, owns Theme.xaml), `DevReload.BuildCore` (shproj: BuildService, GitWorktreeService, SharedAssembliesFile, IsolatedPluginContext)
+- `src/Revit/` — Revit host: `RevitDevReload.R22/R23/R24` (net48, legacy byte-loader) and `RevitDevReload.R25` (net8, collectible ALC) over `RevitDevReload.Shared.shproj`; `Revit.Cli` test/agent driver
+
+## Revit Port
+
+```bash
+# Build a Revit host (year-specific)
+dotnet build src/Revit/RevitDevReload.R25/RevitDevReload.R25.csproj -c Debug -p:Platform=x64
+
+# Unit tests (dual-target net8 + net48; covers loaders, pipe, config, manifest)
+dotnet test tests/RevitDevReload.Tests/RevitDevReload.Tests.csproj -c Debug
+
+# Deploy + drive a live Revit (builds host, writes .addin, auto-clicks security dialogs)
+src/Revit/Revit.Cli/bin/Debug/revit-cli.exe deploy --rvt 2025
+src/Revit/Revit.Cli/bin/Debug/revit-cli.exe start --rvt 2025 --watch-dialogs --wait-pipe 300
+src/Revit/Revit.Cli/bin/Debug/revit-cli.exe send --cmd ping
+
+# Scripted E2E
+pwsh scripts/Test-RevitE2E.ps1 -RevitYear 2025
+```
+
+Key Revit-specific facts: no NoCommands marker is needed (Revit never auto-registers
+commands); plugin `IExternalCommand`s are invoked through one `ExternalEvent` with the
+`ExternalCommandData` captured when the DevReload ribbon button first runs; ribbon/
+DockablePane registration is startup-only, so hot-loaded plugins use modeless windows.
+See `docs/revit-port/design.md` and `docs/revit-port/e2e-results.md`.
 
 The AutoCAD path defaults to `C:\Program Files\Autodesk\AutoCAD 2025`. Override it by copying `Directory.Build.props.user.example` to `Directory.Build.props.user` and setting your path, or via `-p:AutoCADPath="..."`.
 

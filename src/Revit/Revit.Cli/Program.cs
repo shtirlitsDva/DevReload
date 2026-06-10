@@ -7,6 +7,8 @@ using System.Threading;
 
 using DevReload.Core;
 
+using FlaUI.Core.AutomationElements;
+
 using RevitDevReload.Core;
 
 namespace Revit.Cli
@@ -44,6 +46,7 @@ namespace Revit.Cli
                     "stop" => Stop(),
                     "dump-ui" => DumpUi(),
                     "click-allow" => ClickAllow(),
+                    "click-ribbon" => ClickRibbon(ParseOptions(args)),
                     _ => Fail($"unknown command '{args[0]}'"),
                 };
             }
@@ -273,6 +276,62 @@ namespace Revit.Cli
             }
             Console.WriteLine("no matching dialog found");
             return 1;
+        }
+
+        // Click a named ribbon button in the running Revit via UIA — used by
+        // automated runs to press the DevReload button once so the host
+        // captures ExternalCommandData (required for run_command). Inactive
+        // ribbon tabs don't expose their buttons in the UIA tree, so pass
+        // --tab to activate the tab (real mouse click) first.
+        private static int ClickRibbon(Dictionary<string, string> opts)
+        {
+            if (!opts.TryGetValue("name", out var name))
+                return Fail("click-ribbon requires --name <button-name>");
+            opts.TryGetValue("tab", out var tabName);
+
+            using var automation = new FlaUI.UIA3.UIA3Automation();
+            var desktop = automation.GetDesktop();
+            foreach (var proc in Process.GetProcessesByName("Revit"))
+            {
+                foreach (var window in desktop.FindAllChildren(
+                             cf => cf.ByProcessId(proc.Id)))
+                {
+                    if (tabName != null)
+                    {
+                        var tab = window.FindFirstDescendant(cf => cf.ByName(tabName));
+                        if (tab != null)
+                        {
+                            ClickElement(tab);
+                            Console.WriteLine($"activated tab '{tabName}'");
+                            Thread.Sleep(800); // tab content populates async
+                        }
+                    }
+
+                    var button = window.FindFirstDescendant(cf =>
+                        cf.ByControlType(FlaUI.Core.Definitions.ControlType.Button)
+                          .And(cf.ByName(name)));
+                    if (button == null) continue;
+
+                    ClickElement(button);
+                    Console.WriteLine($"clicked ribbon button '{name}' (pid {proc.Id})");
+                    return 0;
+                }
+            }
+            return Fail($"ribbon button '{name}' not found in any Revit window" +
+                        (tabName == null ? " (try --tab \"Add-Ins\")" : ""));
+        }
+
+        private static void ClickElement(AutomationElement element)
+        {
+            try
+            {
+                element.AsButton().Invoke();
+            }
+            catch
+            {
+                // Not invokable (ribbon tabs, custom hosts) — real mouse click.
+                element.Click();
+            }
         }
 
         // ── helpers ──────────────────────────────────────────────────
