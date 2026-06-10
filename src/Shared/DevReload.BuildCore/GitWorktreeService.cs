@@ -99,7 +99,10 @@ namespace DevReload.Core
                     $"Active worktree '{activeWorktreePath}' is set, but the git " +
                     $"repo root for '{projectFilePath}' could not be resolved.");
 
-            return RemapToWorktree(projectFilePath, repoRoot, activeWorktreePath);
+            // The `!` is for net48 consumers: their BCL lacks the
+            // [NotNullWhen] annotation on IsNullOrEmpty, so null-state
+            // doesn't flow from the guard above.
+            return RemapToWorktree(projectFilePath, repoRoot, activeWorktreePath!);
         }
 
         private static string GetRelativePath(string relativeTo, string path)

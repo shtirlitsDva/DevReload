@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net48</TargetFramework>
+		<SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net48'"></SupportedOSPlatformVersion>
+		<AssemblyName>RevitDevReload.R22</AssemblyName>
+		<RootNamespace>RevitDevReload</RootNamespace>
+		<OutputType>Library</OutputType>
+		<GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+		<NoWarn>$(NoWarn);CA1416;MSB3277</NoWarn>
+		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+		<LangVersion>latest</LangVersion>
+		<DefineConstants>$(DefineConstants);REVIT2022</DefineConstants>
+		<!-- Revit 2022 installation; override via -p:RevitPath2022=... -->
+		<RevitPath2022 Condition="'$(RevitPath2022)' == ''">C:\Program Files\Autodesk\Revit 2022</RevitPath2022>
+	</PropertyGroup>
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
+		<OutputPath>bin\Debug\</OutputPath>
+		<DebugType>full</DebugType>
+	</PropertyGroup>
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
+		<OutputPath>bin\Release\</OutputPath>
+		<DebugType>full</DebugType>
+	</PropertyGroup>
+	<ItemGroup>
+		<Reference Include="RevitAPI">
+			<HintPath>$(RevitPath2022)\RevitAPI.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="RevitAPIUI">
+			<HintPath>$(RevitPath2022)\RevitAPIUI.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="System.Text.Json" Version="8.0.5" />
+		<Reference Include="System.Net.Http" />
+	</ItemGroup>
+	<Import Project="..\RevitDevReload.Shared\RevitDevReload.Shared.projitems" Label="Shared" />
+	<Import Project="..\..\Shared\DevReload.BuildCore\DevReload.BuildCore.projitems" Label="Shared" />
+	<ItemGroup>
+		<!-- Only the shared theme from WpfSHARED — the grid forms there use
+		     net5+ APIs and nothing in the Revit host needs them. -->
+		<Page Include="..\..\Shared\WpfSHARED\Themes\Theme.xaml">
+			<Link>Themes\Theme.xaml</Link>
+			<Generator>MSBuild:Compile</Generator>
+		</Page>
+	</ItemGroup>
+</Project>

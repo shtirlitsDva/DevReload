@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
 VisualStudioVersion = 18.3.11520.95
@@ -20,6 +20,22 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Acad.Rpc.Core.Tests", "tests\Acad.Rpc.Core.Tests\Acad.Rpc.Core.Tests.csproj", "{325E0E4E-9ABB-471F-9C0A-50325FE69997}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Acad.Process", "src\Autocad\Acad.Process\Acad.Process.csproj", "{8AB9FAE3-EE04-46B0-B664-177802DFF7A0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RevitDevReload.Tests", "tests\RevitDevReload.Tests\RevitDevReload.Tests.csproj", "{87BCBDD9-13A8-4A0B-B525-3B34662C1447}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Revit", "Revit", "{811EC07F-B920-941F-CA6E-718FFA66AF78}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RevitDevReload.R22", "src\Revit\RevitDevReload.R22\RevitDevReload.R22.csproj", "{73ABB17E-9213-4CC8-9642-C604300D321C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RevitDevReload.R23", "src\Revit\RevitDevReload.R23\RevitDevReload.R23.csproj", "{4E2C5839-B827-490E-A043-5F454E2DF97C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RevitDevReload.R24", "src\Revit\RevitDevReload.R24\RevitDevReload.R24.csproj", "{199DB96C-9CA1-4489-A2B9-E6CCD300E5A1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RevitDevReload.R25", "src\Revit\RevitDevReload.R25\RevitDevReload.R25.csproj", "{55DD0624-1805-4808-827E-8E55B1DC3050}"
+EndProject
+Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "RevitDevReload.Shared", "src\Revit\RevitDevReload.Shared\RevitDevReload.Shared.shproj", "{029E7630-AD86-4276-A7A4-EA1E6485E178}"
+EndProject
+Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "DevReload.BuildCore", "src\Shared\DevReload.BuildCore\DevReload.BuildCore.shproj", "{780B2A93-28CD-435A-8AAF-3D7CDAC044CA}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -91,6 +107,66 @@ Global
 		{8AB9FAE3-EE04-46B0-B664-177802DFF7A0}.Release|Any CPU.Build.0 = Release|x64
 		{8AB9FAE3-EE04-46B0-B664-177802DFF7A0}.Release|x86.ActiveCfg = Release|x64
 		{8AB9FAE3-EE04-46B0-B664-177802DFF7A0}.Release|x86.Build.0 = Release|x64
+		{87BCBDD9-13A8-4A0B-B525-3B34662C1447}.Debug|x64.ActiveCfg = Debug|x64
+		{87BCBDD9-13A8-4A0B-B525-3B34662C1447}.Debug|x64.Build.0 = Debug|x64
+		{87BCBDD9-13A8-4A0B-B525-3B34662C1447}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{87BCBDD9-13A8-4A0B-B525-3B34662C1447}.Debug|Any CPU.Build.0 = Debug|x64
+		{87BCBDD9-13A8-4A0B-B525-3B34662C1447}.Debug|x86.ActiveCfg = Debug|x64
+		{87BCBDD9-13A8-4A0B-B525-3B34662C1447}.Debug|x86.Build.0 = Debug|x64
+		{87BCBDD9-13A8-4A0B-B525-3B34662C1447}.Release|x64.ActiveCfg = Release|x64
+		{87BCBDD9-13A8-4A0B-B525-3B34662C1447}.Release|x64.Build.0 = Release|x64
+		{87BCBDD9-13A8-4A0B-B525-3B34662C1447}.Release|Any CPU.ActiveCfg = Release|x64
+		{87BCBDD9-13A8-4A0B-B525-3B34662C1447}.Release|Any CPU.Build.0 = Release|x64
+		{87BCBDD9-13A8-4A0B-B525-3B34662C1447}.Release|x86.ActiveCfg = Release|x64
+		{87BCBDD9-13A8-4A0B-B525-3B34662C1447}.Release|x86.Build.0 = Release|x64
+		{73ABB17E-9213-4CC8-9642-C604300D321C}.Debug|x64.ActiveCfg = Debug|x64
+		{73ABB17E-9213-4CC8-9642-C604300D321C}.Debug|x64.Build.0 = Debug|x64
+		{73ABB17E-9213-4CC8-9642-C604300D321C}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{73ABB17E-9213-4CC8-9642-C604300D321C}.Debug|Any CPU.Build.0 = Debug|x64
+		{73ABB17E-9213-4CC8-9642-C604300D321C}.Debug|x86.ActiveCfg = Debug|x64
+		{73ABB17E-9213-4CC8-9642-C604300D321C}.Debug|x86.Build.0 = Debug|x64
+		{73ABB17E-9213-4CC8-9642-C604300D321C}.Release|x64.ActiveCfg = Release|x64
+		{73ABB17E-9213-4CC8-9642-C604300D321C}.Release|x64.Build.0 = Release|x64
+		{73ABB17E-9213-4CC8-9642-C604300D321C}.Release|Any CPU.ActiveCfg = Release|x64
+		{73ABB17E-9213-4CC8-9642-C604300D321C}.Release|Any CPU.Build.0 = Release|x64
+		{73ABB17E-9213-4CC8-9642-C604300D321C}.Release|x86.ActiveCfg = Release|x64
+		{73ABB17E-9213-4CC8-9642-C604300D321C}.Release|x86.Build.0 = Release|x64
+		{4E2C5839-B827-490E-A043-5F454E2DF97C}.Debug|x64.ActiveCfg = Debug|x64
+		{4E2C5839-B827-490E-A043-5F454E2DF97C}.Debug|x64.Build.0 = Debug|x64
+		{4E2C5839-B827-490E-A043-5F454E2DF97C}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{4E2C5839-B827-490E-A043-5F454E2DF97C}.Debug|Any CPU.Build.0 = Debug|x64
+		{4E2C5839-B827-490E-A043-5F454E2DF97C}.Debug|x86.ActiveCfg = Debug|x64
+		{4E2C5839-B827-490E-A043-5F454E2DF97C}.Debug|x86.Build.0 = Debug|x64
+		{4E2C5839-B827-490E-A043-5F454E2DF97C}.Release|x64.ActiveCfg = Release|x64
+		{4E2C5839-B827-490E-A043-5F454E2DF97C}.Release|x64.Build.0 = Release|x64
+		{4E2C5839-B827-490E-A043-5F454E2DF97C}.Release|Any CPU.ActiveCfg = Release|x64
+		{4E2C5839-B827-490E-A043-5F454E2DF97C}.Release|Any CPU.Build.0 = Release|x64
+		{4E2C5839-B827-490E-A043-5F454E2DF97C}.Release|x86.ActiveCfg = Release|x64
+		{4E2C5839-B827-490E-A043-5F454E2DF97C}.Release|x86.Build.0 = Release|x64
+		{199DB96C-9CA1-4489-A2B9-E6CCD300E5A1}.Debug|x64.ActiveCfg = Debug|x64
+		{199DB96C-9CA1-4489-A2B9-E6CCD300E5A1}.Debug|x64.Build.0 = Debug|x64
+		{199DB96C-9CA1-4489-A2B9-E6CCD300E5A1}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{199DB96C-9CA1-4489-A2B9-E6CCD300E5A1}.Debug|Any CPU.Build.0 = Debug|x64
+		{199DB96C-9CA1-4489-A2B9-E6CCD300E5A1}.Debug|x86.ActiveCfg = Debug|x64
+		{199DB96C-9CA1-4489-A2B9-E6CCD300E5A1}.Debug|x86.Build.0 = Debug|x64
+		{199DB96C-9CA1-4489-A2B9-E6CCD300E5A1}.Release|x64.ActiveCfg = Release|x64
+		{199DB96C-9CA1-4489-A2B9-E6CCD300E5A1}.Release|x64.Build.0 = Release|x64
+		{199DB96C-9CA1-4489-A2B9-E6CCD300E5A1}.Release|Any CPU.ActiveCfg = Release|x64
+		{199DB96C-9CA1-4489-A2B9-E6CCD300E5A1}.Release|Any CPU.Build.0 = Release|x64
+		{199DB96C-9CA1-4489-A2B9-E6CCD300E5A1}.Release|x86.ActiveCfg = Release|x64
+		{199DB96C-9CA1-4489-A2B9-E6CCD300E5A1}.Release|x86.Build.0 = Release|x64
+		{55DD0624-1805-4808-827E-8E55B1DC3050}.Debug|x64.ActiveCfg = Debug|x64
+		{55DD0624-1805-4808-827E-8E55B1DC3050}.Debug|x64.Build.0 = Debug|x64
+		{55DD0624-1805-4808-827E-8E55B1DC3050}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{55DD0624-1805-4808-827E-8E55B1DC3050}.Debug|Any CPU.Build.0 = Debug|x64
+		{55DD0624-1805-4808-827E-8E55B1DC3050}.Debug|x86.ActiveCfg = Debug|x64
+		{55DD0624-1805-4808-827E-8E55B1DC3050}.Debug|x86.Build.0 = Debug|x64
+		{55DD0624-1805-4808-827E-8E55B1DC3050}.Release|x64.ActiveCfg = Release|x64
+		{55DD0624-1805-4808-827E-8E55B1DC3050}.Release|x64.Build.0 = Release|x64
+		{55DD0624-1805-4808-827E-8E55B1DC3050}.Release|Any CPU.ActiveCfg = Release|x64
+		{55DD0624-1805-4808-827E-8E55B1DC3050}.Release|Any CPU.Build.0 = Release|x64
+		{55DD0624-1805-4808-827E-8E55B1DC3050}.Release|x86.ActiveCfg = Release|x64
+		{55DD0624-1805-4808-827E-8E55B1DC3050}.Release|x86.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -103,11 +179,19 @@ Global
 		{392F1B3E-8068-42BC-9B8D-AAF65DD76F87} = {AE3D5623-4BCD-4510-8529-B35335B4F56F}
 		{325E0E4E-9ABB-471F-9C0A-50325FE69997} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{8AB9FAE3-EE04-46B0-B664-177802DFF7A0} = {AE3D5623-4BCD-4510-8529-B35335B4F56F}
+		{87BCBDD9-13A8-4A0B-B525-3B34662C1447} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{811EC07F-B920-941F-CA6E-718FFA66AF78} = {AE3D5623-4BCD-4510-8529-B35335B4F56F}
+		{73ABB17E-9213-4CC8-9642-C604300D321C} = {811EC07F-B920-941F-CA6E-718FFA66AF78}
+		{4E2C5839-B827-490E-A043-5F454E2DF97C} = {811EC07F-B920-941F-CA6E-718FFA66AF78}
+		{199DB96C-9CA1-4489-A2B9-E6CCD300E5A1} = {811EC07F-B920-941F-CA6E-718FFA66AF78}
+		{55DD0624-1805-4808-827E-8E55B1DC3050} = {811EC07F-B920-941F-CA6E-718FFA66AF78}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {B9FE737A-3C4C-42DA-8F21-4E632E47BC7A}
 	EndGlobalSection
 	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		src\Revit\RevitDevReload.Shared\RevitDevReload.Shared.projitems*{029e7630-ad86-4276-a7a4-ea1e6485e178}*SharedItemsImports = 13
+		src\Shared\DevReload.BuildCore\DevReload.BuildCore.projitems*{780b2a93-28cd-435a-8aaf-3d7cdac044ca}*SharedItemsImports = 13
 		src\Shared\WpfSHARED\WpfSHARED.projitems*{a1b2c3d4-e5f6-7890-abcd-ef1234567890}*SharedItemsImports = 13
 		src\Autocad\EventManager\EventManager.projitems*{b2c3d4e5-f6a7-8901-bcde-f23456789012}*SharedItemsImports = 13
 		src\Shared\WpfSHARED\WpfSHARED.projitems*{f20d38a6-0aa5-13a5-7aa3-d587d97dbffb}*SharedItemsImports = 5

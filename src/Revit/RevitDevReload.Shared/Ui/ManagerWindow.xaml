@@ -1,0 +1,172 @@
+<Window x:Class="RevitDevReload.Ui.ManagerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:RevitDevReload.Ui"
+        Title="{Binding Title}"
+        Width="520" Height="720"
+        WindowStartupLocation="CenterOwner"
+        Background="#3B4453">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Relative path (NOT pack://...;component) — required for the
+                     dictionary to resolve when the assembly is loaded by Revit. -->
+                <ResourceDictionary Source="../Themes/Theme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <ui:InvertBoolConverter x:Key="InvertBool"/>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <DockPanel>
+        <!-- ── Bottom toolbar ────────────────────────────────── -->
+        <Border DockPanel.Dock="Bottom" Style="{StaticResource ToolbarBar}">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Style="{StaticResource AccentBtn}"
+                            Content="+ Add Plugin"
+                            Command="{Binding AddPluginCommand}"/>
+                </StackPanel>
+                <Button DockPanel.Dock="Left"
+                        Style="{StaticResource SurfaceBtn}"
+                        Content="Log"
+                        Command="{Binding ToggleLogCommand}"
+                        ToolTip="Show/hide the activity log"/>
+                <Border/>
+            </DockPanel>
+        </Border>
+
+        <!-- ── Log pane (collapsed by default) ───────────────── -->
+        <Border DockPanel.Dock="Bottom"
+                Style="{StaticResource FormPanel}"
+                Margin="0,0,0,1"
+                MaxHeight="220"
+                Visibility="{Binding IsLogOpen, Converter={StaticResource BoolToVis}}">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                    <Button DockPanel.Dock="Right"
+                            Style="{StaticResource SurfaceBtn}"
+                            Content="Clear"
+                            Command="{Binding ClearLogCommand}"/>
+                    <TextBlock Text="Log" Style="{StaticResource SectionTitle}"
+                               VerticalAlignment="Center"/>
+                </DockPanel>
+                <ListBox ItemsSource="{Binding LogLines}"
+                         Background="#1A202C"
+                         Foreground="{StaticResource MutedBrush}"
+                         BorderThickness="0"
+                         FontFamily="Consolas"
+                         FontSize="11"
+                         ui:ListBoxBehaviors.AutoScrollToEnd="True"/>
+            </DockPanel>
+        </Border>
+
+        <!-- ── Main content ──────────────────────────────────── -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <Grid>
+                <!-- Empty state -->
+                <StackPanel Style="{StaticResource EmptyStatePanel}"
+                            VerticalAlignment="Center" HorizontalAlignment="Center"
+                            Margin="20">
+                    <TextBlock Text="No plugins configured"
+                               Style="{StaticResource EmptyTitle}"
+                               HorizontalAlignment="Center"
+                               Margin="0,0,0,12"/>
+                    <TextBlock Text="Click 'Add Plugin' below and pick the csproj for this Revit version."
+                               Style="{StaticResource Hint}"
+                               HorizontalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Plugin list -->
+                <ItemsControl ItemsSource="{Binding Plugins}"
+                              Visibility="{Binding HasPlugins, Converter={StaticResource BoolToVis}}"
+                              Margin="8">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type ui:PluginCardViewModel}">
+                            <Border Style="{StaticResource PluginCard}" Margin="0,0,0,6">
+                                <StackPanel>
+                                    <!-- Row 0: dot + name + worktree + remove -->
+                                    <DockPanel Margin="0,0,0,6">
+                                        <Button DockPanel.Dock="Right"
+                                                Style="{StaticResource IconDangerBtn}"
+                                                Content="X"
+                                                Command="{Binding DataContext.RemovePluginCommand,
+                                                    RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding Name}"
+                                                ToolTip="Remove plugin"/>
+                                        <ComboBox DockPanel.Dock="Right"
+                                                  Style="{StaticResource WorktreeCombo}"
+                                                  ItemsSource="{Binding Worktrees}"
+                                                  SelectedItem="{Binding SelectedWorktree}"
+                                                  Margin="8,0,4,0"
+                                                  MinWidth="80"
+                                                  VerticalAlignment="Center"
+                                                  ToolTip="Select worktree to build from"/>
+                                        <Ellipse DockPanel.Dock="Left"
+                                                 Style="{StaticResource StatusDot}"
+                                                 Width="10" Height="10"
+                                                 Margin="0,0,8,0"
+                                                 VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding Name}"
+                                                   Style="{StaticResource PluginName}"
+                                                   VerticalAlignment="Center"/>
+                                    </DockPanel>
+
+                                    <!-- Row 1: buttons -->
+                                    <DockPanel>
+                                        <CheckBox DockPanel.Dock="Right"
+                                                  Style="{StaticResource CaptionCheckBox}"
+                                                  Content="Auto-load"
+                                                  IsChecked="{Binding LoadOnStartup}"
+                                                  VerticalAlignment="Center"/>
+                                        <StackPanel Orientation="Horizontal">
+                                            <ToggleButton Style="{StaticResource BuildConfigToggle}"
+                                                          IsChecked="{Binding IsDebug}"
+                                                          Margin="0,0,6,0"
+                                                          ToolTip="Toggle Debug / Release build"/>
+                                            <Button Style="{StaticResource AccentBtn}"
+                                                    Content="Reload"
+                                                    Command="{Binding ReloadCommand}"
+                                                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBool}}"
+                                                    Margin="0,0,6,0"
+                                                    ToolTip="Build then swap in the fresh DLL"/>
+                                            <Button Style="{StaticResource DangerBtn}"
+                                                    Content="Unload"
+                                                    Command="{Binding UnloadCommand}"
+                                                    IsEnabled="{Binding IsLoaded}"
+                                                    Margin="0,0,6,0"/>
+                                        </StackPanel>
+                                    </DockPanel>
+
+                                    <!-- Row 2: discovered commands -->
+                                    <Expander Margin="0,6,0,0"
+                                              Foreground="{StaticResource MutedBrush}"
+                                              Visibility="{Binding IsLoaded, Converter={StaticResource BoolToVis}}">
+                                        <Expander.Header>
+                                            <TextBlock Style="{StaticResource Caption}">
+                                                <Run Text="Commands ("/><Run Text="{Binding Commands.Count, Mode=OneWay}"/><Run Text=")"/>
+                                            </TextBlock>
+                                        </Expander.Header>
+                                        <ItemsControl ItemsSource="{Binding Commands}" Margin="16,4,0,0">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Button Style="{StaticResource RowSurfaceBtn}"
+                                                            Content="{Binding DisplayName}"
+                                                            Command="{Binding DataContext.RunCommandCommand,
+                                                                RelativeSource={RelativeSource AncestorType=Expander}}"
+                                                            CommandParameter="{Binding}"
+                                                            HorizontalAlignment="Left"
+                                                            Margin="0,0,0,2"
+                                                            ToolTip="{Binding FullClassName}"/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Expander>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Grid>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

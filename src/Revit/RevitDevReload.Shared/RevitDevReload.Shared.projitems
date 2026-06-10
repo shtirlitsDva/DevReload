@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <MSBuildAllProjects Condition="'$(MSBuildVersion)' == '' Or '$(MSBuildVersion)' &lt; '16.0'">$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
+    <HasSharedItems>true</HasSharedItems>
+    <SharedGUID>029e7630-ad86-4276-a7a4-ea1e6485e178</SharedGUID>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration">
+    <Import_RootNamespace>RevitDevReload</Import_RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)Core\AddinManifestWriter.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Core\AlcPluginLoader.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Core\CommandScanner.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Core\DevReloadLogBuffer.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Core\IPluginLoader.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Core\LegacyPluginLoader.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Core\PipeProtocol.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Core\PipeServer.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Core\RevitPluginConfig.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Host\ApiContextRunner.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Host\OpenManagerCommand.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Host\PipeDispatcher.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Host\RevitContext.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Host\RevitDevReloadApp.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Host\RevitPluginManager.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Ui\ManagerViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Ui\ManagerWindow.xaml.cs">
+      <DependentUpon>ManagerWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="$(MSBuildThisFileDirectory)Ui\PluginCardViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Ui\UiHelpers.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Page Include="$(MSBuildThisFileDirectory)Ui\ManagerWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+      <Link>Ui\ManagerWindow.xaml</Link>
+    </Page>
+  </ItemGroup>
+</Project>
