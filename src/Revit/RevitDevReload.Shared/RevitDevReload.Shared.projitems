@@ -24,6 +24,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Host\RevitContext.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Host\RevitDevReloadApp.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Host\RevitPluginManager.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Ui\DarkTitleBar.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Ui\ManagerViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Ui\ManagerWindow.xaml.cs">
       <DependentUpon>ManagerWindow.xaml</DependentUpon>

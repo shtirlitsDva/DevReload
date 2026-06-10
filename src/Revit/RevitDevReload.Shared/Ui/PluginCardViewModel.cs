@@ -42,13 +42,22 @@ namespace RevitDevReload.Ui
             Refresh(reg);
         }
 
+        // Set while syncing the VM from the model so the change handlers below
+        // don't persist (and feed back into) what we just read out.
+        private bool _syncingFromModel;
+
         public void Refresh(RevitPluginRegistration reg)
         {
-            IsLoaded = reg.IsLoaded;
-            IsDebug = !string.Equals(
-                reg.Entry.BuildConfiguration, "Release", StringComparison.OrdinalIgnoreCase);
-            LoadOnStartup = reg.Entry.LoadOnStartup;
-            SelectedWorktree = reg.Entry.ActiveWorktreePath;
+            _syncingFromModel = true;
+            try
+            {
+                IsLoaded = reg.IsLoaded;
+                IsDebug = !string.Equals(
+                    reg.Entry.BuildConfiguration, "Release", StringComparison.OrdinalIgnoreCase);
+                LoadOnStartup = reg.Entry.LoadOnStartup;
+                SelectedWorktree = reg.Entry.ActiveWorktreePath;
+            }
+            finally { _syncingFromModel = false; }
 
             Commands.Clear();
             foreach (var cmd in reg.Commands)
@@ -60,6 +69,7 @@ namespace RevitDevReload.Ui
             var reg = RevitPluginManager.Get(Name);
             if (reg == null) return;
             reg.Entry.BuildConfiguration = value ? "Debug" : "Release";
+            Persist();
         }
 
         partial void OnLoadOnStartupChanged(bool value)
@@ -67,6 +77,7 @@ namespace RevitDevReload.Ui
             var reg = RevitPluginManager.Get(Name);
             if (reg == null) return;
             reg.Entry.LoadOnStartup = value;
+            Persist();
         }
 
         partial void OnSelectedWorktreeChanged(string? value)
@@ -75,6 +86,16 @@ namespace RevitDevReload.Ui
             if (reg == null) return;
             reg.Entry.ActiveWorktreePath =
                 string.IsNullOrEmpty(value) || value == MainCheckoutLabel ? null : value;
+            Persist();
+        }
+
+        // Write the config to disk so per-plugin settings (build config,
+        // auto-load, worktree) survive across Revit sessions. Skipped while
+        // Refresh()/RefreshWorktrees() are syncing the VM from the model.
+        private void Persist()
+        {
+            if (_syncingFromModel) return;
+            RevitPluginManager.PersistConfig();
         }
 
         private const string MainCheckoutLabel = "(main)";
@@ -94,7 +115,10 @@ namespace RevitDevReload.Ui
             Worktrees.Add(MainCheckoutLabel);
             foreach (var wt in GitWorktreeService.ListWorktrees(repoRoot).Where(w => !w.IsMain))
                 Worktrees.Add(wt.Path);
-            SelectedWorktree = current ?? MainCheckoutLabel;
+
+            _syncingFromModel = true;
+            try { SelectedWorktree = current ?? MainCheckoutLabel; }
+            finally { _syncingFromModel = false; }
         }
 
         [RelayCommand]

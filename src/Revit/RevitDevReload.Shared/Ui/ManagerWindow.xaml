@@ -5,7 +5,7 @@
         Title="{Binding Title}"
         Width="520" Height="720"
         WindowStartupLocation="CenterOwner"
-        Background="#3B4453">
+        Style="{DynamicResource RootWindow}">
     <Window.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
@@ -50,13 +50,9 @@
                     <TextBlock Text="Log" Style="{StaticResource SectionTitle}"
                                VerticalAlignment="Center"/>
                 </DockPanel>
-                <ListBox ItemsSource="{Binding LogLines}"
-                         Background="#1A202C"
-                         Foreground="{StaticResource MutedBrush}"
-                         BorderThickness="0"
-                         FontFamily="Consolas"
-                         FontSize="11"
-                         ui:ListBoxBehaviors.AutoScrollToEnd="True"/>
+                <TextBox Text="{Binding LogText, Mode=OneWay}"
+                         Style="{StaticResource LogBox}"
+                         ui:TextBoxBehaviors.AutoScrollToEnd="True"/>
             </DockPanel>
         </Border>
 
@@ -120,7 +116,7 @@
                                                   VerticalAlignment="Center"/>
                                         <StackPanel Orientation="Horizontal">
                                             <ToggleButton Style="{StaticResource BuildConfigToggle}"
-                                                          IsChecked="{Binding IsDebug}"
+                                                          IsChecked="{Binding IsDebug, Converter={StaticResource InvertBool}}"
                                                           Margin="0,0,6,0"
                                                           ToolTip="Toggle Debug / Release build"/>
                                             <Button Style="{StaticResource AccentBtn}"
@@ -139,7 +135,6 @@
 
                                     <!-- Row 2: discovered commands -->
                                     <Expander Margin="0,6,0,0"
-                                              Foreground="{StaticResource MutedBrush}"
                                               Visibility="{Binding IsLoaded, Converter={StaticResource BoolToVis}}">
                                         <Expander.Header>
                                             <TextBlock Style="{StaticResource Caption}">

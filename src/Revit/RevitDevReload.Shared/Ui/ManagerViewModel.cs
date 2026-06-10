@@ -19,7 +19,11 @@ namespace RevitDevReload.Ui
         private readonly Dispatcher _dispatcher;
 
         public ObservableCollection<PluginCardViewModel> Plugins { get; } = new();
+
+        // LogLines is the capped backing store; LogText is the selectable,
+        // copyable projection bound to the read-only log TextBox.
         public ObservableCollection<string> LogLines { get; } = new();
+        public string LogText => string.Join(Environment.NewLine, LogLines);
 
         public bool HasPlugins => Plugins.Count > 0;
 
@@ -36,6 +40,7 @@ namespace RevitDevReload.Ui
 
             foreach (var line in DevReloadLogBuffer.Snapshot())
                 LogLines.Add(line);
+            OnPropertyChanged(nameof(LogText));
 
             RevitPluginManager.PluginsChanged += OnPluginsChanged;
             DevReloadLogBuffer.LineAdded += OnLogLine;
@@ -60,6 +65,7 @@ namespace RevitDevReload.Ui
             {
                 LogLines.Add(line);
                 while (LogLines.Count > 500) LogLines.RemoveAt(0);
+                OnPropertyChanged(nameof(LogText));
             }));
         }
 
@@ -128,6 +134,10 @@ namespace RevitDevReload.Ui
         private void ToggleLog() => IsLogOpen = !IsLogOpen;
 
         [RelayCommand]
-        private void ClearLog() => LogLines.Clear();
+        private void ClearLog()
+        {
+            LogLines.Clear();
+            OnPropertyChanged(nameof(LogText));
+        }
     }
 }

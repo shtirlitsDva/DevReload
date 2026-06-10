@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
@@ -181,7 +182,8 @@ namespace RevitDevReload
             }
             catch (Exception ex)
             {
-                DevReloadLogBuffer.Add($"{name} load error: {ex.Message}");
+                DevReloadLogBuffer.Add($"{name} load error: {ex.GetType().Name}: {ex.Message}");
+                DevReloadLogBuffer.Add(ex.ToString());
                 return new RevitActionResult(name, false,
                     $"load error: {ex.GetType().Name}: {ex.Message}", build: build);
             }
@@ -240,7 +242,7 @@ namespace RevitDevReload
                     Type type = reg.Handle!.Assembly.GetType(fullClassName)
                         ?? throw new InvalidOperationException(
                             $"type {fullClassName} not found in {pluginName}");
-                    object instance = Activator.CreateInstance(type)!;
+                    object instance = CreateInstanceUnwrapped(type);
                     if (instance is not IExternalCommand command)
                         throw new InvalidOperationException(
                             $"{fullClassName} does not implement IExternalCommand");
@@ -268,6 +270,30 @@ namespace RevitDevReload
 
         // ── internals ────────────────────────────────────────────────
 
+        // Activator.CreateInstance and MethodInfo.Invoke wrap any exception the
+        // plugin throws in a TargetInvocationException whose Message is the
+        // useless "Exception has been thrown by the target of an invocation."
+        // Rethrow the inner exception with its original stack preserved so the
+        // log shows the plugin's actual failure, not the reflection wrapper.
+        private static object CreateInstanceUnwrapped(Type type)
+        {
+            try { return Activator.CreateInstance(type)!; }
+            catch (TargetInvocationException tie) when (tie.InnerException != null)
+            {
+                ExceptionDispatchInfo.Capture(tie.InnerException).Throw();
+                throw; // unreachable; satisfies the compiler
+            }
+        }
+
+        private static void InvokeUnwrapped(MethodInfo method, object instance, params object[] args)
+        {
+            try { method.Invoke(instance, args); }
+            catch (TargetInvocationException tie) when (tie.InnerException != null)
+            {
+                ExceptionDispatchInfo.Capture(tie.InnerException).Throw();
+            }
+        }
+
         private static void UnloadInApiContext(RevitPluginRegistration reg)
         {
             ShutdownPluginApp(reg);
@@ -288,14 +314,15 @@ namespace RevitDevReload
             if (appTypes.Count == 0) return;
 
             Type appType = appTypes[0];
-            object instance = Activator.CreateInstance(appType)!;
+            object instance = CreateInstanceUnwrapped(appType);
             reg.PluginApp = instance;
 
             var uiCtrlApp = RevitContext.UiCtrlApp;
             if (uiCtrlApp == null) return;
 
             MethodInfo? onStartup = appType.GetMethod("OnStartup");
-            onStartup?.Invoke(instance, new object[] { uiCtrlApp });
+            if (onStartup != null)
+                InvokeUnwrapped(onStartup, instance, uiCtrlApp);
             DevReloadLogBuffer.Add(
                 $"{reg.Entry.Name}: ran {appType.Name}.OnStartup");
         }
@@ -309,7 +336,7 @@ namespace RevitDevReload
                 var uiCtrlApp = RevitContext.UiCtrlApp;
                 if (onShutdown != null && uiCtrlApp != null)
                 {
-                    onShutdown.Invoke(reg.PluginApp, new object[] { uiCtrlApp });
+                    InvokeUnwrapped(onShutdown, reg.PluginApp, uiCtrlApp);
                     DevReloadLogBuffer.Add(
                         $"{reg.Entry.Name}: ran {reg.PluginApp.GetType().Name}.OnShutdown");
                 }
@@ -320,7 +347,7 @@ namespace RevitDevReload
             }
         }
 
-        private static void PersistConfig()
+        public static void PersistConfig()
         {
             var config = new RevitPluginConfig();
             lock (_lock)

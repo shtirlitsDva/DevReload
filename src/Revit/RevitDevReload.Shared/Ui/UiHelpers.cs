@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Specialized;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
@@ -16,12 +15,13 @@ namespace RevitDevReload.Ui
             => value is bool b && !b;
     }
 
-    // Keeps the log ListBox pinned to the newest line.
-    public static class ListBoxBehaviors
+    // Keeps the log TextBox pinned to the newest line, but leaves an active
+    // selection alone so the user can copy text while lines keep arriving.
+    public static class TextBoxBehaviors
     {
         public static readonly DependencyProperty AutoScrollToEndProperty =
             DependencyProperty.RegisterAttached(
-                "AutoScrollToEnd", typeof(bool), typeof(ListBoxBehaviors),
+                "AutoScrollToEnd", typeof(bool), typeof(TextBoxBehaviors),
                 new PropertyMetadata(false, OnAutoScrollChanged));
 
         public static bool GetAutoScrollToEnd(DependencyObject obj)
@@ -33,19 +33,11 @@ namespace RevitDevReload.Ui
         private static void OnAutoScrollChanged(
             DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
-            if (d is not ListBox listBox || e.NewValue is not true) return;
+            if (d is not TextBox textBox || e.NewValue is not true) return;
 
-            listBox.Loaded += (_, _) =>
+            textBox.TextChanged += (_, _) =>
             {
-                if (listBox.ItemsSource is INotifyCollectionChanged incc)
-                {
-                    incc.CollectionChanged += (_, args) =>
-                    {
-                        if (args.Action == NotifyCollectionChangedAction.Add
-                            && listBox.Items.Count > 0)
-                            listBox.ScrollIntoView(listBox.Items[listBox.Items.Count - 1]);
-                    };
-                }
+                if (textBox.SelectionLength == 0) textBox.ScrollToEnd();
             };
         }
     }
