@@ -31,6 +31,17 @@ namespace RevitDevReload.Tests
             Assert.Null(req.Args);
         }
 
+        // The CLI sends "args":null when no --args is given — that must be
+        // indistinguishable from absent args (a Null-kind JsonElement would
+        // make every TryGetProperty in the dispatcher throw).
+        [Fact]
+        public void Request_WithJsonNullArgs_ParsesToNullArgs()
+        {
+            var req = PipeProtocol.ParseRequest("{\"id\":1,\"cmd\":\"get_log\",\"args\":null}");
+            Assert.Equal("get_log", req.Cmd);
+            Assert.Null(req.Args);
+        }
+
         [Fact]
         public void OkResponse_SerializesResultAndId()
         {

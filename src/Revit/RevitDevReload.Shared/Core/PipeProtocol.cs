@@ -32,7 +32,11 @@ namespace RevitDevReload.Core
             var root = doc.RootElement;
             int id = root.GetProperty("id").GetInt32();
             string cmd = root.GetProperty("cmd").GetString() ?? "";
+            // JSON null and an absent "args" are the same thing — normalize
+            // here so dispatchers can rely on HasValue meaning "real args"
+            // (TryGetProperty on a Null-kind element throws).
             JsonElement? args = root.TryGetProperty("args", out var a)
+                                && a.ValueKind != JsonValueKind.Null
                 ? a.Clone()
                 : (JsonElement?)null;
             return new PipeRequest(id, cmd, args);
