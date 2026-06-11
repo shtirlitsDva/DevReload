@@ -14,6 +14,11 @@ namespace RevitDevReload
         // run plugin IExternalApplication hooks.
         public static UIControlledApplication? UiCtrlApp { get; internal set; }
 
+        // Captured at every spot Revit hands one out (Idling, the manager
+        // command, ribbon proxy clicks, ExternalEvent execution). Enables
+        // ApiContextRunner's in-context fast path.
+        public static UIApplication? UiApp { get; internal set; }
+
         // Captured each time the DevReload ribbon command runs. Plugin
         // IExternalCommand.Execute is invoked with this (the proven
         // RevitAddInManager pattern). Null until the ribbon button has been

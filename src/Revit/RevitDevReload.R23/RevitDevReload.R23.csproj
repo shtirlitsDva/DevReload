@@ -30,9 +30,14 @@
 			<HintPath>$(RevitPath2023)\RevitAPIUI.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
+		<Reference Include="AdWindows">
+			<HintPath>$(RevitPath2023)\AdWindows.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
 	</ItemGroup>
 	<ItemGroup>
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+		<PackageReference Include="ricaun.Revit.UI" Version="0.9.0" />
 	</ItemGroup>
 	<ItemGroup>
 		<PackageReference Include="System.Text.Json" Version="8.0.5" />

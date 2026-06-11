@@ -1,6 +1,6 @@
 {
   "name": "devreload",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Hot-reload toolchain for AutoCAD .NET plugins. Ships an MCP bridge that exposes acad_* (process + drawing control) and devreload_* (plugin lifecycle + build) tools, plus the /acd-agentic-dev skill for agentic-development workflows.",
   "author": {
     "name": "shtirlitsDva",

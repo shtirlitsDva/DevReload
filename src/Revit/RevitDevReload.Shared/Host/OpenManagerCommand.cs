@@ -17,6 +17,7 @@ namespace RevitDevReload
             ExternalCommandData commandData, ref string message, ElementSet elements)
         {
             RevitContext.CapturedCommandData = commandData;
+            RevitContext.UiApp = commandData.Application;
             RevitDevReloadApp.ShowManagerWindow();
             return Result.Succeeded;
         }

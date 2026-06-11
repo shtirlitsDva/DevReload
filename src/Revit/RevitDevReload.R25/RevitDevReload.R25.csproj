@@ -30,9 +30,18 @@
 			<HintPath>$(RevitPath2025)\RevitAPIUI.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
+		<Reference Include="AdWindows">
+			<HintPath>$(RevitPath2025)\AdWindows.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
 	</ItemGroup>
 	<ItemGroup>
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+		<!-- Ribbon panel create/remove at runtime (removal cleans Revit's
+		     private RibbonItemDictionary so stable names can be recreated
+		     in-session). Revit API dlls come from the local install above —
+		     keep the package's transitive content out of the output. -->
+		<PackageReference Include="ricaun.Revit.UI" Version="0.9.0" />
 	</ItemGroup>
 	<Import Project="..\RevitDevReload.Shared\RevitDevReload.Shared.projitems" Label="Shared" />
 	<Import Project="..\..\Shared\DevReload.BuildCore\DevReload.BuildCore.projitems" Label="Shared" />

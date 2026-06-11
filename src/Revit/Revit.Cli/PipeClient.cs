@@ -11,6 +11,12 @@ namespace Revit.Cli
     {
         // Pipe names are RevitDevReload.{pid}; the CLI keys on Revit
         // processes, not on a registry of sessions.
+        //
+        // PROTOCOL CONTRACT (mirrors PipeServer): one request per
+        // connection, and the SERVER ends the connection. After reading the
+        // response the client waits for the server's disconnect (EOF) before
+        // disposing, so neither end ever reads/writes against a vanished
+        // peer — normal operation is exception-free by construction.
         public static IReadOnlyList<int> RunningRevitPids()
         {
             var pids = new List<int>();
@@ -19,11 +25,25 @@ namespace Revit.Cli
             return pids;
         }
 
+        // Expected absence (Revit still starting, host not loaded) is a
+        // normal state — answered by enumerating the live pipe namespace,
+        // never by connect-and-catch-timeout.
+        public static bool PipeExists(int pid)
+        {
+            string name = $"RevitDevReload.{pid}";
+            foreach (string pipe in Directory.EnumerateFiles(@"\\.\pipe\"))
+            {
+                if (pipe.EndsWith(name, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
+        }
+
         public static int? FindPidWithPipe(int connectTimeoutMs = 300)
         {
             foreach (int pid in RunningRevitPids())
             {
-                if (TryPing(pid, connectTimeoutMs))
+                if (PipeExists(pid) && TryPing(pid, connectTimeoutMs))
                     return pid;
             }
             return null;
@@ -31,6 +51,7 @@ namespace Revit.Cli
 
         public static bool TryPing(int pid, int connectTimeoutMs = 300)
         {
+            if (!PipeExists(pid)) return false;
             try
             {
                 string response = Send(pid, "{\"id\":0,\"cmd\":\"ping\"}", connectTimeoutMs);
@@ -38,6 +59,8 @@ namespace Revit.Cli
             }
             catch
             {
+                // Pipe existed but the exchange failed (host mid-shutdown,
+                // stale pipe) — genuinely abnormal, reported as "no".
                 return false;
             }
         }
@@ -51,12 +74,26 @@ namespace Revit.Cli
 
             var utf8 = new UTF8Encoding(false);
             using var reader = new StreamReader(client, utf8, false, 1024, leaveOpen: true);
-            using var writer = new StreamWriter(client, utf8, 1024, leaveOpen: true)
-            { AutoFlush = true };
 
-            writer.WriteLine(requestLine);
+            // The writer is scoped to the write and disposed while the pipe
+            // is still healthy: after the server disconnects, ANY write-side
+            // operation — including StreamWriter's dispose-flush — throws on
+            // net8. The tail of the connection is read-only by contract.
+            using (var writer = new StreamWriter(client, utf8, 1024, leaveOpen: true)
+                   { AutoFlush = true })
+            {
+                writer.WriteLine(requestLine);
+            }
+
             string? response = reader.ReadLine();
-            return response ?? throw new IOException("pipe closed before response");
+            if (response == null)
+                throw new IOException("pipe closed before response");
+
+            // Contract: hold the connection until the server disconnects
+            // (EOF) — it does so only after WaitForPipeDrain confirmed we
+            // read the response. This ReadLine returns null on disconnect.
+            reader.ReadLine();
+            return response;
         }
     }
 }

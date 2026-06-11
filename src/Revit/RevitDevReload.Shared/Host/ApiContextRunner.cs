@@ -27,12 +27,14 @@ namespace RevitDevReload
 
         private readonly ConcurrentQueue<WorkItem> _queue = new();
         private ExternalEvent? _event;
+        private int _uiThreadId = -1;
 
         // Must run in API context (OnStartup) — ExternalEvent.Create throws
         // anywhere else.
         public void Attach()
         {
             _event = ExternalEvent.Create(this);
+            _uiThreadId = Thread.CurrentThread.ManagedThreadId;
         }
 
         public bool IsAttached => _event != null;
@@ -41,6 +43,21 @@ namespace RevitDevReload
         {
             if (_event == null)
                 throw new InvalidOperationException("ApiContextRunner not attached.");
+
+            // In-context fast path: when called ON the Revit UI thread we
+            // are already inside a Revit callback (Idling, OnShutdown, a
+            // command) — raising an ExternalEvent and blocking would
+            // deadlock, because Revit cannot return to idle while this
+            // thread waits. Execute inline instead.
+            if (Thread.CurrentThread.ManagedThreadId == _uiThreadId)
+            {
+                var uiApp = RevitContext.UiApp
+                    ?? throw new InvalidOperationException(
+                        "On the Revit UI thread but no UIApplication captured " +
+                        "yet (expected from Idling/command/ribbon callbacks).");
+                work(uiApp);
+                return;
+            }
 
             var item = new WorkItem(work);
             _queue.Enqueue(item);
@@ -64,6 +81,7 @@ namespace RevitDevReload
 
         public void Execute(UIApplication app)
         {
+            RevitContext.UiApp = app;
             while (_queue.TryDequeue(out var item))
             {
                 try

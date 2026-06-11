@@ -75,7 +75,12 @@ namespace RevitDevReload
             if (_autoloadDone) return;
             _autoloadDone = true;
             if (sender is UIApplication app)
+            {
                 app.Idling -= AutoloadOnFirstIdle;
+                // First UIApplication Revit hands us — arms the runner's
+                // in-context fast path (autoload + OnShutdown run inline).
+                RevitContext.UiApp = app;
+            }
 
             foreach (var reg in RevitPluginManager.All)
             {
@@ -88,15 +93,26 @@ namespace RevitDevReload
         {
             try
             {
-                RibbonPanel panel = application.CreateRibbonPanel("DevReload");
-                string assemblyPath = Assembly.GetExecutingAssembly().Location;
+                // The host owns the DevReload tab: created here at startup
+                // with the manager button in its own panel; plugin panels
+                // (DevReloadRibbonService) come and go beside it.
+                try { application.CreateRibbonTab(DevReloadRibbonService.TabName); }
+                catch (Autodesk.Revit.Exceptions.ArgumentException) { /* exists */ }
+
+                RibbonPanel panel = application.CreateRibbonPanel(
+                    DevReloadRibbonService.TabName, "Manager");
+                Assembly host = Assembly.GetExecutingAssembly();
                 var buttonData = new PushButtonData(
                     "RevitDevReloadOpen",
                     "DevReload",
-                    assemblyPath,
-                    typeof(OpenManagerCommand).FullName);
-                buttonData.ToolTip =
-                    "Open the DevReload plugin manager (hot-reload plugins without restarting Revit)";
+                    host.Location,
+                    typeof(OpenManagerCommand).FullName)
+                {
+                    ToolTip = "Open the DevReload plugin manager " +
+                              "(hot-reload plugins without restarting Revit)",
+                    Image = RibbonBuilder.LoadEmbeddedIcon(host, "DevReload16.png"),
+                    LargeImage = RibbonBuilder.LoadEmbeddedIcon(host, "DevReload32.png"),
+                };
                 panel.AddItem(buttonData);
             }
             catch (Exception ex)

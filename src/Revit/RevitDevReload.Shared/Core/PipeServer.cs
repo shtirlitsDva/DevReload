@@ -7,10 +7,17 @@ using System.Threading;
 
 namespace RevitDevReload.Core
 {
-    // Background named-pipe server: one client at a time, newline-delimited
-    // JSON requests, dispatcher runs on the pipe thread (the Revit host wraps
-    // mutating commands in its own UI-thread/ExternalEvent marshalling inside
-    // the dispatcher).
+    // Background named-pipe server. PROTOCOL CONTRACT: one newline-delimited
+    // JSON request per connection — the server reads one request, writes one
+    // response, waits for the client to drain it, and disconnects ITSELF.
+    // Every connection therefore ends deterministically on the server's
+    // terms; a client vanishing mid-exchange is a genuine contract violation
+    // and the only thing that surfaces through Error. Exceptions never model
+    // normal operation here.
+    //
+    // The dispatcher runs on the pipe thread (the Revit host wraps mutating
+    // commands in its own UI-thread/ExternalEvent marshalling inside the
+    // dispatcher).
     //
     // A single NamedPipeServerStream instance is reused across clients via
     // Disconnect()/WaitForConnection() — disposing and recreating per client
@@ -58,7 +65,7 @@ namespace RevitDevReload.Core
                 {
                     server.WaitForConnectionAsync(_cts.Token)
                         .GetAwaiter().GetResult();
-                    ServeClient(server);
+                    ServeOneRequest(server);
                 }
                 catch (OperationCanceledException)
                 {
@@ -70,6 +77,9 @@ namespace RevitDevReload.Core
                 }
                 catch (Exception ex)
                 {
+                    // With the one-request contract, normal operation never
+                    // reads or writes against a departed client — anything
+                    // landing here IS unexpected.
                     Error?.Invoke(ex);
                 }
                 finally
@@ -84,7 +94,7 @@ namespace RevitDevReload.Core
             }
         }
 
-        private void ServeClient(NamedPipeServerStream server)
+        private void ServeOneRequest(NamedPipeServerStream server)
         {
             // Full ctor overloads: the (stream, leaveOpen) shorthand doesn't
             // exist on net48. BOM-less UTF8 keeps the JSON lines clean.
@@ -92,31 +102,39 @@ namespace RevitDevReload.Core
             using var reader = new StreamReader(server, utf8, false, 1024, leaveOpen: true);
             using var writer = new StreamWriter(server, utf8, 1024, leaveOpen: true) { AutoFlush = true };
 
-            while (!_cts.IsCancellationRequested && server.IsConnected)
+            // Exactly one request per connection. Blank lines are tolerated
+            // noise; EOF before a request is a connect-probe, served by
+            // simply ending the connection.
+            string? line;
+            do
             {
-                string? line = reader.ReadLine();
-                if (line == null) return; // client hung up
-                if (line.Length == 0) continue;
-
-                int id = 0;
-                string response;
-                try
-                {
-                    var request = PipeProtocol.ParseRequest(line);
-                    id = request.Id;
-                    object? result = _dispatch(request.Cmd, request.Args);
-                    response = PipeProtocol.SerializeOk(id, result);
-                }
-                catch (Exception ex)
-                {
-                    var inner = ex is System.Reflection.TargetInvocationException tie
-                        ? tie.InnerException ?? ex
-                        : ex;
-                    response = PipeProtocol.SerializeError(id, inner.Message);
-                }
-
-                writer.WriteLine(response);
+                line = reader.ReadLine();
+                if (line == null) return;
             }
+            while (line.Length == 0);
+
+            int id = 0;
+            string response;
+            try
+            {
+                var request = PipeProtocol.ParseRequest(line);
+                id = request.Id;
+                object? result = _dispatch(request.Cmd, request.Args);
+                response = PipeProtocol.SerializeOk(id, result);
+            }
+            catch (Exception ex)
+            {
+                var inner = ex is System.Reflection.TargetInvocationException tie
+                    ? tie.InnerException ?? ex
+                    : ex;
+                response = PipeProtocol.SerializeError(id, inner.Message);
+            }
+
+            writer.WriteLine(response);
+            // The contract's deterministic ending: hold the connection until
+            // the client has read the response (Disconnect would discard
+            // unread bytes), then ServerLoop's finally disconnects.
+            server.WaitForPipeDrain();
         }
 
         public void Dispose()

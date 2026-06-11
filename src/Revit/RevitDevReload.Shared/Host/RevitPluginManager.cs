@@ -168,9 +168,23 @@ namespace RevitDevReload
                     var sharedCfg = SharedAssembliesFile.Read(buildDir);
                     var handle = _loader.Load(dllPath!, sharedCfg.SharedAssemblies);
 
+                    // An exception past this point (command scan, plugin
+                    // OnStartup, ribbon build) must not leave a half-loaded
+                    // plugin behind: roll back to a clean "not loaded" state
+                    // and rethrow — an avoidable exception is never
+                    // continued past.
                     reg.Handle = handle;
-                    reg.Commands = CommandScanner.FindExternalCommands(handle.Assembly);
-                    StartPluginApp(reg, app);
+                    try
+                    {
+                        reg.Commands = CommandScanner.FindExternalCommands(handle.Assembly);
+                        StartPluginApp(reg, app);
+                        DevReloadRibbonService.Rebuild(reg);
+                    }
+                    catch
+                    {
+                        UnloadInApiContext(reg);
+                        throw;
+                    }
                 });
 
                 DevReloadLogBuffer.Add(
@@ -239,17 +253,10 @@ namespace RevitDevReload
 
                 string resultText = runner.Run(app =>
                 {
-                    Type type = reg.Handle!.Assembly.GetType(fullClassName)
-                        ?? throw new InvalidOperationException(
-                            $"type {fullClassName} not found in {pluginName}");
-                    object instance = CreateInstanceUnwrapped(type);
-                    if (instance is not IExternalCommand command)
-                        throw new InvalidOperationException(
-                            $"{fullClassName} does not implement IExternalCommand");
-
                     string message = "";
                     var elements = new ElementSet();
-                    Result result = command.Execute(commandData, ref message, elements);
+                    Result result = ExecuteInPluginContext(
+                        reg, fullClassName, commandData, ref message, elements);
                     return string.IsNullOrEmpty(message)
                         ? result.ToString()
                         : $"{result}: {message}";
@@ -266,6 +273,25 @@ namespace RevitDevReload
                 return new RevitActionResult(pluginName, false,
                     $"command error: {ex.Message}");
             }
+        }
+
+        // The single execution path into a plugin's command — used by both
+        // the ribbon switchboard (live ExternalCommandData, already in API
+        // context) and RunCommand above (manager window / pipe, captured
+        // ExternalCommandData via the runner). Must be called in API context.
+        public static Result ExecuteInPluginContext(
+            RevitPluginRegistration reg, string fullClassName,
+            ExternalCommandData commandData, ref string message, ElementSet elements)
+        {
+            Type type = reg.Handle!.Assembly.GetType(fullClassName)
+                ?? throw new InvalidOperationException(
+                    $"type {fullClassName} not found in {reg.Entry.Name}");
+            object instance = CreateInstanceUnwrapped(type);
+            if (instance is not IExternalCommand command)
+                throw new InvalidOperationException(
+                    $"{fullClassName} does not implement IExternalCommand");
+
+            return command.Execute(commandData, ref message, elements);
         }
 
         // ── internals ────────────────────────────────────────────────
@@ -296,7 +322,23 @@ namespace RevitDevReload
 
         private static void UnloadInApiContext(RevitPluginRegistration reg)
         {
-            ShutdownPluginApp(reg);
+            // Ribbon first: panels reference proxy slots and the registry
+            // entry must be cleaned before (or regardless of) ALC unload.
+            try { DevReloadRibbonService.Teardown(reg.Entry.Name); }
+            catch (Exception ex)
+            {
+                DevReloadLogBuffer.Add(
+                    $"{reg.Entry.Name} ribbon teardown error: {ex.Message}");
+            }
+            // Best-effort by contract — a plugin whose OnShutdown throws
+            // (likely after its OnStartup already threw, in the rollback
+            // path) must not block the unload or mask the original error.
+            try { ShutdownPluginApp(reg); }
+            catch (Exception ex)
+            {
+                DevReloadLogBuffer.Add(
+                    $"{reg.Entry.Name} OnShutdown error: {ex.Message}");
+            }
             reg.Commands = Array.Empty<DiscoveredCommand>();
             var handle = reg.Handle;
             reg.Handle = null;

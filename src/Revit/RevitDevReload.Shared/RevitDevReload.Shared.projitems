@@ -18,8 +18,13 @@
     <Compile Include="$(MSBuildThisFileDirectory)Core\PipeProtocol.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Core\PipeServer.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Core\RevitPluginConfig.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Core\RibbonDefinition.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Host\ApiContextRunner.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Host\ButtonSwitchboard.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Host\DevReloadRibbonService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Host\OpenManagerCommand.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Host\RibbonBuilder.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Host\SwitchboardProxies.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Host\PipeDispatcher.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Host\RevitContext.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Host\RevitDevReloadApp.cs" />
@@ -31,6 +36,10 @@
     </Compile>
     <Compile Include="$(MSBuildThisFileDirectory)Ui\PluginCardViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Ui\UiHelpers.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)Resources\DevReload16.png" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)Resources\DevReload32.png" />
   </ItemGroup>
   <ItemGroup>
     <Page Include="$(MSBuildThisFileDirectory)Ui\ManagerWindow.xaml">
