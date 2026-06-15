@@ -9,10 +9,8 @@ namespace Acad.Process;
 /// <see cref="Path"/>-based probes against <c>\\.\pipe\NAME</c> do not
 /// work — Windows reports valid pipes as non-existent until you actually
 /// open them. The canonical pattern is to enumerate the pipe-namespace
-/// directory and match by filename. Used by both
-/// <see cref="AcadComClient"/> and <see cref="AcadProcessController"/>,
-/// and by the bridge to distinguish "pipe is up but held by another
-/// bridge" from "pipe was never created".
+/// directory and match by filename. Used by the controller and the bridge
+/// to tell "pipe is up" from "pipe was never created".
 /// </summary>
 public static class NamedPipeProbe
 {

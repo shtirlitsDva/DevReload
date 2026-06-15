@@ -10,8 +10,10 @@ You register a plugin by picking its `.csproj` file; the plugin name is the proj
 
 DevReload also ships an MCP bridge (`Acad.Rpc.Bridge`) and the `/acd-agentic-dev` skill, so an agent (Claude Code or Codex) can drive the full edit → reload → live-test loop directly. The MCP bridge exposes two tool groups:
 
-- `acad_*` — AutoCAD/Civil 3D process control: launch, attach, send commands, wait for readiness, open/close drawings, quit.
+- `acad_*` — AutoCAD/Civil 3D process + drawing control: locate installs, launch, attach/detach, list instances, send/post commands, wait for readiness, open/close drawings, quit.
 - `devreload_*` — plugin lifecycle: register, load, reload (build + hot-swap), unload, query state, switch build config and worktree.
+
+All control flows over a per-instance named pipe (`acad-rpc-<pid>`), not COM — so you can run **multiple AutoCAD/Civil 3D instances at once** and drive any of them independently. Every `acad_*` and `devreload_*` tool takes an optional `pid`: omit it to use the bound (default) instance, or pass it to target a specific one. `acad_wait_pipe` is the per-instance readiness gate; `acad_list_instances` enumerates running instances and their pipe state.
 
 > Note: this installs the **agent-side** MCP bridge + skill. The **AutoCAD-side** DevReload plugin (the palette + commands) is installed separately into AutoCAD — see [Installing the AutoCAD plugin](#installing-the-autocad-plugin).
 
@@ -51,7 +53,7 @@ The AutoCAD-side plugin is the `DevReload.dll` assembly that provides the `DEVRE
 - **Bundle (autoload):** build Release to produce `Deploy/DevReload.bundle`, then drop that bundle into AutoCAD's `ApplicationPlugins` folder so it autoloads on startup.
 
   ```powershell
-  dotnet build src/DevReload/DevReload.csproj -c Release -p:Platform=x64
+  dotnet build src/Autocad/DevReload/DevReload.csproj -c Release -p:Platform=x64
   ```
 
 - **Manual:** `NETLOAD` `DevReload.dll` into a running AutoCAD session.
@@ -132,7 +134,7 @@ With this attribute present, AutoCAD scans ONLY `NoCommands` and finds zero comm
 
 ## AcadEventManager
 
-The `EventManager` shared project (`src/EventManager/`) provides `AcadEventManager` — a centralized tracker for per-document event subscriptions. Import it as a shared project so it compiles directly into your plugin DLL (no extra dependency).
+The `EventManager` shared project (`src/Autocad/EventManager/`) provides `AcadEventManager` — a centralized tracker for per-document event subscriptions. Import it as a shared project so it compiles directly into your plugin DLL (no extra dependency).
 
 **Problem:** Subscribing to a `Document`-level event (like `CommandEnded`) on one document, then unsubscribing from `MdiActiveDocument` in `Terminate()` breaks if the user switched documents. Storing a `Document` reference breaks if that document is closed before `Terminate()`.
 
@@ -293,7 +295,7 @@ Plugins are stored in `%APPDATA%\DevReload\plugins.json`:
 
 Shared/mixed/streamed assembly selections are **not** stored here — they live in each build directory's `SharedAssemblies.Config.json` (see [Shared Assemblies](#shared-assemblies)).
 
-On startup, old config entries missing `projectFilePath` are migrated by searching for the `.csproj` from the `dllPath`; entries that cannot be migrated are removed. Legacy `vsProject`, `sharedAssemblies`, and `mixedModeAssemblies` fields from older configs are read once, drained into per-build `SharedAssemblies.Config.json` files where possible, and then dropped.
+On startup, old config entries missing `projectFilePath` are migrated by searching for the `.csproj` from the `dllPath`; entries that cannot be migrated are removed. Legacy `sharedAssemblies` and `mixedModeAssemblies` fields from older configs are read once, drained into per-build `SharedAssemblies.Config.json` files where possible, and then dropped.
 
 ## Generated Commands
 

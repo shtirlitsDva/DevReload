@@ -50,8 +50,8 @@ internal static class Program
         // Compose: services → bind RpcCore → wire up forwarder → run.
         var controller = new AcadProcessController();
         var binding = new AcadInstanceBinding();
-        var forwarder = new PipeForwarder(binding, Log);
-        BridgeServices.Initialize(controller, binding, forwarder);
+        var pool = new ForwarderPool(binding, Log);
+        BridgeServices.Initialize(controller, binding, pool);
 
         var core = new RpcCore(
             mainThreadDispatcher: new InlineDispatcher(),
@@ -85,7 +85,7 @@ internal static class Program
             AutoAttach.TryAttach(() => controller.EnumerateProcesses(), binding, Log);
         }
 
-        using var host = new BridgeRpcHost(core, forwarder, Log);
+        using var host = new BridgeRpcHost(core, pool, Log);
         using var stdin = Console.OpenStandardInput();
         using var stdout = Console.OpenStandardOutput();
         var cts = new CancellationTokenSource();
@@ -97,7 +97,7 @@ internal static class Program
         }
         finally
         {
-            forwarder.Dispose();
+            pool.Dispose();
         }
         return 0;
     }

@@ -215,6 +215,51 @@
         </Setter>
     </Style>
 
+    <!-- Compact build-configuration dropdown toggle (AutoCAD palette). Shows the
+         current configuration name + a ▾ and opens a popup list of every
+         configuration the project declares. Stays narrow regardless of how many
+         configurations exist (the list floats in a popup). Colour cue matches the
+         legacy DBG/REL toggle: green for Debug, red for Release, accent for any
+         custom configuration (e.g. IALCD/IALCR). Binds to the item VM's
+         SelectedConfiguration, same as StatusDot/SharedBtn bind to VM state. -->
+    <Style x:Key="BuildConfigDropToggle" TargetType="ToggleButton">
+        <Setter Property="FontSize" Value="10"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="Padding" Value="6,3"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="border"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="4"
+                            Padding="{TemplateBinding Padding}"
+                            TextElement.Foreground="{TemplateBinding Foreground}">
+                        <StackPanel Orientation="Horizontal">
+                            <ContentPresenter VerticalAlignment="Center"/>
+                            <TextBlock Text=" ▾" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="border" Property="Opacity" Value="0.85"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding SelectedConfiguration}" Value="Debug">
+                <Setter Property="Background" Value="{StaticResource SuccessBrush}"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding SelectedConfiguration}" Value="Release">
+                <Setter Property="Background" Value="{StaticResource DangerBrush}"/>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
     <!-- Loaded/unloaded status dot. -->
     <Style x:Key="StatusDot" TargetType="Ellipse">
         <Setter Property="Fill" Value="{StaticResource MutedBrush}"/>
@@ -402,6 +447,13 @@
     <Style x:Key="RowSurfaceBtn" TargetType="Button" BasedOn="{StaticResource SurfaceBtn}">
         <Setter Property="FontSize" Value="11"/>
         <Setter Property="Padding" Value="8,3"/>
+    </Style>
+
+    <!-- Item inside the build-config popup: full-width left-aligned row button. -->
+    <Style x:Key="ConfigItemBtn" TargetType="Button" BasedOn="{StaticResource RowSurfaceBtn}">
+        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="Margin" Value="0,1"/>
     </Style>
 
     <Style x:Key="RowDangerBtn" TargetType="Button" BasedOn="{StaticResource DangerBtn}">

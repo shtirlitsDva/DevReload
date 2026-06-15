@@ -159,7 +159,7 @@ namespace DevReload.ViewModels
         {
             // LoadOnStartup is the only mutable property NOT routed through
             // PluginManager — it has no runtime state, only file state. The
-            // other properties (IsReleaseBuild, SelectedWorktree) are
+            // other properties (SelectedConfiguration, SelectedWorktree) are
             // already persisted inside PluginManager.UpdateX; saving here
             // would be a redundant duplicate write. Keep the safety net
             // tight so the UI and RPC genuinely share one persistence path.
@@ -583,8 +583,13 @@ namespace DevReload.ViewModels
         [ObservableProperty] private bool _isLoaded;
         [ObservableProperty] private string _status = "Unloaded";
         [ObservableProperty] private bool _loadOnStartup;
-        [ObservableProperty] private bool _isReleaseBuild;
+        [ObservableProperty] private string _selectedConfiguration = "Debug";
         [ObservableProperty] private WorktreeItem? _selectedWorktree;
+
+        // The configurations declared by the plugin's project (Debug, Release,
+        // and any custom ones such as IALCD/IALCR). Populated off the UI thread
+        // from MSBuild; the compact config dropdown on the card binds to it.
+        public ObservableCollection<string> AvailableConfigurations { get; } = new();
 
         // Green-tints the "Shared" button when the current branch+config build dir
         // already has a SharedAssemblies.Config.json.
@@ -598,10 +603,10 @@ namespace DevReload.ViewModels
         {
             Entry = entry;
             _loadOnStartup = entry.LoadOnStartup;
-            _isReleaseBuild = entry.BuildConfiguration
-                .Equals("Release", StringComparison.OrdinalIgnoreCase);
+            _selectedConfiguration = entry.BuildConfiguration;
 
             RefreshSharedConfig();
+            RefreshConfigurations();
         }
 
         partial void OnLoadOnStartupChanged(bool value)
@@ -609,10 +614,18 @@ namespace DevReload.ViewModels
             Entry.LoadOnStartup = value;
         }
 
-        partial void OnIsReleaseBuildChanged(bool value)
+        partial void OnSelectedConfigurationChanged(string value)
         {
-            Entry.BuildConfiguration = value ? "Release" : "Debug";
-            PluginManager.UpdateBuildConfiguration(Name, Entry.BuildConfiguration);
+            // RefreshConfigurations re-publishes the list but never reassigns the
+            // selection, so this fires only on a genuine user pick. Guard against
+            // a no-op anyway to avoid a redundant persist (mirrors the worktree
+            // handler's pattern).
+            if (string.IsNullOrEmpty(value)) return;
+            if (string.Equals(Entry.BuildConfiguration, value, StringComparison.Ordinal))
+                return;
+
+            Entry.BuildConfiguration = value;
+            PluginManager.UpdateBuildConfiguration(Name, value);
             RefreshSharedConfig();
         }
 
@@ -632,6 +645,49 @@ namespace DevReload.ViewModels
 
             PluginManager.UpdateActiveWorktree(Name, Entry.ActiveWorktreePath);
             RefreshSharedConfig();
+            // A different branch's project may declare a different set of
+            // configurations, so re-enumerate against the now-active csproj.
+            RefreshConfigurations();
+        }
+
+        // Re-enumerate the project's configurations (off the UI thread — the
+        // MSBuild query can spawn dotnet) and publish them to the dropdown. The
+        // currently-selected configuration is always kept in the list, even if
+        // enumeration fails or the project no longer declares it, so the card
+        // never shows an empty picker or silently loses the active value.
+        public void RefreshConfigurations()
+        {
+            if (string.IsNullOrEmpty(Entry.ProjectFilePath))
+                return;
+
+            string projectFile = Entry.ProjectFilePath!;
+            string? worktree = Entry.ActiveWorktreePath;
+            string current = SelectedConfiguration;
+
+            Task.Run(() =>
+            {
+                IReadOnlyList<string> configs;
+                try
+                {
+                    configs = BuildService.GetConfigurations(
+                        projectFile, worktree, AcadBuild.Platform);
+                }
+                catch
+                {
+                    configs = Array.Empty<string>();
+                }
+
+                _dispatcher.Invoke(() =>
+                {
+                    AvailableConfigurations.Clear();
+                    foreach (var c in configs)
+                        AvailableConfigurations.Add(c);
+
+                    if (!AvailableConfigurations.Contains(
+                            current, StringComparer.OrdinalIgnoreCase))
+                        AvailableConfigurations.Insert(0, current);
+                });
+            });
         }
 
         // Recompute (off the UI thread) whether the current branch+config build dir

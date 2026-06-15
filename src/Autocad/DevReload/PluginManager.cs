@@ -242,13 +242,24 @@ namespace DevReload
             // RefreshState on the card reads the live registry and is idempotent,
             // so firing on no-op returns (e.g. "already loaded") is harmless.
             PluginStateChanged?.Invoke(reg.PluginName);
+
+            // A successful build's log is tens of KB of compiler noise that can
+            // blow the MCP result-size cap; the agent only needs it to read
+            // errors. Keep the full log on failure, summarize it on success.
+            BuildResult? buildForResult = build;
+            if (build is { Success: true })
+                buildForResult = build with
+                {
+                    Log = $"build succeeded ({build.Warnings} warning(s), {build.Errors} error(s)); log omitted"
+                };
+
             return new(
                 PluginName: reg.PluginName,
                 Success: success,
                 CommandCount: reg.Registrar?.CommandCount ?? 0,
                 Loaded: reg.Host.IsLoaded,
                 Message: message,
-                Build: build);
+                Build: buildForResult);
         }
 
         // ── Public query + management API ─────────────────────────────
@@ -625,6 +636,38 @@ namespace DevReload
                 pluginName, e => e.ActiveWorktreePath = worktreePath);
             return ResultForUpdate(pluginName, inMemory, persisted,
                 $"worktree -> {worktreePath ?? "(main)"}");
+        }
+
+        /// <summary>List the configurations the plugin's project declares
+        /// (Available) plus the currently-selected one (Current). Sourced from
+        /// plugins.json — the durable truth every mutation persists to — so it
+        /// can run off the AutoCAD main thread without racing the in-memory
+        /// registry (which is a plain Dictionary). The MSBuild query is the
+        /// reason it must stay off the main thread: it spawns dotnet and blocks
+        /// for a second or two. Throws (no fabricated list) when the plugin, its
+        /// project, or MSBuild can't be resolved.</summary>
+        public static PluginConfigurationsResult GetConfigurations(string pluginName)
+        {
+            var entry = PluginConfigLoader.Load()?.Plugins
+                .FirstOrDefault(p => p.Name.Equals(
+                    pluginName, StringComparison.OrdinalIgnoreCase))
+                ?? throw new ArgumentException(
+                    $"plugin '{pluginName}' is not in plugins.json");
+
+            if (string.IsNullOrEmpty(entry.ProjectFilePath))
+                throw new InvalidOperationException(
+                    $"plugin '{pluginName}' has no project file recorded; " +
+                    "its configurations can't be resolved");
+
+            var configs = BuildService.GetConfigurations(
+                entry.ProjectFilePath, entry.ActiveWorktreePath, AcadBuild.Platform);
+            if (configs.Count == 0)
+                throw new InvalidOperationException(
+                    $"could not resolve configurations for '{pluginName}'. " +
+                    "Restore/build the project at least once and try again.");
+
+            return new PluginConfigurationsResult(
+                pluginName, entry.BuildConfiguration, configs);
         }
 
         private static PluginActionResult ResultForUpdate(

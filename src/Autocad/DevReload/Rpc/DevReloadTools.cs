@@ -73,11 +73,21 @@ namespace DevReload.Rpc
 
         // ── Configuration ───────────────────────────────────────────
 
+        // Off the AutoCAD main thread on purpose: it spawns `dotnet msbuild` to
+        // read the project's Configurations property and would otherwise freeze
+        // the UI for a second or two. Sourced from plugins.json, so no registry
+        // race despite running off-thread.
+        [AcadRpcTool,
+         Description("List the build configurations the plugin's project declares (its MSBuild Configurations property — e.g. Debug, Release, IALCD, IALCR) plus the one currently selected. Call this to discover valid values before update_build_configuration. Resolved against the plugin's active worktree; throws if the project hasn't been restored/built at least once.")]
+        public static PluginConfigurationsResult ListConfigurations(
+            [Description("Registered plugin name")] string name) =>
+            PluginManager.GetConfigurations(name);
+
         [AcadRpcTool, RunOnAcadMainThread,
-         Description("Switch the build configuration (Debug / Release) used for the next build of this plugin. Persists to plugins.json via the same path the palette UI uses.")]
+         Description("Switch the build configuration used for the next build of this plugin. Accepts any configuration the project declares (its MSBuild Configurations property) — e.g. Debug, Release, or custom ones like IALCD/IALCR — not just Debug/Release. Persists to plugins.json via the same path the palette UI uses.")]
         public static PluginActionResult UpdateBuildConfiguration(
             [Description("Registered plugin name")] string name,
-            [Description("Configuration name, typically 'Debug' or 'Release'")] string buildConfiguration) =>
+            [Description("Configuration name as declared by the project (e.g. 'Debug', 'Release', 'IALCD')")] string buildConfiguration) =>
             PluginManager.UpdateBuildConfiguration(name, buildConfiguration);
 
         [AcadRpcTool, RunOnAcadMainThread,
@@ -96,7 +106,7 @@ namespace DevReload.Rpc
          Description("Invoke `dotnet build` for a csproj and return the structured result with full log.")]
         public static BuildResult BuildProject(
             [Description("Absolute path to the .csproj")] string csprojPath,
-            [Description("Configuration: 'Debug' or 'Release'")] string buildConfiguration) =>
+            [Description("Any configuration the project declares (e.g. 'Debug', 'Release', 'IALCD')")] string buildConfiguration) =>
             BuildService.BuildProject(csprojPath, buildConfiguration, AcadBuild.Platform, progress: null);
 
         // ── Worktree ─────────────────────────────────────────────────

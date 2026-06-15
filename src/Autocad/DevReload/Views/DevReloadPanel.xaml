@@ -154,11 +154,32 @@
 
                                         <!-- Action buttons -->
                                         <StackPanel Orientation="Horizontal">
-                                            <!-- Build config toggle (DBG / REL) -->
-                                            <ToggleButton IsChecked="{Binding IsReleaseBuild}"
-                                                          Style="{StaticResource BuildConfigToggle}"
+                                            <!-- Build config dropdown: shows the current configuration;
+                                                 click opens a popup listing every config the project declares -->
+                                            <ToggleButton x:Name="ConfigDrop"
+                                                          Style="{StaticResource BuildConfigDropToggle}"
+                                                          Content="{Binding SelectedConfiguration}"
                                                           Margin="0,0,4,0"
-                                                          ToolTip="Toggle Debug / Release build"/>
+                                                          ToolTip="Build configuration (click to choose from the project's configurations)"/>
+                                            <Popup PlacementTarget="{Binding ElementName=ConfigDrop}"
+                                                   Placement="Bottom" StaysOpen="False"
+                                                   AllowsTransparency="True"
+                                                   IsOpen="{Binding IsChecked, ElementName=ConfigDrop, Mode=TwoWay}"
+                                                   DataContext="{Binding PlacementTarget.DataContext,
+                                                       RelativeSource={RelativeSource Self}}">
+                                                <Border Style="{StaticResource FlyoutPanel}" Margin="0,2,0,0"
+                                                        MinWidth="{Binding ActualWidth, ElementName=ConfigDrop}">
+                                                    <ItemsControl ItemsSource="{Binding AvailableConfigurations}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Button Style="{StaticResource ConfigItemBtn}"
+                                                                        Content="{Binding}"
+                                                                        Click="ConfigItem_Click"/>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </Border>
+                                            </Popup>
 
                                             <!-- Reload split-button: click = Reload (build+load);
                                                  ▾ flyout = Build only (build, no load) -->

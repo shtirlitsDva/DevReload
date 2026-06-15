@@ -14,7 +14,7 @@ internal static class BridgeServices
 {
     private static AcadProcessController? _controller;
     private static AcadInstanceBinding? _binding;
-    private static PipeForwarder? _pipeForwarder;
+    private static ForwarderPool? _pool;
 
     public static AcadProcessController Controller => _controller ??
         throw new InvalidOperationException("BridgeServices not initialized.");
@@ -22,16 +22,16 @@ internal static class BridgeServices
     public static AcadInstanceBinding Binding => _binding ??
         throw new InvalidOperationException("BridgeServices not initialized.");
 
-    public static PipeForwarder PipeForwarder => _pipeForwarder ??
+    public static ForwarderPool Pool => _pool ??
         throw new InvalidOperationException("BridgeServices not initialized.");
 
     public static void Initialize(
         AcadProcessController controller,
         AcadInstanceBinding binding,
-        PipeForwarder pipeForwarder)
+        ForwarderPool pool)
     {
         _controller = controller ?? throw new ArgumentNullException(nameof(controller));
         _binding = binding ?? throw new ArgumentNullException(nameof(binding));
-        _pipeForwarder = pipeForwarder ?? throw new ArgumentNullException(nameof(pipeForwarder));
+        _pool = pool ?? throw new ArgumentNullException(nameof(pool));
     }
 }

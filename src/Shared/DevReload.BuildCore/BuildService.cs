@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -144,6 +145,35 @@ namespace DevReload.Core
             return string.IsNullOrEmpty(targetPath)
                 ? null
                 : Path.GetDirectoryName(targetPath);
+        }
+
+        // The configurations declared by a project (the `Configurations` MSBuild
+        // property — e.g. "Debug;Release;IALCD;IALCR"). The .NET SDK seeds a
+        // default of "Debug;Release" when a project doesn't set it explicitly, so
+        // SDK-style projects always return at least those two. Worktree-aware via
+        // the same active-csproj resolution as the build. Returns an empty list
+        // when MSBuild can't be queried (e.g. the worktree was never restored) —
+        // NO fallback list; the caller decides how to present that.
+        public static IReadOnlyList<string> GetConfigurations(
+            string projectFilePath,
+            string? activeWorktreePath,
+            string? platform)
+        {
+            string csproj = GitWorktreeService.ResolveActiveCsproj(
+                projectFilePath, activeWorktreePath);
+
+            // The Configuration value passed here is irrelevant to the result:
+            // `Configurations` is a top-level property, not one gated on the
+            // active configuration. "Debug" is always a valid value to evaluate.
+            string? raw = QueryMsBuildProperty(
+                csproj, "Configurations", "Debug", platform);
+            if (string.IsNullOrWhiteSpace(raw))
+                return Array.Empty<string>();
+
+            return raw
+                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
         // Asks MSBuild for an evaluated property (e.g. TargetPath). Reading a

@@ -36,8 +36,20 @@ public sealed class AcadRpcHost
     private CancellationTokenSource? _serverLoopCts;
     private Task? _serverLoopTask;
 
-    private StreamWriter? _activeWriter;
-    private readonly object _writerGate = new();
+    private readonly object _connectionsGate = new();
+    private readonly List<Connection> _connections = new();
+    private const int MaxServerInstances = 16;
+
+    /// <summary>One connected client. Multiple agents/bridges can drive
+    /// this AutoCAD at once, so writes to a given client's pipe are
+    /// serialized by its own lock (a response and a list-changed
+    /// broadcast can race otherwise).</summary>
+    private sealed class Connection
+    {
+        public Connection(StreamWriter writer) { Writer = writer; }
+        public StreamWriter Writer { get; }
+        public SemaphoreSlim WriteLock { get; } = new(1, 1);
+    }
 
     private AcadRpcHost(AcadRpcHostOptions options)
     {
@@ -99,51 +111,77 @@ public sealed class AcadRpcHost
 
     private async Task RunServerLoopAsync(CancellationToken ct)
     {
+        // Multi-client accept loop: accept a connection, hand it to a
+        // concurrent handler, immediately loop to accept the next. This is
+        // what lets several agents/bridges drive ONE AutoCAD at once.
         while (!ct.IsCancellationRequested)
         {
-            NamedPipeServerStream? pipe = null;
+            NamedPipeServerStream pipe;
             try
             {
                 pipe = new NamedPipeServerStream(
                     pipeName: _options.PipeName,
                     direction: PipeDirection.InOut,
-                    maxNumberOfServerInstances: 1,
+                    maxNumberOfServerInstances: MaxServerInstances,
                     transmissionMode: PipeTransmissionMode.Byte,
                     options: PipeOptions.Asynchronous);
-
-                await pipe.WaitForConnectionAsync(ct).ConfigureAwait(false);
-
-                using var reader = new StreamReader(pipe, Encoding.UTF8, false, 8192, leaveOpen: true);
-                var writer = new StreamWriter(pipe, new UTF8Encoding(false, true), 8192, leaveOpen: true)
-                {
-                    NewLine = "\n",
-                    AutoFlush = true,
-                };
-
-                lock (_writerGate) { _activeWriter = writer; }
-                try
-                {
-                    await SessionLoopAsync(reader, writer, ct).ConfigureAwait(false);
-                }
-                finally
-                {
-                    lock (_writerGate) { _activeWriter = null; }
-                    try { writer.Dispose(); } catch { }
-                }
             }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
             catch (Exception ex)
             {
-                _options.Log?.Invoke($"AcadRpcHost: server loop iteration failed: {ex.GetType().Name}: {ex.Message}");
+                _options.Log?.Invoke($"AcadRpcHost: failed to create pipe server: {ex.GetType().Name}: {ex.Message}");
+                try { await Task.Delay(500, ct).ConfigureAwait(false); } catch { return; }
+                continue;
             }
-            finally
+
+            try
             {
-                try { pipe?.Dispose(); } catch { }
+                await pipe.WaitForConnectionAsync(ct).ConfigureAwait(false);
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                try { pipe.Dispose(); } catch { }
+                return;
+            }
+            catch (Exception ex)
+            {
+                _options.Log?.Invoke($"AcadRpcHost: WaitForConnection failed: {ex.GetType().Name}: {ex.Message}");
+                try { pipe.Dispose(); } catch { }
+                continue;
+            }
+
+            _ = Task.Run(() => HandleClientAsync(pipe, ct), CancellationToken.None);
         }
     }
 
-    private async Task SessionLoopAsync(StreamReader reader, StreamWriter writer, CancellationToken ct)
+    private async Task HandleClientAsync(NamedPipeServerStream pipe, CancellationToken ct)
+    {
+        var reader = new StreamReader(pipe, Encoding.UTF8, false, 8192, leaveOpen: true);
+        var writer = new StreamWriter(pipe, new UTF8Encoding(false, true), 8192, leaveOpen: true)
+        {
+            NewLine = "\n",
+            AutoFlush = true,
+        };
+        var conn = new Connection(writer);
+        lock (_connectionsGate) { _connections.Add(conn); }
+        try
+        {
+            await SessionLoopAsync(reader, conn, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            _options.Log?.Invoke($"AcadRpcHost: client session ended: {ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            lock (_connectionsGate) { _connections.Remove(conn); }
+            try { writer.Dispose(); } catch { }
+            try { reader.Dispose(); } catch { }
+            try { pipe.Dispose(); } catch { }
+        }
+    }
+
+    private async Task SessionLoopAsync(StreamReader reader, Connection conn, CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
@@ -155,7 +193,7 @@ public sealed class AcadRpcHost
             try { msg = JsonNode.Parse(line); }
             catch
             {
-                await WriteAsync(writer, McpProtocol.MakeResponse(
+                await WriteAsync(conn, McpProtocol.MakeResponse(
                     JsonValue.Create<int?>(null)!,
                     null,
                     McpProtocol.MakeError(McpProtocol.ErrorCodes.ParseError, "invalid JSON")));
@@ -170,47 +208,58 @@ public sealed class AcadRpcHost
             if (method == null) continue;
             bool isNotification = id == null;
 
-            try
-            {
-                JsonNode? result = await Core.DispatchAsync(method, @params, ct).ConfigureAwait(false);
-                if (!isNotification)
-                    await WriteAsync(writer, McpProtocol.MakeResponse(id!, result, null));
-            }
-            catch (NotSupportedException nse)
-            {
-                if (!isNotification)
-                    await WriteAsync(writer, McpProtocol.MakeResponse(
-                        id!, null,
-                        McpProtocol.MakeError(McpProtocol.ErrorCodes.MethodNotFound, nse.Message)));
-            }
-            catch (Exception ex)
-            {
-                if (!isNotification)
-                    await WriteAsync(writer, McpProtocol.MakeResponse(
-                        id!, null,
-                        McpProtocol.MakeError(McpProtocol.ErrorCodes.InternalError, ex.Message)));
-            }
+            // Serialize requests within a single client (preserves ordering);
+            // concurrency across clients comes from each having its own
+            // HandleClientAsync task. The main-thread dispatcher serializes
+            // the actual AutoCAD work regardless.
+            await DispatchAndReplyAsync(conn, id, method, @params, isNotification, ct).ConfigureAwait(false);
         }
     }
 
-    private static async Task WriteAsync(StreamWriter writer, JsonObject message)
+    private async Task DispatchAndReplyAsync(
+        Connection conn, JsonNode? id, string method, JsonObject? @params, bool isNotification, CancellationToken ct)
+    {
+        try
+        {
+            JsonNode? result = await Core.DispatchAsync(method, @params, ct).ConfigureAwait(false);
+            if (!isNotification)
+                await WriteAsync(conn, McpProtocol.MakeResponse(id!, result, null));
+        }
+        catch (NotSupportedException nse)
+        {
+            if (!isNotification)
+                await WriteAsync(conn, McpProtocol.MakeResponse(
+                    id!, null, McpProtocol.MakeError(McpProtocol.ErrorCodes.MethodNotFound, nse.Message)));
+        }
+        catch (Exception ex)
+        {
+            if (!isNotification)
+                await WriteAsync(conn, McpProtocol.MakeResponse(
+                    id!, null, McpProtocol.MakeError(McpProtocol.ErrorCodes.InternalError, ex.Message)));
+        }
+    }
+
+    private static async Task WriteAsync(Connection conn, JsonObject message)
     {
         string line = JsonSerializer.Serialize(message, McpProtocol.JsonOptions);
-        await writer.WriteLineAsync(line).ConfigureAwait(false);
+        await conn.WriteLock.WaitAsync().ConfigureAwait(false);
+        try { await conn.Writer.WriteLineAsync(line).ConfigureAwait(false); }
+        finally { conn.WriteLock.Release(); }
     }
 
     private void TryNotifyListChanged()
     {
-        StreamWriter? writer;
-        lock (_writerGate) { writer = _activeWriter; }
-        if (writer == null) return;
+        Connection[] conns;
+        lock (_connectionsGate) { conns = _connections.ToArray(); }
+        if (conns.Length == 0) return;
 
-        try
-        {
-            var notif = McpProtocol.MakeNotification("notifications/tools/list_changed", null);
-            string line = JsonSerializer.Serialize(notif, McpProtocol.JsonOptions);
-            _ = writer.WriteLineAsync(line);
-        }
-        catch { }
+        var notif = McpProtocol.MakeNotification("notifications/tools/list_changed", null);
+        foreach (var conn in conns)
+            _ = SafeNotifyAsync(conn, notif);
+    }
+
+    private async Task SafeNotifyAsync(Connection conn, JsonObject notif)
+    {
+        try { await WriteAsync(conn, notif).ConfigureAwait(false); } catch { }
     }
 }

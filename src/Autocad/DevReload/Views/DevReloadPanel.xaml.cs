@@ -36,12 +36,38 @@ namespace DevReload.Views
             CloseAncestorPopup(sender as DependencyObject);
         }
 
+        // Config-picker items live in a Popup, so (like the Build-only flyout)
+        // their DataContext is the config string, not the plugin VM. Reach the VM
+        // via the popup's PlacementTarget — the ConfigDrop toggle, whose
+        // DataContext IS the item VM — then assign the chosen configuration and
+        // close the popup.
+        private void ConfigItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.Content is not string config)
+                return;
+
+            Popup? popup = FindAncestorPopup(btn);
+            if (popup?.PlacementTarget is FrameworkElement target
+                && target.DataContext is PluginItemViewModel item)
+            {
+                item.SelectedConfiguration = config;
+            }
+
+            if (popup != null)
+                popup.IsOpen = false;
+        }
+
         private static void CloseAncestorPopup(DependencyObject? d)
+        {
+            if (FindAncestorPopup(d) is Popup popup)
+                popup.IsOpen = false;
+        }
+
+        private static Popup? FindAncestorPopup(DependencyObject? d)
         {
             while (d != null && d is not Popup)
                 d = LogicalTreeHelper.GetParent(d);
-            if (d is Popup popup)
-                popup.IsOpen = false;
+            return d as Popup;
         }
     }
 }

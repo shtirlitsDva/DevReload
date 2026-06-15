@@ -28,21 +28,21 @@ namespace Acad.Rpc.Bridge;
 public sealed class BridgeRpcHost : IDisposable
 {
     private readonly RpcCore _core;
-    private readonly PipeForwarder _forwarder;
+    private readonly ForwarderPool _pool;
     private readonly Action<string> _log;
     private StreamWriter? _stdout;
     private readonly object _stdoutGate = new();
     private readonly HashSet<string> _localToolNames = new(StringComparer.Ordinal);
     private readonly object _localNamesGate = new();
 
-    public BridgeRpcHost(RpcCore core, PipeForwarder forwarder, Action<string>? log = null)
+    public BridgeRpcHost(RpcCore core, ForwarderPool pool, Action<string>? log = null)
     {
         _core = core ?? throw new ArgumentNullException(nameof(core));
-        _forwarder = forwarder ?? throw new ArgumentNullException(nameof(forwarder));
+        _pool = pool ?? throw new ArgumentNullException(nameof(pool));
         _log = log ?? (_ => { });
         _core.ToolListChanged += OnLocalListChanged;
-        _forwarder.ConnectionChanged += OnForwarderConnectionChanged;
-        _forwarder.NotificationReceived += OnForwarderNotification;
+        _pool.DefaultConnectionChanged += OnForwarderConnectionChanged;
+        _pool.DefaultNotificationReceived += OnForwarderNotification;
         RebuildLocalNameCache();
     }
 
@@ -147,24 +147,37 @@ public sealed class BridgeRpcHost : IDisposable
 
                 bool isLocal;
                 lock (_localNamesGate) { isLocal = _localToolNames.Contains(toolName!); }
-
                 if (isLocal) return await _core.DispatchAsync(method, @params, ct).ConfigureAwait(false);
 
-                if (!_forwarder.IsConnected)
+                // Remote tool: route to the pid named in arguments.pid, else
+                // the bound default instance.
+                JsonObject arguments = (@params?["arguments"] as JsonObject) ?? new JsonObject();
+                int? explicitPid = TryGetPid(arguments);
+                int? targetPid = explicitPid ?? _pool.DefaultPid;
+                if (targetPid == null)
                     return McpProtocol.CallToolResultText(
-                        $"cannot run '{toolName}': {_forwarder.DescribeNotConnected()}",
+                        "no target AutoCAD: pass 'pid', or bind one with acad_start / acad_attach.",
                         isError: true);
 
+                var conn = _pool.GetOrConnect(targetPid.Value);
+                if (!conn.IsConnected)
+                {
+                    bool up = await conn.WaitConnectedAsync(TimeSpan.FromSeconds(5), ct).ConfigureAwait(false);
+                    if (!up)
+                        return McpProtocol.CallToolResultText(
+                            $"cannot run '{toolName}' on pid {targetPid}: {_pool.DescribeNotConnected(targetPid.Value)}",
+                            isError: true);
+                }
+
+                JsonObject forwardParams = BuildForwardParams(toolName!, arguments, explicitPid.HasValue);
                 try
                 {
-                    var pipeResult = await _forwarder.ForwardRequestAsync(method, @params, ct)
-                        .ConfigureAwait(false);
-                    return pipeResult;
+                    return await conn.ForwardRequestAsync("tools/call", forwardParams, ct).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
                     return McpProtocol.CallToolResultText(
-                        $"forwarding to AutoCAD pipe failed: {ex.Message}", isError: true);
+                        $"forwarding '{toolName}' to pid {targetPid} failed: {ex.Message}", isError: true);
                 }
             }
 
@@ -190,12 +203,15 @@ public sealed class BridgeRpcHost : IDisposable
             }
         }
 
-        // Remote list — only when the forwarder is connected.
-        if (_forwarder.IsConnected)
+        // Remote list — the tool SET is the same on every instance, so we
+        // read it from the default instance and tag each remote tool with an
+        // optional 'pid' so a call can target any instance.
+        var def = _pool.Default;
+        if (def != null && def.IsConnected)
         {
             try
             {
-                var remoteResult = await _forwarder.ForwardRequestAsync("tools/list", null, ct)
+                var remoteResult = await def.ForwardRequestAsync("tools/list", null, ct)
                     .ConfigureAwait(false);
                 if (remoteResult is JsonObject rObj && rObj["tools"] is JsonArray rArr)
                 {
@@ -203,7 +219,12 @@ public sealed class BridgeRpcHost : IDisposable
                     {
                         if (t is JsonObject obj && obj["name"]?.GetValue<string>() is string name)
                         {
-                            if (seen.Add(name)) merged.Add((JsonObject)obj.DeepClone());
+                            if (seen.Add(name))
+                            {
+                                var clone = (JsonObject)obj.DeepClone();
+                                InjectPidParam(clone);
+                                merged.Add(clone);
+                            }
                         }
                     }
                 }
@@ -215,6 +236,39 @@ public sealed class BridgeRpcHost : IDisposable
         }
 
         return McpProtocol.ToolsListResult(merged);
+    }
+
+    private static int? TryGetPid(JsonObject arguments)
+    {
+        if (arguments.TryGetPropertyValue("pid", out var n) && n is JsonValue v
+            && v.TryGetValue<int>(out int i) && i > 0)
+            return i;
+        return null;
+    }
+
+    private static JsonObject BuildForwardParams(string toolName, JsonObject arguments, bool hadPid)
+    {
+        var newArgs = (JsonObject)arguments.DeepClone();
+        if (hadPid) newArgs.Remove("pid");
+        return new JsonObject { ["name"] = toolName, ["arguments"] = newArgs };
+    }
+
+    private static void InjectPidParam(JsonObject toolDescriptor)
+    {
+        if (toolDescriptor["inputSchema"] is not JsonObject schema) return;
+        if (schema["properties"] is not JsonObject props)
+        {
+            props = new JsonObject();
+            schema["properties"] = props;
+        }
+        if (!props.ContainsKey("pid"))
+        {
+            props["pid"] = new JsonObject
+            {
+                ["type"] = "integer",
+                ["description"] = "Target AutoCAD pid. Omit to use the bound (default) instance."
+            };
+        }
     }
 
     private async Task WriteAsync(JsonObject message)
@@ -269,7 +323,7 @@ public sealed class BridgeRpcHost : IDisposable
     public void Dispose()
     {
         _core.ToolListChanged -= OnLocalListChanged;
-        _forwarder.ConnectionChanged -= OnForwarderConnectionChanged;
-        _forwarder.NotificationReceived -= OnForwarderNotification;
+        _pool.DefaultConnectionChanged -= OnForwarderConnectionChanged;
+        _pool.DefaultNotificationReceived -= OnForwarderNotification;
     }
 }

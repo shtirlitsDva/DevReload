@@ -11,12 +11,9 @@ using SysProcessWindowStyle = System.Diagnostics.ProcessWindowStyle;
 namespace Acad.Process;
 
 /// <summary>
-/// OS-level (no COM) operations on AutoCAD processes: launch,
-/// enumerate, terminate, idle-wait. The COM-side companion is
-/// <see cref="AcadComClient"/>. This class does not require AutoCAD to
-/// be reachable via COM — it stays useful while AutoCAD is still
-/// starting up, while a modal dialog is blocking COM, or after a
-/// crash.
+/// OS-level operations on AutoCAD processes: discover installs, launch,
+/// enumerate running instances, probe pipe readiness, and terminate. Stays
+/// useful at every stage of an instance's life, from cold start onward.
 /// </summary>
 public sealed class AcadProcessController
 {
@@ -217,59 +214,6 @@ public sealed class AcadProcessController
         {
             return false;
         }
-    }
-
-    /// <summary>
-    /// Poll a target instance's COM state until <see cref="AcadProcessState.IsQuiescent"/>
-    /// (and, when <paramref name="requireActiveDocument"/> is true,
-    /// <see cref="AcadProcessState.HasActiveDocument"/>) become true.
-    /// Returns the elapsed time and last observed state. COM attach
-    /// failures count as "still warming up" until the timeout fires.
-    /// </summary>
-    public async Task<AcadWaitResult> WaitForReadyAsync(
-        int pid,
-        TimeSpan timeout,
-        bool requireActiveDocument,
-        CancellationToken ct)
-    {
-        var deadline = DateTime.UtcNow + timeout;
-        var start = DateTime.UtcNow;
-        AcadProcessState? last = null;
-
-        while (DateTime.UtcNow < deadline)
-        {
-            ct.ThrowIfCancellationRequested();
-
-            if (!IsRunning(pid))
-                return new AcadWaitResult(
-                    Succeeded: false,
-                    ElapsedSeconds: (DateTime.UtcNow - start).TotalSeconds,
-                    LastState: last,
-                    Reason: $"process {pid} exited before reaching ready state");
-
-            using var client = AcadComClient.AttachByPid(pid);
-            if (client != null)
-            {
-                last = client.GetState();
-                if (last.IsQuiescent && (!requireActiveDocument || last.HasActiveDocument))
-                    return new AcadWaitResult(
-                        Succeeded: true,
-                        ElapsedSeconds: (DateTime.UtcNow - start).TotalSeconds,
-                        LastState: last,
-                        Reason: null);
-            }
-
-            try { await Task.Delay(250, ct).ConfigureAwait(false); }
-            catch (TaskCanceledException) { break; }
-        }
-
-        return new AcadWaitResult(
-            Succeeded: false,
-            ElapsedSeconds: (DateTime.UtcNow - start).TotalSeconds,
-            LastState: last,
-            Reason: requireActiveDocument
-                ? "timeout waiting for IsQuiescent AND HasActiveDocument"
-                : "timeout waiting for IsQuiescent");
     }
 
     // ── Helpers ───────────────────────────────────────────────────────

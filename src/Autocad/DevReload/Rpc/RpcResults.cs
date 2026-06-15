@@ -59,4 +59,14 @@ namespace DevReload.Rpc
         bool Success,
         string Name,
         string Message);
+
+    // The configurations a plugin's project declares (Available) plus the one
+    // currently selected for its next build (Current). Available is exactly what
+    // MSBuild reports for the project's `Configurations` property — Current is
+    // not fabricated into it, so an out-of-list Current (e.g. a hand-edited
+    // plugins.json) is visible to the agent rather than masked.
+    public sealed record PluginConfigurationsResult(
+        string PluginName,
+        string Current,
+        System.Collections.Generic.IReadOnlyList<string> Available);
 }
