@@ -226,10 +226,17 @@ public sealed class RpcCore
                 JsonObject args = (@params?["arguments"] as JsonObject) ?? new JsonObject();
                 try
                 {
-                    var (text, structured) = await InvokeToolAsync(tool, args, ct).ConfigureAwait(false);
-                    return structured != null
-                        ? McpProtocol.CallToolResultStructured(text, structured)
-                        : McpProtocol.CallToolResultText(text, isError: false);
+                    var r = await InvokeToolAsync(tool, args, ct).ConfigureAwait(false);
+                    // Fast path keeps the exact pre-image-support shape for the
+                    // common text / text+structured returns; only image-bearing
+                    // results take the general assembler.
+                    if (r.Images == null || r.Images.Count == 0)
+                    {
+                        return r.Structured != null
+                            ? McpProtocol.CallToolResultStructured(r.Text ?? "", r.Structured)
+                            : McpProtocol.CallToolResultText(r.Text ?? "", isError: r.IsError);
+                    }
+                    return McpProtocol.CallToolResult(r.Text, r.Structured, r.Images, r.IsError);
                 }
                 catch (Exception ex)
                 {
@@ -242,7 +249,13 @@ public sealed class RpcCore
         }
     }
 
-    private async Task<(string Text, JsonObject? Structured)> InvokeToolAsync(
+    /// <summary>Normalized tool invocation result. Text + optional
+    /// structured object preserve the original behavior; Images is populated
+    /// only when a tool opts into <see cref="ToolImage"/> / <see cref="ToolResult"/>.</summary>
+    private readonly record struct InvocationResult(
+        string? Text, JsonObject? Structured, IReadOnlyList<ToolImage>? Images, bool IsError);
+
+    private async Task<InvocationResult> InvokeToolAsync(
         RegisteredTool tool, JsonObject args, CancellationToken ct)
     {
         var parameters = tool.Method.GetParameters();
@@ -291,19 +304,40 @@ public sealed class RpcCore
         }
 
         // Spec: structuredContent must be a JSON *object*, so arrays and
-        // primitives travel as text only.
+        // primitives travel as text only. ToolImage / ToolResult are the
+        // opt-in shapes that attach image content blocks.
         return invokeResult switch
         {
-            null => ("", null),
-            string s => (s, null),
+            null => new InvocationResult("", null, null, false),
+            string s => new InvocationResult(s, null, null, false),
+            ToolImage img => new InvocationResult(null, null, new[] { img }, false),
+            IReadOnlyList<ToolImage> imgs => new InvocationResult(null, null, imgs, false),
+            IEnumerable<ToolImage> imgs => new InvocationResult(null, null, imgs.ToList(), false),
+            ToolResult tr => MaterializeToolResult(tr),
             _ => Materialize(invokeResult),
         };
 
-        static (string, JsonObject?) Materialize(object value)
+        static InvocationResult Materialize(object value)
         {
             JsonNode? node = JsonSerializer.SerializeToNode(value, McpProtocol.JsonOptions);
             string text = node?.ToJsonString(McpProtocol.JsonOptions) ?? "";
-            return (text, node as JsonObject);
+            return new InvocationResult(text, node as JsonObject, null, false);
+        }
+
+        static InvocationResult MaterializeToolResult(ToolResult tr)
+        {
+            JsonObject? structured = null;
+            if (tr.Structured != null)
+                structured = JsonSerializer.SerializeToNode(
+                    tr.Structured, McpProtocol.JsonOptions) as JsonObject;
+
+            // Match the bare-object convention: when no explicit Text is given
+            // but a structured object is, the text block is that object's JSON.
+            string? text = tr.Text;
+            if (text == null && structured != null)
+                text = structured.ToJsonString(McpProtocol.JsonOptions);
+
+            return new InvocationResult(text, structured, tr.Images, tr.IsError);
         }
     }
 
@@ -316,7 +350,7 @@ public sealed class RpcCore
         RegisteredTool? tool;
         lock (_gate) { _toolsByName.TryGetValue(toolName, out tool); }
         if (tool == null) throw new InvalidOperationException($"unknown tool: {toolName}");
-        return (await InvokeToolAsync(tool, args, ct).ConfigureAwait(false)).Text;
+        return (await InvokeToolAsync(tool, args, ct).ConfigureAwait(false)).Text ?? "";
     }
 
     // ── Attribute scan ────────────────────────────────────────────────

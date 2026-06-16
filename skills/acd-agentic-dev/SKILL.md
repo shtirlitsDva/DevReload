@@ -12,6 +12,8 @@ Two MCP surfaces cooperate in this loop. Confusing them is the #1 reason agents 
 
 The loop is: **DevReload reloads your code → ACD-MCP verifies what the code did.** You need both. If you only know DevReload, you can build and load but cannot *observe* the drawing; if you only know ACD-MCP, you cannot reload the plugin you are editing.
 
+- **UI automation (`ui_*`)** is part of the DevReload host (same bridge), for when the thing under test is a *UI*, not just drawing state: see/drive WPF palettes at the ViewModel level, OK native modal dialogs, synthesize mouse for jigs/grips, and take inline screenshots. See `<ui-group>`.
+
 **Before you do anything, read `<tool-surface-comes-up-in-phases>`.** Your tool catalog at session start is INCOMPLETE on purpose — `devreload_*` tools do not exist until AutoCAD is up. Agents that don't know this conclude "the MCP is broken" or invent throwaway copies. Don't.
 </read-this-first>
 
@@ -165,6 +167,47 @@ The script/verification surface. Separate MCP server; tools present from phase 0
 | `autocad_get_selection` | Read the current pickfirst selection. |
 | resource `acd-mcp://status` | Health snapshot (per-handler ready/degraded). Answers even when tool calls fail — use it to triage. |
 </acd-mcp-group>
+
+<ui-group>
+UI-automation surface for testing plugin UIs and driving native dialogs. `ui_*` prefix, group `"ui"`. Compiled INTO the DevReload host (`DevReload.dll`), so — like `devreload_*` — these appear from **phase 1** (once the in-AutoCAD pipe is up) and are **pid-addressable** (optional `pid`, omit for the bound default). They exist because `acad_send_command` can drive a *command* but cannot *see* a WPF palette, OK a native modal dialog with no .NET API, synthesize a jig drag, or screenshot a region.
+
+**Capability 1 — see & interact with WPF plugin UI, ViewModel-aware.** `[RunOnAcadMainThread]`.
+| Tool | When to call |
+|---|---|
+| `ui_list_surfaces` | List WPF surfaces (palettes/windows) hosted in the process: hwnd, root type, size. |
+| `ui_snapshot(hwnd?, includeViewModel?, maxDepth?)` | Element tree (type, x:Name, AutomationId, text, value, enabled, visible, screen-px bounds) PLUS a reflection dump of the bound ViewModel — assert on the ViewModel, not pixels. Each node's `id` (`"0/3/1"`) is the element ref. Re-read after every action; the tree mutates. |
+| `ui_invoke / ui_set_value / ui_toggle / ui_select(elementRef, hwnd?)` | Drive a control via its UI Automation peer (Invoke / Value / Toggle / SelectionItem). `elementRef` = tree-path id, x:Name, or AutomationId. |
+
+**Capability 2 — drive native (Win32/MFC) dialogs with no .NET API** (e.g. COGO-point projection). Run OFF the main thread on purpose, so they work WHILE a modal stalls the idle pump.
+| Tool | When to call |
+|---|---|
+| `ui_list_windows` | Top-level windows (main frame + any modal): hwnd, title, class, bounds, visible, enabled. A modal disables the main frame — `enabled:false` on it is how you spot one. |
+| `ui_dialog_buttons(hwnd)` | Enumerate a dialog's buttons recursively (finds nested file-dialog Open/Cancel too) with labels + bounds. |
+| `ui_dialog_click(hwnd, label)` | **Headless** click — posts `BM_CLICK` to the button: no cursor, no foreground, works on a background instance, multi-instance safe. Prefer this to dismiss any dialog. |
+| `ui_press_key(key, hwnd?)` | enter/escape/tab/space/yes/no. Pass the dialog `hwnd` to foreground+focus it first (a real keystroke needs focus). |
+
+**Capability 3 — synthesize mouse input** for jigs / grips / OSNAP / real-time drag. SendInput-based.
+| Tool | When to call |
+|---|---|
+| `ui_mouse_move / ui_click / ui_drag` | Physical-pixel cursor move / click / button-held drag. |
+| `ui_canvas_capture_view(pid?)` | Capture the live view (center, height, twist, drawing-area screen rect) so WCS gesture tools can map WCS→pixel. Call while quiescent, BEFORE a jig. **Required before the canvas tools below.** |
+| `ui_canvas_click(wcsX, wcsY) / ui_canvas_drag(fromWcs, toWcs, ...)` | Click / button-held drag at WCS points; OSNAP still snaps to real geometry. |
+
+**Capability 4 — granular vision.** Screenshots return the PNG **inline** (no temp file) plus size metadata.
+| Tool | When to call |
+|---|---|
+| `ui_screenshot_window(hwnd)` / `ui_screenshot_region(x,y,w,h)` / `ui_screenshot_element(elementRef)` / `ui_screenshot_wcs_box(min/max + padding)` | Capture a window (PrintWindow — occlusion-proof, renders even when background), an arbitrary region, a WPF element's bounds, or a canvas WCS box (needs a prior `ui_canvas_capture_view`). |
+| `ui_canvas_drag_capture(fromWcs, toWcs, steps?, stepDelayMs?, captureStride?)` | Drive a canvas drag while capturing a frame every `captureStride` samples — watch a jig animate frame by frame; returns the ordered frames inline. |
+
+**Two behavioural classes — know which you're in:**
+- **In-process (cap 1, cap 4, `ui_list_windows`, `ui_dialog_*`) — per-instance, parallel-safe.** They act inside the targeted process: its WPF tree, its HWNDs, its PrintWindow render. PrintWindow captures occluded/background windows, so you can snapshot instance B while A is foreground. Fully concurrent across pids; `ui_dialog_click` is headless.
+- **Synthetic input (cap 3 + `ui_mouse_*`/`ui_click`/`ui_drag` + `ui_press_key`) — pid-addressable but serialized on ONE shared cursor.** SendInput/keybd_event are session-global: one cursor, one foreground per desktop. `pid` selects which instance to foreground + compute coordinates for (`ui_canvas_*` call `Foreground.Ensure`), but two instances cannot receive synthetic input at once, and it cannot be confined to a background instance or another virtual desktop. Drive canvas gestures one instance at a time. (True parallelism here needs OS-level session isolation — separate logged-in Windows/RDP sessions — not the plugin.)
+
+**Gotchas specific to this surface:**
+- **A modal dialog blocks the cap-1 main-thread tools.** `ui_snapshot` et al. dispatch onto the idle pump, which a modal stalls. Rather than hang, the dispatcher detects the modal (main frame disabled) and **fails fast** with a message pointing you at the off-thread `ui_list_windows` / `ui_dialog_*` tools. Dismiss the dialog (`ui_dialog_click "Cancel"`), then retry the WPF tool.
+- **Point-acquisition jigs (`ed.Drag` + `AcquirePoint`) vs the drag tools.** `ui_canvas_drag`/`_drag_capture` hold the button DOWN for the whole gesture — right for grips, window-select, and real-time drag-move, but a point jig commits on the first button event, killing the animation. Drive a point jig with `ui_mouse_move` ×N (to animate/stream coords) + `ui_canvas_click` (to commit). A jig that streams coordinates into a bound WPF control updates the palette live (it repaints on AutoCAD's jig message pump) — a good end-to-end interactive-dev regression target.
+- **Inline screenshots can be large.** A full-canvas frame is a big base64 blob. Prefer `ui_screenshot_wcs_box`/`ui_screenshot_region`/a small window, and keep `ui_canvas_drag_capture` frame counts low (high `captureStride`, few `steps`).
+</ui-group>
 </mcp-tools>
 
 <startup-can-stall>

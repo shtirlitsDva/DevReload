@@ -36,6 +36,7 @@ public class DevReloadSurfaceTests
         "devreload_get_assembly_info",
         "devreload_list_tools",
         // Config
+        "devreload_list_configurations",
         "devreload_update_build_configuration",
         "devreload_update_active_worktree",
         // Build
@@ -47,6 +48,18 @@ public class DevReloadSurfaceTests
         "devreload_write_shared_assemblies",
         // Registration
         "devreload_register_new_plugin",
+        // In-AutoCAD process/document control (AcadControlTools) — ships in
+        // the DevReload assembly, so it is part of this surface. Commands,
+        // state, and document tools, served over this instance's pipe.
+        "acad_send_command",
+        "acad_post_command",
+        "acad_get_state",
+        "acad_wait_quiescent",
+        "acad_open_drawing",
+        "acad_new_drawing",
+        "acad_close_active_drawing",
+        "acad_list_open_documents",
+        "acad_activate_document",
     };
 
     [Fact]
@@ -89,6 +102,7 @@ public class DevReloadSurfaceTests
     [InlineData("devreload_unload_plugin", "name")]
     [InlineData("devreload_unregister", "name")]
     [InlineData("devreload_get_assembly_info", "name")]
+    [InlineData("devreload_list_configurations", "name")]
     [InlineData("devreload_update_build_configuration", "name", "buildConfiguration")]
     [InlineData("devreload_update_active_worktree", "name", "worktreePath")]
     [InlineData("devreload_build_project", "csprojPath", "buildConfiguration")]
@@ -96,6 +110,13 @@ public class DevReloadSurfaceTests
     [InlineData("devreload_read_shared_assemblies", "buildDir")]
     [InlineData("devreload_write_shared_assemblies", "buildDir", "sharedAssemblies", "mixedModeAssemblies", "streamedAssemblies")]
     [InlineData("devreload_register_new_plugin", "projectFilePath", "buildConfiguration", "commandPrefix", "loadOnStartup")]
+    // In-AutoCAD acad_* control tools (AcadControlTools, DevReload assembly).
+    [InlineData("acad_send_command", "commandString")]
+    [InlineData("acad_post_command", "commandString")]
+    [InlineData("acad_open_drawing", "path", "readOnly")]
+    [InlineData("acad_new_drawing", "templatePath")]
+    [InlineData("acad_close_active_drawing", "saveChanges")]
+    [InlineData("acad_activate_document", "documentName")]
     public async System.Threading.Tasks.Task DevReloadTool_HasExpectedInputSchemaProperties(string toolName, params string[] expectedProps)
     {
         var host = NewHost();
