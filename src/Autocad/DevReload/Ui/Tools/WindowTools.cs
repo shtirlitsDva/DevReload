@@ -29,7 +29,7 @@ public static class WindowTools
         => DialogDriver.Buttons(new IntPtr(hwnd));
 
     [AcadRpcTool,
-     Description("Click a dialog button by its label (case-insensitive, ignores & mnemonic), e.g. \"OK\". Delivers a real synthetic click so the dialog's handler fires as for a user.")]
+     Description("Click a dialog button by its label (case-insensitive, ignores & mnemonic), e.g. \"OK\". HEADLESS: posts a BM_CLICK message to the button, so the dialog's handler fires as for a user WITHOUT moving the cursor or bringing the dialog foreground — works on a background instance and is safe to run against multiple instances at once.")]
     public static ActionResult DialogClick(
         [Description("Dialog window hwnd from list_windows.")] long hwnd,
         [Description("Button label, e.g. \"OK\", \"Cancel\", \"Apply\".")] string label)

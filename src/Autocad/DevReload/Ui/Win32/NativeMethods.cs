@@ -147,4 +147,19 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+
+    // ── Headless dialog button activation ──
+    // BM_CLICK posts the button a synthesized click and notifies its parent
+    // (BN_CLICKED), without touching the physical cursor or requiring the
+    // window to be foreground — so it drives a dialog in a background AutoCAD
+    // instance and is multi-instance safe (no shared-cursor contention).
+    public const uint BM_CLICK = 0x00F5;
+    public const uint SMTO_ABORTIFHUNG = 0x0002;
+
+    // SendMessageTimeout (not SendMessage) so a wedged target thread can never
+    // hang the off-thread tool call: it aborts if the window is hung.
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    public static extern IntPtr SendMessageTimeout(
+        IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam,
+        uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
 }

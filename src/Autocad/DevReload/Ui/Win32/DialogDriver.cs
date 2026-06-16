@@ -40,20 +40,21 @@ public static class DialogDriver
     }
 
     /// <summary>Click a button whose text matches <paramref name="label"/>
-    /// (ignoring case and the &amp; mnemonic marker) via a real synthetic click
-    /// at its center, so the dialog's command handler fires as for a user.</summary>
+    /// (ignoring case and the &amp; mnemonic marker) HEADLESSLY: post the button a
+    /// BM_CLICK message, which fires its BN_CLICKED handler exactly as a user
+    /// click would — but without moving the physical cursor or requiring the
+    /// dialog to be foreground. Works on a background instance and never fights
+    /// other instances for the shared cursor. SendMessageTimeout (not
+    /// SendMessage) guarantees a hung dialog can't wedge this off-thread call.</summary>
     public static bool ClickButton(IntPtr dialog, string label)
     {
         foreach (var b in Buttons(dialog))
         {
             if (Matches(b.Text, label))
             {
-                // A synthetic click lands on whatever owns those pixels and only
-                // registers on the active window — so bring the dialog foreground
-                // first (AttachThreadInput-based, beats the foreground lock).
-                Foreground.Ensure(dialog);
-                SynthInput.Click(b.Bounds.X + b.Bounds.Width / 2,
-                                 b.Bounds.Y + b.Bounds.Height / 2, MouseButton.Left);
+                NativeMethods.SendMessageTimeout(
+                    new IntPtr(b.Hwnd), NativeMethods.BM_CLICK, IntPtr.Zero, IntPtr.Zero,
+                    NativeMethods.SMTO_ABORTIFHUNG, 5000, out _);
                 return true;
             }
         }
