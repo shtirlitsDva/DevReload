@@ -159,12 +159,13 @@
                                             <ToggleButton x:Name="ConfigDrop"
                                                           Style="{StaticResource BuildConfigDropToggle}"
                                                           Content="{Binding SelectedConfiguration}"
+                                                          IsChecked="{Binding IsConfigPickerOpen, Mode=TwoWay}"
                                                           Margin="0,0,4,0"
                                                           ToolTip="Build configuration (click to choose from the project's configurations)"/>
                                             <Popup PlacementTarget="{Binding ElementName=ConfigDrop}"
                                                    Placement="Bottom" StaysOpen="False"
                                                    AllowsTransparency="True"
-                                                   IsOpen="{Binding IsChecked, ElementName=ConfigDrop, Mode=TwoWay}"
+                                                   IsOpen="{Binding IsConfigPickerOpen, Mode=TwoWay}"
                                                    DataContext="{Binding PlacementTarget.DataContext,
                                                        RelativeSource={RelativeSource Self}}">
                                                 <Border Style="{StaticResource FlyoutPanel}" Margin="0,2,0,0"
@@ -174,7 +175,9 @@
                                                             <DataTemplate>
                                                                 <Button Style="{StaticResource ConfigItemBtn}"
                                                                         Content="{Binding}"
-                                                                        Click="ConfigItem_Click"/>
+                                                                        Command="{Binding DataContext.SelectConfigurationCommand,
+                                                                            RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                        CommandParameter="{Binding}"/>
                                                             </DataTemplate>
                                                         </ItemsControl.ItemTemplate>
                                                     </ItemsControl>
@@ -187,22 +190,21 @@
                                                 <StackPanel Orientation="Horizontal">
                                                     <Button Style="{StaticResource SplitMainBtn}"
                                                             Content="Reload"
-                                                            Command="{Binding DataContext.DevReloadPluginCommand,
-                                                                RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                            CommandParameter="{Binding Name}"
+                                                            Command="{Binding ReloadCommand}"
                                                             ToolTip="Build and reload the plugin"/>
                                                     <ToggleButton x:Name="ReloadFlyout"
                                                                   Style="{StaticResource SplitArrowToggle}"
                                                                   Content="▾"
+                                                                  IsChecked="{Binding IsBuildMenuOpen, Mode=TwoWay}"
                                                                   ToolTip="More build actions"/>
                                                     <Popup PlacementTarget="{Binding ElementName=ReloadFlyout}"
                                                            Placement="Bottom" StaysOpen="False"
                                                            AllowsTransparency="True"
-                                                           IsOpen="{Binding IsChecked, ElementName=ReloadFlyout, Mode=TwoWay}">
+                                                           IsOpen="{Binding IsBuildMenuOpen, Mode=TwoWay}">
                                                         <Border Style="{StaticResource FlyoutPanel}" Margin="0,2,0,0">
                                                             <Button Style="{StaticResource RowSurfaceBtn}"
                                                                     Content="Build only"
-                                                                    Click="BuildOnlyFlyout_Click"
+                                                                    Command="{Binding BuildOnlyCommand}"
                                                                     ToolTip="Build without loading — produces the DLLs so Shared can be configured for this branch"/>
                                                         </Border>
                                                     </Popup>
@@ -212,9 +214,7 @@
                                             <Button Style="{StaticResource RowDangerBtn}"
                                                     Content="Unload"
                                                     Margin="0,0,4,0"
-                                                    Command="{Binding DataContext.UnloadPluginCommand,
-                                                        RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                    CommandParameter="{Binding Name}"
+                                                    Command="{Binding UnloadCommand}"
                                                     IsEnabled="{Binding IsLoaded}"/>
                                             <Button Style="{StaticResource SharedBtn}"
                                                     Content="Shared"

@@ -167,34 +167,9 @@ namespace DevReload.ViewModels
                 SaveConfig();
         }
 
-        // ── Plugin lifecycle commands ─────────────────────────────────
-
-        // The card refresh after each of these is driven reactively by
-        // PluginManager.PluginStateChanged (see OnPluginStateChanged) — the same
-        // path the MCP tool surface goes through — so there's no explicit
-        // RefreshStates() call here. RefreshState() also re-reads worktrees.
-
-        [RelayCommand]
-        private void LoadPlugin(string name) => PluginManager.Load(name);
-
-        [RelayCommand]
-        private void DevReloadPlugin(string name) => PluginManager.DevReload(name);
-
-        // "Build only" flyout: build the current selection without loading, so a
-        // freshly-selected worktree gets its DLLs and Shared can be configured.
-        [RelayCommand]
-        private void BuildOnlyPlugin(string name)
-        {
-            PluginManager.BuildOnly(name);
-
-            // Build state isn't load state: the event-driven RefreshState won't
-            // pick up that this build just produced the shared-assemblies config,
-            // so refresh that decoration explicitly.
-            Plugins.FirstOrDefault(p => p.Name == name)?.RefreshSharedConfig();
-        }
-
-        [RelayCommand]
-        private void UnloadPlugin(string name) => PluginManager.Unload(name);
+        // Per-plugin lifecycle commands (Reload / Unload / BuildOnly / config
+        // pick) live on PluginItemViewModel — each card binds to its own VM. The
+        // root VM keeps only collection-level and cross-cutting flows below.
 
         // ── Add / Remove ─────────────────────────────────────────────
 
@@ -586,6 +561,12 @@ namespace DevReload.ViewModels
         [ObservableProperty] private string _selectedConfiguration = "Debug";
         [ObservableProperty] private WorktreeItem? _selectedWorktree;
 
+        // Open-state for the two card flyouts. Both the toggle button and its
+        // popup bind here (TwoWay), so the picker/build commands can close the
+        // flyout by flipping the flag — no code-behind popup-hunting required.
+        [ObservableProperty] private bool _isConfigPickerOpen;
+        [ObservableProperty] private bool _isBuildMenuOpen;
+
         // The configurations declared by the plugin's project (Debug, Release,
         // and any custom ones such as IALCD/IALCR). Populated off the UI thread
         // from MSBuild; the compact config dropdown on the card binds to it.
@@ -612,6 +593,41 @@ namespace DevReload.ViewModels
         partial void OnLoadOnStartupChanged(bool value)
         {
             Entry.LoadOnStartup = value;
+        }
+
+        // Per-plugin lifecycle. Each card binds straight to its own VM; the
+        // card refresh afterwards is driven reactively by PluginManager's
+        // PluginStateChanged event (the same path the MCP tool surface uses),
+        // so there's no explicit refresh here.
+        [RelayCommand]
+        private void Reload() => PluginManager.DevReload(Name);
+
+        [RelayCommand]
+        private void Unload() => PluginManager.Unload(Name);
+
+        // Pick a build configuration from the card's dropdown. Lives on the item
+        // VM (not code-behind) so the popup's item buttons bind to it directly;
+        // assigning SelectedConfiguration persists via OnSelectedConfigurationChanged.
+        [RelayCommand]
+        private void SelectConfiguration(string configuration)
+        {
+            SelectedConfiguration = configuration;
+            IsConfigPickerOpen = false;
+        }
+
+        // "Build only" flyout: build the current selection without loading, so a
+        // freshly-selected worktree gets its DLLs and Shared can be configured.
+        // PluginManager.BuildOnly is the single shared entry point.
+        [RelayCommand]
+        private void BuildOnly()
+        {
+            PluginManager.BuildOnly(Name);
+
+            // Build state isn't load state: the event-driven RefreshState won't
+            // pick up that this build just produced the shared-assemblies config,
+            // so refresh that decoration explicitly.
+            RefreshSharedConfig();
+            IsBuildMenuOpen = false;
         }
 
         partial void OnSelectedConfigurationChanged(string value)
