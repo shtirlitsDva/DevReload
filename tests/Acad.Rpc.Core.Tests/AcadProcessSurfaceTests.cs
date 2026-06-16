@@ -21,24 +21,14 @@ public class AcadProcessSurfaceTests
         // Discovery
         "acad_list_instances",
         "acad_locate_install",
-        // Lifecycle
+        // Lifecycle — process control owned by the bridge process itself.
+        // Per-instance work (commands, state, documents) lives on the
+        // in-AutoCAD acad_* surface (DevReload assembly), not here.
         "acad_start",
         "acad_attach",
         "acad_detach",
         "acad_wait_pipe",
-        "acad_wait_quiescent",
         "acad_quit",
-        // State
-        "acad_get_state",
-        // Commands
-        "acad_send_command",
-        "acad_post_command",
-        // Documents
-        "acad_open_drawing",
-        "acad_new_drawing",
-        "acad_close_active_drawing",
-        "acad_list_open_documents",
-        "acad_activate_document",
     };
 
     [Fact]
@@ -78,16 +68,7 @@ public class AcadProcessSurfaceTests
     [InlineData("acad_start", "flavor", "installPath", "profile", "drawingPath", "startupCommands", "visible")]
     [InlineData("acad_attach", "pid")]
     [InlineData("acad_wait_pipe", "pid", "timeoutSeconds")]
-    [InlineData("acad_wait_quiescent", "pid", "timeoutSeconds", "requireActiveDocument")]
-    [InlineData("acad_quit", "pid", "saveChanges", "timeoutSeconds")]
-    [InlineData("acad_get_state", "pid")]
-    [InlineData("acad_send_command", "commandString", "pid")]
-    [InlineData("acad_post_command", "commandString", "pid")]
-    [InlineData("acad_open_drawing", "path", "readOnly", "pid")]
-    [InlineData("acad_new_drawing", "templatePath", "pid")]
-    [InlineData("acad_close_active_drawing", "saveChanges", "pid")]
-    [InlineData("acad_list_open_documents", "pid")]
-    [InlineData("acad_activate_document", "documentId", "pid")]
+    [InlineData("acad_quit", "pid")]
     public async System.Threading.Tasks.Task AcadProcessTool_HasExpectedInputSchemaProperties(string toolName, params string[] expectedProps)
     {
         var host = NewHost();
