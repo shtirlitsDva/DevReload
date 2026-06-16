@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Pure, AutoCAD-free, WPF-free logic for the UI-automation tool surface:
+       WCS<->device-pixel transforms, SendInput 0..65535 normalization, screen-
+       region resolution, drag-path interpolation. This is the unit-tested half;
+       the AutoCAD/WPF/Win32 glue lives in the DevReload plugin (src/Autocad/
+       DevReload/Ui) and delegates here. Mirrors how Acad.Rpc.Core is split out
+       as a host-agnostic, package-free library. -->
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <AssemblyName>UiMcp.Core</AssemblyName>
+    <RootNamespace>UiMcp.Core</RootNamespace>
+    <UseWPF>false</UseWPF>
+    <UseWindowsForms>false</UseWindowsForms>
+    <ImportWindowsDesktopTargets>false</ImportWindowsDesktopTargets>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
+    <OutputPath>bin\Debug\</OutputPath>
+    <DebugType>full</DebugType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
+    <OutputPath>bin\Release\</OutputPath>
+    <DebugType>full</DebugType>
+  </PropertyGroup>
+</Project>

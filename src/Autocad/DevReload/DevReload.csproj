@@ -41,6 +41,7 @@
 	</ItemGroup>
 	<ItemGroup>
 		<ProjectReference Include="..\..\Shared\Acad.Rpc.Core\Acad.Rpc.Core.csproj" />
+		<ProjectReference Include="..\..\Shared\UiMcp.Core\UiMcp.Core.csproj" />
 	</ItemGroup>
 	<ItemGroup>
 		<None Include="PackageContents.xml" CopyToOutputDirectory="Never" />

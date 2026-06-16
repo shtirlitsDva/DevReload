@@ -96,6 +96,54 @@ public static class McpProtocol
         return result;
     }
 
+    /// <summary>An <c>image</c> content block: base64 bytes + MIME type.</summary>
+    public static JsonObject ImageContentBlock(string base64Data, string mimeType) =>
+        new()
+        {
+            ["type"] = "image",
+            ["data"] = base64Data,
+            ["mimeType"] = mimeType,
+        };
+
+    /// <summary>
+    /// General tool result assembler. Emits a text block (when
+    /// <paramref name="text"/> is non-empty, OR when there are no images — the
+    /// content array must never be empty), followed by one image block per
+    /// entry in <paramref name="images"/>, plus optional
+    /// <c>structuredContent</c>. Backward compatible: with no images and
+    /// non-null text it matches <see cref="CallToolResultText"/> /
+    /// <see cref="CallToolResultStructured"/>.
+    /// </summary>
+    public static JsonObject CallToolResult(
+        string? text,
+        JsonObject? structuredContent,
+        IEnumerable<ToolImage>? images,
+        bool isError)
+    {
+        var content = new JsonArray();
+
+        var imageBlocks = new JsonArray();
+        if (images != null)
+        {
+            foreach (var img in images)
+            {
+                if (img == null) continue;
+                imageBlocks.Add(ImageContentBlock(img.Base64Data, img.MimeType));
+            }
+        }
+
+        // A text block is always present unless images carry the payload and
+        // there is no text — keeps the content array non-empty either way.
+        if (!string.IsNullOrEmpty(text) || imageBlocks.Count == 0)
+            content.Add(new JsonObject { ["type"] = "text", ["text"] = text ?? "" });
+
+        foreach (var b in imageBlocks) content.Add(b!.DeepClone());
+
+        var result = new JsonObject { ["content"] = content, ["isError"] = isError };
+        if (structuredContent != null) result["structuredContent"] = structuredContent;
+        return result;
+    }
+
     public static JsonObject MakeRequest(string method, JsonObject? @params, int id)
     {
         var msg = new JsonObject
