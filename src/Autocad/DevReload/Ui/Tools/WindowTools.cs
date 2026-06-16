@@ -38,9 +38,10 @@ public static class WindowTools
             : new ActionResult(false, $"no button matching '{label}' found");
 
     [AcadRpcTool,
-     Description("Press a global key for the focused dialog: one of enter, escape, tab, space, yes, no. Useful to accept a default button (enter) or dismiss (escape).")]
+     Description("Press a global key for a dialog: one of enter, escape, tab, space, yes, no. Pass the dialog's hwnd (from ui_list_windows) so it is brought foreground/focused first — escape then reliably cancels a modal (incl. native file dialogs). Useful to accept a default button (enter) or dismiss (escape).")]
     public static ActionResult PressKey(
-        [Description("Key name: enter | escape | tab | space | yes | no.")] string key)
+        [Description("Key name: enter | escape | tab | space | yes | no.")] string key,
+        [Description("Dialog hwnd to focus before the keystroke (from ui_list_windows). 0 = send to the current foreground window.")] long hwnd = 0)
     {
         byte vk = key.Trim().ToLowerInvariant() switch
         {
@@ -53,7 +54,8 @@ public static class WindowTools
             _ => 0,
         };
         if (vk == 0) return new ActionResult(false, $"unknown key '{key}'");
+        bool fg = hwnd != 0 && Foreground.Ensure(new IntPtr(hwnd));
         DialogDriver.PressKey(vk);
-        return new ActionResult(true, $"pressed {key}");
+        return new ActionResult(true, $"pressed {key}; foreground={fg}");
     }
 }

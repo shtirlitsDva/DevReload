@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using Acad.Rpc.Core;
 
 namespace Acad.Rpc.Bridge;
 
@@ -82,7 +83,7 @@ public sealed class InstanceConnection : IDisposable
         lock (_gate) { writer = _writer; }
         if (writer == null) { _pending.TryRemove(id, out _); throw new InvalidOperationException("writer gone"); }
 
-        try { await writer.WriteLineAsync(JsonSerializer.Serialize(msg)).ConfigureAwait(false); }
+        try { await writer.WriteLineAsync(JsonSerializer.Serialize(msg, McpProtocol.JsonOptions)).ConfigureAwait(false); }
         catch (Exception ex) { _pending.TryRemove(id, out _); throw new IOException("write to pipe failed", ex); }
 
         await using var reg = ct.Register(() => tcs.TrySetCanceled(ct));

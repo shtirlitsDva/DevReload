@@ -48,6 +48,10 @@ public static class DialogDriver
         {
             if (Matches(b.Text, label))
             {
+                // A synthetic click lands on whatever owns those pixels and only
+                // registers on the active window — so bring the dialog foreground
+                // first (AttachThreadInput-based, beats the foreground lock).
+                Foreground.Ensure(dialog);
                 SynthInput.Click(b.Bounds.X + b.Bounds.Width / 2,
                                  b.Bounds.Y + b.Bounds.Height / 2, MouseButton.Left);
                 return true;

@@ -98,7 +98,7 @@ public class ImageContentTests
     {
         var core = NewCore();
         core.RegisterAssembly(typeof(WireFixture).Assembly);
-        var content = Call(core, "wirefixture_greet" /* arguments empty → s defaults null */);
+        var content = Call(core, "wirefixture_greet" /* arguments empty → s defaults null */)["content"]!.AsArray();
 
         Assert.DoesNotContain(content.OfType<JsonObject>(),
             c => c["type"]?.GetValue<string>() == "image");
