@@ -8,12 +8,13 @@ You register a plugin by picking its `.csproj` file; the plugin name is the proj
 
 ## Install as a Claude Code / Codex plugin
 
-DevReload also ships an MCP bridge (`Acad.Rpc.Bridge`) and the `/acd-agentic-dev` skill, so an agent (Claude Code or Codex) can drive the full edit → reload → live-test loop directly. The MCP bridge exposes two tool groups:
+DevReload also ships an MCP bridge (`Acad.Rpc.Bridge`) and the `/acd-agentic-dev` skill, so an agent (Claude Code or Codex) can drive the full edit → reload → live-test loop directly. The MCP bridge exposes three tool groups:
 
 - `acad_*` — AutoCAD/Civil 3D process + drawing control: locate installs, launch, attach/detach, list instances, send/post commands, wait for readiness, open/close drawings, quit.
 - `devreload_*` — plugin lifecycle: register, load, reload (build + hot-swap), unload, query state, switch build config and worktree.
+- `ui_*` — UI automation, so an agent can test a plugin's *UI*, not just drawing state: introspect and drive WPF palettes at the **ViewModel** level (invoke / set-value / toggle / select via UI Automation peers); enumerate and **headlessly** click native modal dialogs that have no .NET API (e.g. the COGO-point projection dialog); synthesize mouse input for jigs, grips and OSNAP; and capture **inline** screenshots scoped to a window, region, WPF element, or WCS box — including frame-by-frame drag bursts to watch a jig animate.
 
-All control flows over a per-instance named pipe (`acad-rpc-<pid>`), not COM — so you can run **multiple AutoCAD/Civil 3D instances at once** and drive any of them independently. Every `acad_*` and `devreload_*` tool takes an optional `pid`: omit it to use the bound (default) instance, or pass it to target a specific one. `acad_wait_pipe` is the per-instance readiness gate; `acad_list_instances` enumerates running instances and their pipe state.
+All control flows over a per-instance named pipe (`acad-rpc-<pid>`), not COM — so you can run **multiple AutoCAD/Civil 3D instances at once** and drive any of them independently. Every `acad_*`, `devreload_*` and `ui_*` tool takes an optional `pid`: omit it to use the bound (default) instance, or pass it to target a specific one. `acad_wait_pipe` is the per-instance readiness gate; `acad_list_instances` enumerates running instances and their pipe state. (One caveat: the `ui_*` *synthetic-input* tools — mouse move/click/drag, key press — drive the one shared OS cursor/foreground, so they're addressable per `pid` but serialize across instances; the WPF-introspection, dialog and screenshot tools are fully per-instance and parallel-safe.)
 
 > Note: this installs the **agent-side** MCP bridge + skill. The **AutoCAD-side** DevReload plugin (the palette + commands) is installed separately into AutoCAD — see [Installing the AutoCAD plugin](#installing-the-autocad-plugin).
 

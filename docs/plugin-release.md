@@ -50,11 +50,15 @@ $src = "<repo>\Deploy\DevReload.bundle\Contents\Win64"
 $dst = "$env:APPDATA\Autodesk\ApplicationPlugins\DevReload.bundle\Contents\Win64"
 robocopy $src $dst /MIR     # exit code 0 or 1 = success
 
-# 2. MCP BRIDGE — only if a bridge-affecting file changed.
-.\scripts\Pack-Plugin.ps1   # publishes the bridge into <repo>\server
-
-# 3. Push source.
+# 2. Push source. This is also the BRIDGE release for the GitHub marketplace:
+#    .github/workflows/release-plugin.yml fires on every push to master, runs
+#    Pack-Plugin.ps1, and force-pushes `release` = master tree + packed server/.
+#    So you do NOT pack or touch the release branch by hand for that path.
 git push origin master
+
+# 3. MCP BRIDGE (manual) — only for a LOCAL-checkout marketplace or Codex,
+#    which read server/ from the working tree rather than the release branch.
+.\scripts\Pack-Plugin.ps1   # publishes the bridge into <repo>\server
 ```
 
 Then the **client-side steps you must do by hand** (an agent can't run `/plugin` or `/mcp`):
@@ -70,7 +74,7 @@ Then the **client-side steps you must do by hand** (an agent can't run `/plugin`
 - **The running bridge locks `server\*.dll`.** `Pack-Plugin.ps1` deletes + republishes `server\`; if a bridge process is alive it'll fail or the swap won't take. Stop the MCP server first (`/mcp` disconnect, or it's already down) — or accept that the new bridge only loads on the next reconnect/restart.
 - **A Civil/AutoCAD quit can drop the whole devreload MCP from the client catalog** (transport flap). Reconnect with `/mcp`. The bridge keeps the static `acad_*` published while unbound and auto-attaches a lone running instance, so this is a client-refresh issue, not a bridge fault.
 - **The host bundle and the bridge each carry their OWN copy of `Acad.Rpc.Core.dll`** (different processes). A change there means rebuilding BOTH (steps 1 and 2).
-- **GitHub distribution (`release` branch).** `marketplace.json` points the `url` source at `ref: release`, and `release` carries a committed `server\` (built artifact) on top of source. For local installs you don't need it. To use that channel: sync `release` to `master`, run `Pack-Plugin.ps1`, commit `server\`, and push `release`. (As of v2.1.0 the `release` branch is stale — local install from the working tree is the live path.)
+- **GitHub distribution (`release` branch) is automated — don't touch it by hand.** `.github/workflows/release-plugin.yml` runs on every push to `master`: it runs `Pack-Plugin.ps1` and **force-pushes** `release` = the master tree + packed `server\`. `marketplace.json` points `/plugin marketplace add shtirlitsDva/DevReload` at that branch, so a `git push origin master` IS the bridge release for the marketplace path. (`server\` is force-added by the workflow even though it's ignored on master.) A *local* `release` ref in your clone can lag the CI-maintained `origin/release` — `git fetch` before reasoning about it.
 
 </gotchas>
 
