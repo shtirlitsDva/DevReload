@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -28,6 +27,25 @@ internal static class Program
 {
     private static async Task<int> Main(string[] args)
     {
+        // Transport hardening. stdout is the MCP JSON-RPC frame and nothing
+        // else may write to it — redirect any stray Console.Out (ours or a
+        // dependency's) to stderr so it can never corrupt the protocol and
+        // knock the agent's client offline. The host writes responses through
+        // its own captured stdout stream, unaffected by this.
+        Console.SetOut(Console.Error);
+
+        // Last-resort diagnostics: the bridge is out-of-process from AutoCAD and
+        // must survive a Civil 3D crash. If it ever does die, leave a trail on
+        // stderr rather than vanishing silently, and keep a stray background
+        // fault from tearing the process down.
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            Log("FATAL unhandled exception: " + (e.ExceptionObject as Exception)?.ToString());
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            Log("unobserved task exception: " + e.Exception.Message);
+            e.SetObserved();
+        };
+
         string? initialPipe = null;
         int? initialPid = null;
 

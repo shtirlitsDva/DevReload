@@ -30,6 +30,7 @@ public sealed class BridgeRpcHost : IDisposable
     private readonly RpcCore _core;
     private readonly ForwarderPool _pool;
     private readonly Action<string> _log;
+    private readonly RemoteToolCatalogCache _remoteCache;
     private StreamWriter? _stdout;
     private readonly object _stdoutGate = new();
     private readonly HashSet<string> _localToolNames = new(StringComparer.Ordinal);
@@ -40,6 +41,7 @@ public sealed class BridgeRpcHost : IDisposable
         _core = core ?? throw new ArgumentNullException(nameof(core));
         _pool = pool ?? throw new ArgumentNullException(nameof(pool));
         _log = log ?? (_ => { });
+        _remoteCache = new RemoteToolCatalogCache(core.ApiVersion, _log);
         _core.ToolListChanged += OnLocalListChanged;
         _pool.DefaultConnectionChanged += OnForwarderConnectionChanged;
         _pool.DefaultNotificationReceived += OnForwarderNotification;
@@ -203,9 +205,35 @@ public sealed class BridgeRpcHost : IDisposable
             }
         }
 
-        // Remote list — the tool SET is the same on every instance, so we
-        // read it from the default instance and tag each remote tool with an
-        // optional 'pid' so a call can target any instance.
+        // Remote list — the tool SET is the same on every instance, so we read
+        // it from a connected instance (and refresh the cache) when one is
+        // bound, else serve the last cached snapshot so the catalogue does NOT
+        // collapse to local acad_* while unbound — across an AutoCAD crash or a
+        // client-driven bridge respawn. Each remote tool is tagged with an
+        // optional 'pid' so a call can target any instance; with nothing bound
+        // the agent passes 'pid' (or acad_attach first).
+        JsonArray? remoteTools = await GetRemoteToolsAsync(ct).ConfigureAwait(false);
+        if (remoteTools != null)
+        {
+            foreach (var t in remoteTools)
+            {
+                if (t is JsonObject obj && obj["name"]?.GetValue<string>() is string name && seen.Add(name))
+                {
+                    var clone = (JsonObject)obj.DeepClone();
+                    InjectPidParam(clone);
+                    merged.Add(clone);
+                }
+            }
+        }
+
+        return McpProtocol.ToolsListResult(merged);
+    }
+
+    /// <summary>Raw remote tool array: fetched live from the bound instance
+    /// (refreshing the disk cache) when one is connected, else the last cached
+    /// snapshot. Returns null only when neither is available (cold first run).</summary>
+    private async Task<JsonArray?> GetRemoteToolsAsync(CancellationToken ct)
+    {
         var def = _pool.Default;
         if (def != null && def.IsConnected)
         {
@@ -215,27 +243,16 @@ public sealed class BridgeRpcHost : IDisposable
                     .ConfigureAwait(false);
                 if (remoteResult is JsonObject rObj && rObj["tools"] is JsonArray rArr)
                 {
-                    foreach (var t in rArr)
-                    {
-                        if (t is JsonObject obj && obj["name"]?.GetValue<string>() is string name)
-                        {
-                            if (seen.Add(name))
-                            {
-                                var clone = (JsonObject)obj.DeepClone();
-                                InjectPidParam(clone);
-                                merged.Add(clone);
-                            }
-                        }
-                    }
+                    _remoteCache.Save(rArr);
+                    return rArr;
                 }
             }
             catch (Exception ex)
             {
-                _log($"BridgeRpcHost: remote tools/list failed: {ex.Message}");
+                _log($"BridgeRpcHost: remote tools/list failed: {ex.Message}; serving cached surface.");
             }
         }
-
-        return McpProtocol.ToolsListResult(merged);
+        return _remoteCache.Load();
     }
 
     private static int? TryGetPid(JsonObject arguments)

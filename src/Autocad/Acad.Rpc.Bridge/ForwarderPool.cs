@@ -42,7 +42,12 @@ public sealed class ForwarderPool : IDisposable
             var conn = new InstanceConnection(p, $"acad-rpc-{p}", _log);
             conn.ConnectionChanged += connected =>
             {
-                if (p == DefaultPid) DefaultConnectionChanged?.Invoke(connected);
+                // Capture default-ness BEFORE OnConnectionDropped detaches,
+                // so the bridge still gets the disconnect signal (and refreshes
+                // its merged tools/list) even though the binding is cleared.
+                bool wasDefault = p == DefaultPid;
+                if (!connected) OnConnectionDropped(conn);
+                if (wasDefault) DefaultConnectionChanged?.Invoke(connected);
             };
             conn.NotificationReceived += notif =>
             {
@@ -51,6 +56,35 @@ public sealed class ForwarderPool : IDisposable
             conn.Start();
             return conn;
         });
+    }
+
+    /// <summary>
+    /// A live pipe dropping is terminal: <see cref="InstanceConnection"/> never
+    /// reconnects, so a connection that was up and then dropped is dead for good
+    /// (the usual cause is the AutoCAD/Civil 3D process crashing). Evict it from
+    /// the pool and, if it was the bound instance, clear the binding — otherwise
+    /// the bridge keeps forwarding pid-less calls to a dead pipe ("zombie
+    /// binding") and every remote tool appears to have dropped. Clearing the
+    /// binding makes the next pid-less call fail with a clear "bind one with
+    /// acad_start / acad_attach" instead.
+    /// </summary>
+    private void OnConnectionDropped(InstanceConnection conn)
+    {
+        if (_conns.TryRemove(conn.Pid, out var dead))
+        {
+            // Safe to dispose synchronously: we are invoked at the tail of the
+            // connection's own Disconnect(), which has already nulled its reader
+            // loop, so the second Disconnect() inside Dispose() is a no-op and
+            // cannot self-wait.
+            try { dead.Dispose(); } catch { }
+            _log($"ForwarderPool: pid {conn.Pid} pipe dropped; evicted dead connection.");
+        }
+
+        if (_binding.Current?.Pid == conn.Pid)
+        {
+            _binding.Detach();
+            _log($"ForwarderPool: bound instance pid {conn.Pid} is gone; binding cleared.");
+        }
     }
 
     public InstanceConnection? Default

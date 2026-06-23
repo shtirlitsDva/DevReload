@@ -401,8 +401,24 @@ After a restart, the bridge starts fresh:
 
 **If `devreload_*` tools show "offline" after a restart:** the bridge is unbound. Run `acad_list_instances`. If exactly one healthy instance shows `isBound=false`, call `acad_attach <pid>`; if it shows bound but the tools are still missing client-side, re-bind (`acad_detach` then `acad_attach <pid>`) to nudge the catalog refresh.
 
-**Never assume your tool catalog survives a session resume verbatim.** When in doubt: `acad_list_instances` is the cheap first probe.
+**Tool catalog does not survive a session resume verbatim. When in doubt, `acad_list_instances` is the cheap first probe.**
+
+Remote `devreload_*`/`ui_*` stay listed (from cache) while unbound; calls error until you rebind. Unbound signal = "tools present, calls fail", not "tools gone". See `<recover-from-a-civil-crash>`.
 </binding-lifecycle>
+
+<recover-from-a-civil-crash>
+A crashed Civil 3D instance does NOT kill the bridge — only that instance is lost.
+
+State after a crash:
+- `devreload_*`/`ui_*` stay in the catalog (cached); calls error `no target / pipe not up`.
+- Dead binding self-clears; `acad_get_state` → "no instance bound".
+
+Recover (one step):
+- Drive a surviving instance: pass its `pid` on the call — no rebind needed.
+- Else `acad_attach <pid>` (`acad_list_instances` for pids), or `acad_start` a fresh one.
+
+Frozen-but-alive (a "has stopped working" dialog, process not yet exited) can hang an in-flight call → `acad_quit <pid>`, then `acad_start`.
+</recover-from-a-civil-crash>
 
 <engineering-rules-anchored>
 The user's global rules (`~/.claude/CLAUDE.md` `<engineering-rules-strict>`) apply with extra force here:
