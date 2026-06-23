@@ -68,7 +68,7 @@ public sealed class InstanceConnection : IDisposable
         _ = Task.Run(() => ConnectLoopAsync(cts.Token));
     }
 
-    public async Task<JsonNode?> ForwardRequestAsync(string method, JsonObject? @params, CancellationToken ct)
+    public async Task<JsonNode?> ForwardRequestAsync(string method, JsonObject? @params, CancellationToken ct, TimeSpan? timeout = null)
     {
         if (!IsConnected) throw new InvalidOperationException($"pid {Pid} pipe is not connected");
 
@@ -86,8 +86,27 @@ public sealed class InstanceConnection : IDisposable
         try { await writer.WriteLineAsync(JsonSerializer.Serialize(msg, McpProtocol.JsonOptions)).ConfigureAwait(false); }
         catch (Exception ex) { _pending.TryRemove(id, out _); throw new IOException("write to pipe failed", ex); }
 
-        await using var reg = ct.Register(() => tcs.TrySetCanceled(ct));
+        // A frozen-but-alive instance (WER "has stopped working", or a full
+        // process hang) keeps the pipe connected but never replies and never
+        // closes it — so without a deadline this await blocks forever and
+        // wedges the bridge (reproduced: a suspended instance hangs every
+        // forwarded call indefinitely). The optional timeout bounds that: on
+        // expiry the request faults with TimeoutException and the caller
+        // recovers. A clean process *death* is still handled sooner by EOF →
+        // Disconnect(), which faults all pending requests immediately.
+        using var timeoutCts = timeout.HasValue
+            ? CancellationTokenSource.CreateLinkedTokenSource(ct)
+            : null;
+        timeoutCts?.CancelAfter(timeout!.Value);
+        var waitCt = timeoutCts?.Token ?? ct;
+
+        await using var reg = waitCt.Register(() => tcs.TrySetCanceled(waitCt));
         try { return await tcs.Task.ConfigureAwait(false); }
+        catch (OperationCanceledException) when (timeout.HasValue && !ct.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"pid {Pid} did not respond to '{method}' within {timeout.Value.TotalSeconds:0}s — instance is frozen or crashing.");
+        }
         finally { _pending.TryRemove(id, out _); }
     }
 

@@ -31,6 +31,16 @@ public sealed class BridgeRpcHost : IDisposable
     private readonly ForwarderPool _pool;
     private readonly Action<string> _log;
     private readonly RemoteToolCatalogCache _remoteCache;
+
+    // Deadlines for calls forwarded to an in-AutoCAD instance, so a frozen-but-
+    // alive instance can never wedge the bridge (see InstanceConnection.ForwardRequestAsync).
+    //   Catalog: must stay snappy — tools/list runs on every client connect, and
+    //   a hang here is what drops the whole tool surface. Short.
+    //   Tool calls: may legitimately run for minutes (devreload_build_project /
+    //   devreload_reload shell out to `dotnet build`). Generous, but still bounded.
+    private static readonly TimeSpan CatalogFetchTimeout = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan ToolCallTimeout = TimeSpan.FromMinutes(10);
+
     private StreamWriter? _stdout;
     private readonly object _stdoutGate = new();
     private readonly HashSet<string> _localToolNames = new(StringComparer.Ordinal);
@@ -174,7 +184,7 @@ public sealed class BridgeRpcHost : IDisposable
                 JsonObject forwardParams = BuildForwardParams(toolName!, arguments, explicitPid.HasValue);
                 try
                 {
-                    return await conn.ForwardRequestAsync("tools/call", forwardParams, ct).ConfigureAwait(false);
+                    return await conn.ForwardRequestAsync("tools/call", forwardParams, ct, ToolCallTimeout).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -239,7 +249,7 @@ public sealed class BridgeRpcHost : IDisposable
         {
             try
             {
-                var remoteResult = await def.ForwardRequestAsync("tools/list", null, ct)
+                var remoteResult = await def.ForwardRequestAsync("tools/list", null, ct, CatalogFetchTimeout)
                     .ConfigureAwait(false);
                 if (remoteResult is JsonObject rObj && rObj["tools"] is JsonArray rArr)
                 {

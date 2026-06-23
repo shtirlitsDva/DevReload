@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Acad.Rpc.Core;
 
 using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.AutoCAD.Internal;
 
 namespace DevReload.Rpc
 {
@@ -30,6 +31,24 @@ namespace DevReload.Rpc
                 .Cast<object>()
                 .ToArray();
             if (tokens.Length == 0) return "no command";
+
+            // Editor.Command dispatches the first token straight into AutoCAD's
+            // native command engine. An UNREGISTERED command name faults in
+            // native code and kills the whole process — reproduced by sending a
+            // command that does not exist (e.g. ACDMCP_START before Acd.Mcp is
+            // loaded). The command-line interpreter PostCommand uses rejects
+            // unknown input harmlessly; Editor.Command does not. So verify the
+            // command is defined first, and fail with a clean error instead.
+            // (A try/catch cannot help here: the fault is process-fatal, not a
+            // managed exception.) Leading '.'/'_'/'\'' are command modifiers, not
+            // part of the name; strip them before the lookup. '-' is kept — the
+            // dash form (e.g. -LAYER) is a distinct registered command.
+            string firstToken = (string)tokens[0];
+            string commandName = firstToken.TrimStart('.', '_', '\'');
+            if (commandName.Length == 0 || !Utils.IsCommandDefined(commandName))
+                throw new InvalidOperationException(
+                    $"unknown AutoCAD command '{firstToken}': not defined in this instance — nothing was run. " +
+                    "If it belongs to a plugin, load the plugin first (e.g. devreload_load_plugin).");
 
             // Commands execute in document/command context; awaiting blocks
             // the call until the command completes.
