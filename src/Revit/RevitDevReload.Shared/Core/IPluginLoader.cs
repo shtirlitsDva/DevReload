@@ -1,5 +1,6 @@
-using System.Collections.Generic;
 using System.Reflection;
+
+using DevReload.Core;
 
 namespace RevitDevReload.Core
 {
@@ -22,7 +23,7 @@ namespace RevitDevReload.Core
     // The interface keeps RevitPluginManager identical across both.
     public interface IPluginLoader
     {
-        LoadedPluginHandle Load(string dllPath, IReadOnlyList<string> sharedAssemblyNames);
+        LoadedPluginHandle Load(string dllPath, SharedAssembliesFile.Config sharedConfig);
         void Unload(LoadedPluginHandle handle);
 
         // True when Unload really frees memory (ALC); false when reloads

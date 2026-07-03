@@ -11,6 +11,8 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 
+using DevReload.Core;
+
 namespace RevitDevReload.Core
 {
     public sealed class LegacyPluginLoader : IPluginLoader
@@ -24,10 +26,11 @@ namespace RevitDevReload.Core
         public bool SupportsTrueUnload => false;
 
         public LoadedPluginHandle Load(
-            string dllPath, IReadOnlyList<string> sharedAssemblyNames)
+            string dllPath, SharedAssembliesFile.Config sharedConfig)
         {
-            // sharedAssemblyNames is an ALC concept; on net48 everything lives
-            // in one AppDomain so the parameter is intentionally unused.
+            // Shared-assembly pre-loading is an ALC concept; on net48 everything
+            // lives in one AppDomain so the config is intentionally unused (the
+            // AssemblyResolve hook below already probes plugin build dirs).
             string buildDir = Path.GetDirectoryName(dllPath)!;
             lock (_lock)
             {

@@ -166,7 +166,7 @@ namespace RevitDevReload
 
                     string buildDir = Path.GetDirectoryName(dllPath!)!;
                     var sharedCfg = SharedAssembliesFile.Read(buildDir);
-                    var handle = _loader.Load(dllPath!, sharedCfg.SharedAssemblies);
+                    var handle = _loader.Load(dllPath!, sharedCfg);
 
                     // An exception past this point (command scan, plugin
                     // OnStartup, ribbon build) must not leave a half-loaded

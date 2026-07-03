@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.Loader;
 
 using Acad.Rpc.Core;
 using Autodesk.AutoCAD.ApplicationServices;
@@ -425,53 +424,12 @@ namespace DevReload
 
             string[] sharedNames = sharedConfig.SharedAssemblies.ToArray();
 
-            if (sharedNames.Length > 0)
-            {
-                var ed = GetEditor();
-                var mixedSet = new HashSet<string>(
-                    sharedConfig.MixedModeAssemblies, StringComparer.OrdinalIgnoreCase);
-                var streamedSet = new HashSet<string>(
-                    sharedConfig.StreamedAssemblies, StringComparer.OrdinalIgnoreCase);
-
-                foreach (string asmName in sharedNames)
-                {
-                    string asmPath = Path.Combine(pluginDir, asmName + ".dll");
-                    if (!File.Exists(asmPath)) continue;
-
-                    // If a shared assembly is already in the default ALC, reuse it —
-                    // never attempt a second load. One rule, two cases:
-                    //   • An external loader put it there: e.g. a Civil 3D object-
-                    //     enabler demand-load brings a mixed-mode interop into the
-                    //     default ALC at startup, from its own install path. We MUST
-                    //     bind to that exact instance for cross-ALC type identity
-                    //     (mandatory for C++/CLI, which cannot live in two contexts),
-                    //     and a second LoadFrom of the build-output copy would throw
-                    //     "Assembly with same name is already loaded" — a different
-                    //     path under a name the ALC already holds.
-                    //   • DevReload loaded it on a previous reload cycle: the default
-                    //     ALC is non-collectible, so the image is permanent — nothing
-                    //     to do.
-                    // When it is NOT present (e.g. the demand-load keys aren't
-                    // installed), the branches below load it from the build output as
-                    // before. This is what lets the same plugin work both with and
-                    // without the host pre-loading the assembly.
-                    if (IsLoadedInDefaultAlc(asmName)) continue;
-
-                    if (mixedSet.Contains(asmName))
-                    {
-                        EnsureRuntimeConfig(asmPath, asmName, ed);
-                        Assembly.LoadFrom(asmPath);
-                    }
-                    else if (streamedSet.Contains(asmName))
-                    {
-                        LoadSharedFromStream(asmPath);
-                    }
-                    else
-                    {
-                        Assembly.LoadFrom(asmPath);
-                    }
-                }
-            }
+            // Pre-load shared assemblies into the default ALC (shared with the
+            // Revit host via DevReload.BuildCore). Editor may be null on a fresh
+            // start, so resolve it per message.
+            SharedAssemblyPreloader.Preload(
+                pluginDir, sharedConfig,
+                msg => GetEditor()?.WriteMessage("\n[DevReload] " + msg));
 
             var plugin = reg.Host.Load(dllPath, sharedNames);
 
@@ -523,92 +481,6 @@ namespace DevReload
 
                 reg.Host.Unload();
             }
-        }
-
-        // True when an assembly with this simple name is already present in the
-        // default ALC — whether DevReload loaded it on a previous reload cycle,
-        // or an external loader (e.g. a Civil 3D object-enabler demand-load)
-        // brought it in at startup. An ALC holds at most one assembly per simple
-        // name; once a name is present, name-based binding from the collectible
-        // plugin ALC already resolves to it, so any further load is at best a
-        // no-op and at worst — for a different on-disk path — a hard error
-        // ("Assembly with same name is already loaded"). The single guard at the
-        // shared-load loop in LoadCore uses this for ALL load strategies
-        // (LoadFrom and LoadFromStream alike): both throw on a same-name /
-        // different-path collision, so neither may be called blind.
-        private static bool IsLoadedInDefaultAlc(string simpleName)
-        {
-            foreach (var asm in AssemblyLoadContext.Default.Assemblies)
-            {
-                if (string.Equals(
-                        asm.GetName().Name, simpleName, StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-            return false;
-        }
-
-        // Stream-loads a shared assembly INTO the default ALC.
-        //
-        // We must call AssemblyLoadContext.Default.LoadFromStream(...) explicitly.
-        // Assembly.Load(byte[]) looks like the "right" API but it loads into a
-        // brand-new anonymous AssemblyLoadContext (one per call) per the
-        // documented .NET algorithm — the assembly never ends up in
-        // AssemblyLoadContext.Default and is invisible to name-based binding
-        // from the isolated plugin ALC.
-        //
-        // Default.LoadFromStream behaves like LoadFrom for binding purposes
-        // (assembly is in Default.Assemblies, findable by name), but without
-        // the file lock on the DLL on disk.
-        //
-        // The default ALC is non-collectible. The streamed image lives until
-        // AutoCAD exits — rebuilding the DLL on disk is fine, but the running
-        // plugin keeps seeing the old surface until AutoCAD restarts.
-        //
-        // The caller (LoadCore) guarantees this is only invoked when the simple
-        // name is NOT already in the default ALC (see IsLoadedInDefaultAlc), so
-        // there is no idempotency check here — a re-load would throw, and the
-        // guard at the call site is what prevents it.
-        private static void LoadSharedFromStream(string asmPath)
-        {
-            byte[] asmBytes = File.ReadAllBytes(asmPath);
-            string pdbPath = Path.ChangeExtension(asmPath, ".pdb");
-            using var asmStream = new MemoryStream(asmBytes);
-            if (File.Exists(pdbPath))
-            {
-                byte[] pdbBytes = File.ReadAllBytes(pdbPath);
-                using var pdbStream = new MemoryStream(pdbBytes);
-                AssemblyLoadContext.Default.LoadFromStream(asmStream, pdbStream);
-            }
-            else
-            {
-                AssemblyLoadContext.Default.LoadFromStream(asmStream);
-            }
-        }
-
-        private static void EnsureRuntimeConfig(string asmPath, string asmName, Editor? ed)
-        {
-            string asmDir = Path.GetDirectoryName(asmPath)!;
-            string rcPath = Path.Combine(asmDir, asmName + ".runtimeconfig.json");
-            if (!File.Exists(rcPath))
-            {
-                ed?.WriteMessage($"\n[DevReload] Creating runtimeconfig.json for mixed-mode: {asmName}");
-                File.WriteAllText(rcPath,
-                    """
-                    {
-                      "runtimeOptions": {
-                        "tfm": "net8.0",
-                        "framework": {
-                          "name": "Microsoft.NETCore.App",
-                          "version": "8.0.0"
-                        }
-                      }
-                    }
-                    """);
-            }
-
-            string ijwPath = Path.Combine(asmDir, "Ijwhost.dll");
-            if (!File.Exists(ijwPath))
-                ed?.WriteMessage($"\n[DevReload] WARNING: Ijwhost.dll not found in {asmDir}");
         }
 
         private static string GetEffectiveCsprojPath(PluginRegistration reg)

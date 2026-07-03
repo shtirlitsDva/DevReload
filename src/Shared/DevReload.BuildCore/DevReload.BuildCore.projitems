@@ -15,5 +15,6 @@
     <Compile Include="$(MSBuildThisFileDirectory)GitWorktreeService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)IsolatedPluginContext.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)SharedAssembliesFile.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SharedAssemblyPreloader.cs" />
   </ItemGroup>
 </Project>

@@ -26,10 +26,16 @@ namespace RevitDevReload.Core
         public bool SupportsTrueUnload => true;
 
         public LoadedPluginHandle Load(
-            string dllPath, IReadOnlyList<string> sharedAssemblyNames)
+            string dllPath, SharedAssembliesFile.Config sharedConfig)
         {
+            // Pre-load the configured shared assemblies into the default ALC
+            // BEFORE the collectible context so IsolatedPluginContext.Load can
+            // hand those names back (shared with the AutoCAD host via BuildCore).
+            SharedAssemblyPreloader.Preload(
+                Path.GetDirectoryName(dllPath)!, sharedConfig, DevReloadLogBuffer.Add);
+
             string[] shared = _alwaysShared
-                .Concat(sharedAssemblyNames)
+                .Concat(sharedConfig.SharedAssemblies)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
