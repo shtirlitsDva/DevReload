@@ -9,7 +9,7 @@
 		<NoWarn>$(NoWarn);CA1416;MSB3277</NoWarn>
 		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
 		<LangVersion>latest</LangVersion>
-		<DefineConstants>$(DefineConstants);REVIT2025</DefineConstants>
+		<DefineConstants>$(DefineConstants);REVIT2025;COMMANDPALETTE</DefineConstants>
 		<!-- Revit 2025 installation; override via -p:RevitPath2025=... -->
 		<RevitPath2025 Condition="'$(RevitPath2025)' == ''">C:\Program Files\Autodesk\Revit 2025</RevitPath2025>
 	</PropertyGroup>
@@ -42,6 +42,14 @@
 		     in-session). Revit API dlls come from the local install above —
 		     keep the package's transitive content out of the output. -->
 		<PackageReference Include="ricaun.Revit.UI" Version="0.9.0" />
+	</ItemGroup>
+	<ItemGroup>
+		<!-- Norsyn command palette: the host bootstraps the dockable pane at
+		     startup (RegisterDockablePane is startup-only) and registers each
+		     loaded plugin's commands into it. Referenced as a binary so its
+		     registry is one shared instance. Cross-repo to the sibling
+		     Revit-PCF-Exporter checkout. -->
+		<ProjectReference Include="..\..\..\..\Revit-PCF-Exporter\CommandPalette.Core-2025\CommandPalette.Core-2025.csproj" />
 	</ItemGroup>
 	<Import Project="..\RevitDevReload.Shared\RevitDevReload.Shared.projitems" Label="Shared" />
 	<Import Project="..\..\Shared\DevReload.BuildCore\DevReload.BuildCore.projitems" Label="Shared" />

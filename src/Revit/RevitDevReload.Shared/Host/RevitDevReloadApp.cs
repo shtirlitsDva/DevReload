@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 
@@ -43,6 +45,12 @@ namespace RevitDevReload
             _pipeServer.Error += ex =>
                 DevReloadLogBuffer.Add("pipe error: " + ex.Message);
             _pipeServer.Start();
+
+#if COMMANDPALETTE
+            // Norsyn command palette: register the dockable pane now (startup-only
+            // API) and mirror loaded plugins' commands into it as they come and go.
+            TryInitCommandPalette(application);
+#endif
 
             // Autoload marked plugins once the UI is idle (builds may take a
             // while; doing it inside OnStartup would stall Revit's launch).
@@ -120,6 +128,73 @@ namespace RevitDevReload
                 DevReloadLogBuffer.Add("ribbon creation failed: " + ex.Message);
             }
         }
+
+#if COMMANDPALETTE
+        // Plugin name → the assembly currently published to the palette, so we can
+        // unregister ones that get unloaded.
+        private static readonly Dictionary<string, Assembly> _paletteRegistered =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        private static void TryInitCommandPalette(UIControlledApplication application)
+        {
+            try
+            {
+                Norsyn.CommandPalette.CommandPalette.EnsurePane(application);
+                CreatePaletteButton(application);
+                RevitPluginManager.PluginsChanged += SyncCommandPalette;
+                SyncCommandPalette();
+            }
+            catch (Exception ex)
+            {
+                DevReloadLogBuffer.Add("command palette init failed: " + ex.Message);
+            }
+        }
+
+        private static void CreatePaletteButton(UIControlledApplication application)
+        {
+            RibbonPanel panel = application.CreateRibbonPanel(
+                DevReloadRibbonService.TabName, "Palette");
+            Type command = typeof(Norsyn.CommandPalette.Commands.ShowCommandPaletteCommand);
+            panel.AddItem(new PushButtonData(
+                "RevitDevReload.ShowCommandPalette",
+                "Norsyn\nCommands",
+                command.Assembly.Location,
+                command.FullName)
+            {
+                ToolTip = "Show or hide the Norsyn Commands dockable palette.",
+            });
+        }
+
+        // Mirror the loaded-plugin set into the palette registry.
+        private static void SyncCommandPalette()
+        {
+            try
+            {
+                var loaded = new Dictionary<string, Assembly>(StringComparer.OrdinalIgnoreCase);
+                foreach (var reg in RevitPluginManager.All)
+                    if (reg.IsLoaded && reg.Handle != null)
+                        loaded[reg.Entry.Name] = reg.Handle.Assembly;
+
+                foreach (var kv in loaded)
+                {
+                    _paletteRegistered[kv.Key] = kv.Value;
+                    Norsyn.CommandPalette.CommandPalette.Register(kv.Value);
+                }
+                foreach (string name in _paletteRegistered.Keys.ToList())
+                {
+                    if (!loaded.ContainsKey(name))
+                    {
+                        Norsyn.CommandPalette.CommandPalette.Unregister(_paletteRegistered[name]);
+                        _paletteRegistered.Remove(name);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DevReloadLogBuffer.Add("command palette sync failed: " + ex.Message);
+            }
+        }
+#endif
 
         // UI-thread-safe window opener shared by the ribbon command and the
         // pipe's open_window.
