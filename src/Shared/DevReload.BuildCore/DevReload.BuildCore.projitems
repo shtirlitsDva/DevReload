@@ -12,6 +12,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)BuildResult.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)BuildService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Compat.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)CsprojReferenceScanner.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)GitWorktreeService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)IsolatedPluginContext.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)SharedAssembliesFile.cs" />

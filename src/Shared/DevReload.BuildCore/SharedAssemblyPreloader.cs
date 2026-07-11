@@ -46,7 +46,12 @@ namespace DevReload.Core
 
             foreach (string asmName in config.SharedAssemblies)
             {
-                string asmPath = Path.Combine(buildDir, asmName + ".dll");
+                // External assemblies (recorded in AssemblyLocations) load from their
+                // referenced dir (e.g. Appload); everything else from the build dir.
+                string dir = config.AssemblyLocations.TryGetValue(asmName, out var extDir)
+                    ? extDir
+                    : buildDir;
+                string asmPath = Path.Combine(dir, asmName + ".dll");
                 if (!File.Exists(asmPath)) continue;
 
                 // If a shared assembly is already in the default ALC, reuse it —

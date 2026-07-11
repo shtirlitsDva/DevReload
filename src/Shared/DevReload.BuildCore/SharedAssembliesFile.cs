@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
@@ -42,6 +43,14 @@ namespace DevReload.Core
             // applicable when the public surface is stable. Mutually exclusive
             // with MixedModeAssemblies (native deps probe the DLL's folder).
             public List<string> StreamedAssemblies { get; set; } = new();
+
+            // Optional per-assembly external source directory (name -> dir). When an
+            // entry is present the loader resolves THAT assembly from this dir instead
+            // of the build dir, so a plugin can load a shared/interop assembly straight
+            // from its csproj HintPath location (e.g. Appload) with no private copy.
+            // Absent/empty ⇒ resolve from the build dir (original behaviour).
+            public Dictionary<string, string> AssemblyLocations { get; set; } =
+                new(StringComparer.OrdinalIgnoreCase);
         }
 
         public static string PathFor(string buildDir) =>
@@ -56,7 +65,13 @@ namespace DevReload.Core
             {
                 string json = File.ReadAllText(path);
                 var cfg = JsonSerializer.Deserialize<Config>(json, _options);
-                return cfg ?? new Config();
+                if (cfg == null) return new Config();
+                // Normalise to case-insensitive so name lookups in the loader match
+                // regardless of how the JSON cased the keys (or if the field is absent).
+                cfg.AssemblyLocations = cfg.AssemblyLocations == null
+                    ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    : new Dictionary<string, string>(cfg.AssemblyLocations, StringComparer.OrdinalIgnoreCase);
+                return cfg;
             }
             catch
             {
@@ -70,7 +85,8 @@ namespace DevReload.Core
             string buildDir,
             IEnumerable<string> shared,
             IEnumerable<string> mixedMode,
-            IEnumerable<string> streamed)
+            IEnumerable<string> streamed,
+            IReadOnlyDictionary<string, string>? assemblyLocations = null)
         {
             Directory.CreateDirectory(buildDir);
             var cfg = new Config
@@ -78,6 +94,9 @@ namespace DevReload.Core
                 SharedAssemblies = new List<string>(shared),
                 MixedModeAssemblies = new List<string>(mixedMode),
                 StreamedAssemblies = new List<string>(streamed),
+                AssemblyLocations = assemblyLocations == null
+                    ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    : new Dictionary<string, string>(assemblyLocations, StringComparer.OrdinalIgnoreCase),
             };
             string json = JsonSerializer.Serialize(cfg, _options);
             File.WriteAllText(PathFor(buildDir), json);

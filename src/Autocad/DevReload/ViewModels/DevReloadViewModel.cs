@@ -326,11 +326,34 @@ namespace DevReload.ViewModels
             var current = SharedAssembliesFile.Read(buildDir);
             var sources = DiscoverCopyFromSources(entry, buildDir);
 
+            // Also offer assemblies the csproj references from OTHER dirs (HintPath),
+            // e.g. a central Appload deploy — loadable without a private build-dir copy.
+            // Drop refs under the AutoCAD install dir: those are host SDK assemblies
+            // (acdbmgd, AeccDbMgd, AcMPolygonMGD…) the host already provides and that
+            // resolve to the host copy automatically (Private=False) — they never need
+            // shared-ALC treatment and would only clutter the dialog. Location, not load
+            // state, is the reliable discriminator (SDK assemblies demand-load lazily).
+            string activeCsproj = GitWorktreeService.ResolveActiveCsproj(
+                entry.ProjectFilePath, entry.ActiveWorktreePath);
+            string acadRoot = System.IO.Path.GetDirectoryName(
+                typeof(Autodesk.AutoCAD.ApplicationServices.Application).Assembly.Location) ?? "";
+            string acadRootNorm = acadRoot.Length == 0
+                ? "" : System.IO.Path.GetFullPath(acadRoot).TrimEnd('\\', '/');
+            var externalRefs = CsprojReferenceScanner
+                .ScanExternalReferences(activeCsproj, buildDir)
+                .Where(r => acadRootNorm.Length == 0
+                         || !(r.Directory.Equals(acadRootNorm, StringComparison.OrdinalIgnoreCase)
+                              || r.Directory.StartsWith(
+                                     acadRootNorm + System.IO.Path.DirectorySeparatorChar,
+                                     StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
             var vm = new SharedAssembliesViewModel(
                 buildDir,
                 current.SharedAssemblies,
                 current.MixedModeAssemblies,
                 current.StreamedAssemblies,
+                externalRefs,
                 sources);
             var win = new SharedAssembliesWindow { DataContext = vm };
 
@@ -340,7 +363,8 @@ namespace DevReload.ViewModels
                     buildDir,
                     vm.GetSelectedNames(),
                     vm.GetMixedModeNames(),
-                    vm.GetStreamedNames());
+                    vm.GetStreamedNames(),
+                    vm.GetAssemblyLocations());
 
                 Plugins.FirstOrDefault(p => p.Name == name)?.RefreshSharedConfig();
             }
@@ -478,7 +502,8 @@ namespace DevReload.ViewModels
                 target.DllDir,
                 devConfig.SharedAssemblies,
                 devConfig.MixedModeAssemblies,
-                devConfig.StreamedAssemblies);
+                devConfig.StreamedAssemblies,
+                devConfig.AssemblyLocations);
 
             // Remember which production app this plugin targets
             entry.ProductionTarget = selection;

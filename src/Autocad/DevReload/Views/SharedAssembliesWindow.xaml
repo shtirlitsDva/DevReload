@@ -80,8 +80,17 @@
                             </Grid.ColumnDefinitions>
                             <CheckBox Grid.Column="0"
                                       IsChecked="{Binding IsSelected}"
-                                      Content="{Binding Name}"
-                                      Margin="4,3"/>
+                                      Margin="4,3">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                                    <TextBlock Text="⧉ external"
+                                               Margin="8,0,0,0"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource Caption}"
+                                               ToolTip="{Binding ExternalDir}"
+                                               Visibility="{Binding IsExternal, Converter={StaticResource BoolToVis}}"/>
+                                </StackPanel>
+                            </CheckBox>
                             <CheckBox Grid.Column="1"
                                       Style="{StaticResource CaptionCheckBox}"
                                       IsChecked="{Binding IsMixedMode}"

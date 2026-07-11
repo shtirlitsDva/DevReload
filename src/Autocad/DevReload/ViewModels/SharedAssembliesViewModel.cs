@@ -40,20 +40,27 @@ namespace DevReload.ViewModels
             IReadOnlyList<string> currentShared,
             IReadOnlyList<string> currentMixedMode,
             IReadOnlyList<string> currentStreamed,
+            IReadOnlyList<CsprojReferenceScanner.ExternalReference> externalRefs,
             IReadOnlyList<SharedConfigSource> sources)
         {
+            var currentSet = new HashSet<string>(
+                currentShared, StringComparer.OrdinalIgnoreCase);
+            var mixedSet = new HashSet<string>(
+                currentMixedMode, StringComparer.OrdinalIgnoreCase);
+            var streamedSet = new HashSet<string>(
+                currentStreamed, StringComparer.OrdinalIgnoreCase);
+            var externalNames = new HashSet<string>(
+                externalRefs.Select(r => r.Name), StringComparer.OrdinalIgnoreCase);
+
+            // Local DLLs in the build dir. An external HintPath ref of the same name
+            // WINS (skip the local copy) — the point is to load from the referenced
+            // location, not a private build-dir copy.
             if (Directory.Exists(pluginDir))
             {
-                var currentSet = new HashSet<string>(
-                    currentShared, StringComparer.OrdinalIgnoreCase);
-                var mixedSet = new HashSet<string>(
-                    currentMixedMode, StringComparer.OrdinalIgnoreCase);
-                var streamedSet = new HashSet<string>(
-                    currentStreamed, StringComparer.OrdinalIgnoreCase);
-
                 foreach (string dll in Directory.GetFiles(pluginDir, "*.dll"))
                 {
                     string name = Path.GetFileNameWithoutExtension(dll);
+                    if (externalNames.Contains(name)) continue;
                     Assemblies.Add(new AssemblyItem
                     {
                         Name = name,
@@ -62,6 +69,19 @@ namespace DevReload.ViewModels
                         IsStreamed = streamedSet.Contains(name),
                     });
                 }
+            }
+
+            // External (csproj HintPath) candidates — loadable from their referenced dir.
+            foreach (var ext in externalRefs)
+            {
+                Assemblies.Add(new AssemblyItem
+                {
+                    Name = ext.Name,
+                    ExternalDir = ext.Directory,
+                    IsSelected = currentSet.Contains(ext.Name),
+                    IsMixedMode = mixedSet.Contains(ext.Name),
+                    IsStreamed = streamedSet.Contains(ext.Name),
+                });
             }
 
             foreach (var src in sources)
@@ -84,6 +104,13 @@ namespace DevReload.ViewModels
             => Assemblies.Where(a => a.IsSelected && a.IsStreamed)
                          .Select(a => a.Name)
                          .ToArray();
+
+        // Selected external assemblies mapped to their referenced dir — becomes the
+        // config's assemblyLocations. Only ticked external candidates contribute.
+        public IReadOnlyDictionary<string, string> GetAssemblyLocations()
+            => Assemblies.Where(a => a.IsSelected && a.IsExternal)
+                         .ToDictionary(a => a.Name, a => a.ExternalDir!,
+                                       StringComparer.OrdinalIgnoreCase);
 
         // Copy the chosen branch's shared-assembly selection onto this build's
         // assembly list. Only DLLs that actually exist in THIS build dir are
@@ -142,6 +169,13 @@ namespace DevReload.ViewModels
     public partial class AssemblyItem : ObservableObject
     {
         [ObservableProperty] private string _name = "";
+
+        [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(IsExternal))]
+        private string? _externalDir;
+
+        // Loaded from a csproj-referenced dir (HintPath), not the plugin build dir.
+        public bool IsExternal => !string.IsNullOrEmpty(ExternalDir);
 
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(CanEnableMixedMode))]
