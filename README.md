@@ -98,7 +98,7 @@ Note: this was written by AI. I don't know which of these are needed.
 
 ## Plugin Lifecycle
 
-Plugins built for DevReload are always loaded through DevReload. There is no separate `NETLOAD` release path to keep working.
+A plugin built for DevReload contains nothing DevReload-specific. It loads under `NETLOAD` as well, where AutoCAD registers its commands.
 
 ### Plugin Instance Lifetime
 
@@ -112,9 +112,11 @@ AutoCAD scans assemblies as they load. It raises each one on the static event `A
 
 `AutoCadScanSuppressor` replaces that event's backing delegate with a wrapper. The wrapper returns without forwarding when the assembly's load context is a DevReload `IsolatedPluginContext`, and forwards every other assembly to the original subscribers. Plugin dependencies resolve into the same load context, so they take the same path. `Install()` runs from `DevReloaderCommands.Initialize()` before any plugin loads; `Restore()` runs at shutdown.
 
-A plugin therefore needs no marker class, and one that carries `[assembly: CommandClass(typeof(NoCommands))]` behaves the same as one that does not.
+A plugin therefore needs no marker class.
 
-Assemblies loaded outside DevReload are unaffected. A `NETLOAD`ed DLL lands in the default load context, the wrapper forwards it, and AutoCAD registers its commands.
+Assemblies loaded outside DevReload are unaffected. A `NETLOAD`ed DLL lands in the default load context, the wrapper forwards it, and AutoCAD registers its commands from the exported types.
+
+`[assembly: CommandClass(typeof(NoCommands))]` still narrows that scan to the named class, so a plugin carrying one registers no commands under `NETLOAD`. Leave the attribute off.
 
 If the suppressor cannot install, DevReload writes a warning to the command line at startup and AutoCAD's scan stays in place. Plugins on that AutoCAD version need `[assembly: CommandClass(typeof(NoCommands))]` pointing at an empty class.
 
