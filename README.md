@@ -1,8 +1,8 @@
-# DevReload — Hot-Reload Plugin System for AutoCAD 2025
+# DevReload: Hot-Reload Plugin System for AutoCAD 2025
 
-DevReload lets you edit, build, and reload AutoCAD .NET plugins without restarting AutoCAD. It uses .NET 8 collectible `AssemblyLoadContext` to isolate plugins and stream-loads DLLs so your build can rebuild freely while the old plugin runs. The `{PREFIX}DEV` command builds your project, tears down the old plugin, and loads the new one — all in one step.
+DevReload lets you edit, build, and reload AutoCAD .NET plugins without restarting AutoCAD. It uses .NET 8 collectible `AssemblyLoadContext` to isolate plugins and stream-loads DLLs so your build can rebuild freely while the old plugin runs. The `{PREFIX}DEV` command builds your project, tears down the old plugin, and loads the new one in one step.
 
-You register a plugin by picking its `.csproj` file; the plugin name is the project-file name. Builds run directly via `dotnet build` — no Visual Studio instance required. A per-plugin **Debug/Release toggle** lets you switch build configurations from the management palette.
+You register a plugin by picking its `.csproj` file; the plugin name is the project-file name. Builds run directly via `dotnet build`. No Visual Studio instance is required. A per-plugin **Debug/Release toggle** lets you switch build configurations from the management palette.
 
 **Git worktree support**: DevReload detects worktrees for registered projects and lets you select which worktree to build from via a dropdown in the management palette.
 
@@ -10,13 +10,13 @@ You register a plugin by picking its `.csproj` file; the plugin name is the proj
 
 DevReload also ships an MCP bridge (`Acad.Rpc.Bridge`) and the `/acd-agentic-dev` skill, so an agent (Claude Code or Codex) can drive the full edit → reload → live-test loop directly. The MCP bridge exposes three tool groups:
 
-- `acad_*` — AutoCAD/Civil 3D process + drawing control: locate installs, launch, attach/detach, list instances, send/post commands, wait for readiness, open/close drawings, quit.
-- `devreload_*` — plugin lifecycle: register, load, reload (build + hot-swap), unload, query state, switch build config and worktree.
-- `ui_*` — UI automation, so an agent can test a plugin's *UI*, not just drawing state: introspect and drive WPF palettes at the **ViewModel** level (invoke / set-value / toggle / select via UI Automation peers); enumerate and **headlessly** click native modal dialogs that have no .NET API (e.g. the COGO-point projection dialog); synthesize mouse input for jigs, grips and OSNAP; and capture **inline** screenshots scoped to a window, region, WPF element, or WCS box — including frame-by-frame drag bursts to watch a jig animate.
+- `acad_*` covers AutoCAD/Civil 3D process and drawing control: locate installs, launch, attach/detach, list instances, send/post commands, wait for readiness, open/close drawings, quit.
+- `devreload_*` covers plugin lifecycle: register, load, reload (build + hot-swap), unload, query state, switch build config and worktree.
+- `ui_*` covers UI automation, so an agent can test a plugin's *UI*, not just drawing state: introspect and drive WPF palettes at the ViewModel level (invoke / set-value / toggle / select via UI Automation peers); enumerate and headlessly click native modal dialogs that have no .NET API (e.g. the COGO-point projection dialog); synthesize mouse input for jigs, grips and OSNAP; and capture inline screenshots scoped to a window, region, WPF element, or WCS box, including frame-by-frame drag bursts to watch a jig animate.
 
-All control flows over a per-instance named pipe (`acad-rpc-<pid>`), not COM — so you can run **multiple AutoCAD/Civil 3D instances at once** and drive any of them independently. Every `acad_*`, `devreload_*` and `ui_*` tool takes an optional `pid`: omit it to use the bound (default) instance, or pass it to target a specific one. `acad_wait_pipe` is the per-instance readiness gate; `acad_list_instances` enumerates running instances and their pipe state. (One caveat: the `ui_*` *synthetic-input* tools — mouse move/click/drag, key press — drive the one shared OS cursor/foreground, so they're addressable per `pid` but serialize across instances; the WPF-introspection, dialog and screenshot tools are fully per-instance and parallel-safe.)
+All control flows over a per-instance named pipe (`acad-rpc-<pid>`) rather than COM, so you can run multiple AutoCAD/Civil 3D instances at once and drive any of them independently. Every `acad_*`, `devreload_*` and `ui_*` tool takes an optional `pid`: omit it to use the bound (default) instance, or pass it to target a specific one. `acad_wait_pipe` is the per-instance readiness gate; `acad_list_instances` enumerates running instances and their pipe state. (One caveat: the `ui_*` *synthetic-input* tools (mouse move/click/drag, key press) drive the one shared OS cursor/foreground, so they're addressable per `pid` but serialize across instances; the WPF-introspection, dialog and screenshot tools are fully per-instance and parallel-safe.)
 
-> Note: this installs the **agent-side** MCP bridge + skill. The **AutoCAD-side** DevReload plugin (the palette + commands) is installed separately into AutoCAD — see [Installing the AutoCAD plugin](#installing-the-autocad-plugin).
+> Note: this installs the **agent-side** MCP bridge + skill. The **AutoCAD-side** DevReload plugin (the palette + commands) is installed separately into AutoCAD. See [Installing the AutoCAD plugin](#installing-the-autocad-plugin).
 
 ### Claude Code
 
@@ -27,7 +27,7 @@ From any Claude Code session:
 /plugin install devreload
 ```
 
-The marketplace entry resolves the plugin from the auto-built `release` branch (kept in sync by GitHub Actions on every master push), which includes the pre-packed MCP bridge — no clone, no .NET SDK, no Pack-Plugin step required. The `acad_*` / `devreload_*` MCP tools appear automatically, and the skill becomes invokable as `/devreload:acd-agentic-dev`.
+The marketplace entry resolves the plugin from the auto-built `release` branch (kept in sync by GitHub Actions on every master push), which includes the pre-packed MCP bridge. It needs no clone, no .NET SDK, and no Pack-Plugin step. The `acad_*` / `devreload_*` MCP tools appear automatically, and the skill becomes invokable as `/devreload:acd-agentic-dev`.
 
 ### Codex
 
@@ -80,13 +80,13 @@ Your plugin must implement `IExtensionApplication`. DevReload calls `Terminate()
 1. Start AutoCAD with the DevReload plugin installed (see [above](#installing-the-autocad-plugin)), type `DEVRELOAD` to open the management palette.
 2. Click **+ Add Plugin** → pick your plugin's `.csproj` in the file dialog.
 3. Optionally set a Command Prefix and Load-on-Startup, then click **Add** → your plugin is registered with `{PREFIX}LOAD` / `{PREFIX}DEV` / `{PREFIX}UNLOAD`.
-4. Type `{PREFIX}LOAD` — loads your DLL (builds first if it doesn't exist).
+4. Type `{PREFIX}LOAD` to load your DLL. It builds first if the DLL does not exist.
 5. Edit code in your editor → type `{PREFIX}DEV` (or click **Reload**) → see changes instantly, no restart.
 
 ## Project Setup (.csproj)
 
 Your plugin project needs these settings:
-Note: This was written by AI, I don't actually know which of these are actually needed.
+Note: this was written by AI. I don't know which of these are needed.
 
 ```xml
 <PropertyGroup>
@@ -106,11 +106,11 @@ Note: This was written by AI, I don't actually know which of these are actually 
 
 ## Plugin Lifecycle
 
-Plugins built for DevReload are **always loaded through DevReload** — there is no separate `NETLOAD` release path to keep working. That simplifies the lifecycle to two facts you have to internalize.
+Plugins built for DevReload are always loaded through DevReload. There is no separate `NETLOAD` release path to keep working.
 
 ### Dual-Instance Problem & Static State
 
-AutoCAD and DevReload create **separate instances** of your plugin class:
+AutoCAD and DevReload create separate instances of your plugin class:
 - **Instance A**: AutoCAD's `ExtensionLoader` scans every loaded assembly for `IExtensionApplication` implementations, instantiates each one, and calls `Initialize()`. (`[assembly: ExtensionApplication(typeof(MyPlugin))]` is the explicit form; the scan happens regardless.)
 - **Instance B**: DevReload creates its own instance via `Activator.CreateInstance` so it can hold a typed reference, and calls `Terminate()` on that instance when unloading.
 
@@ -118,7 +118,7 @@ These are different objects. Instance fields set in `Initialize()` on Instance A
 
 ### CommandClass Suppression
 
-AutoCAD's `ExtensionLoader` scans loaded assemblies for `[CommandMethod]` attributes and registers them via `CommandClass.AddCommand`. These registrations are **permanent** — no public API to remove them. On reload, this causes `eDuplicateKey` errors and stale commands.
+AutoCAD's `ExtensionLoader` scans loaded assemblies for `[CommandMethod]` attributes and registers them via `CommandClass.AddCommand`. These registrations are permanent. No public API removes them. On reload, this causes `eDuplicateKey` errors and stale commands.
 
 Suppress the scan by pointing it at an empty marker class (canonical name `NoCommands`):
 
@@ -135,7 +135,7 @@ With this attribute present, AutoCAD scans ONLY `NoCommands` and finds zero comm
 
 ## AcadEventManager
 
-The `EventManager` shared project (`src/Autocad/EventManager/`) provides `AcadEventManager` — a centralized tracker for per-document event subscriptions. Import it as a shared project so it compiles directly into your plugin DLL (no extra dependency).
+The `EventManager` shared project (`src/Autocad/EventManager/`) provides `AcadEventManager`, a centralized tracker for per-document event subscriptions. Import it as a shared project so it compiles directly into your plugin DLL (no extra dependency).
 
 **Problem:** Subscribing to a `Document`-level event (like `CommandEnded`) on one document, then unsubscribing from `MdiActiveDocument` in `Terminate()` breaks if the user switched documents. Storing a `Document` reference breaks if that document is closed before `Terminate()`.
 
@@ -147,7 +147,7 @@ var doc = Application.DocumentManager.MdiActiveDocument;
 doc.CommandEnded += OnCommandEnded;
 _events.Track(doc, () => doc.CommandEnded -= OnCommandEnded);
 
-// In Terminate() — cleans up ALL tracked subscriptions across ALL documents
+// In Terminate(): cleans up ALL tracked subscriptions across ALL documents
 _events.Dispose();
 ```
 
@@ -208,7 +208,7 @@ namespace MyNamespace
 1. Open the `DEVRELOAD` management palette in AutoCAD.
 2. Click **"+ Add Plugin"**.
 3. Pick the plugin's `.csproj` in the file dialog.
-4. The plugin **name** is the `.csproj` file name (renaming is not supported); the `.csproj` path and the output DLL path (resolved via MSBuild's `TargetPath`) are stored automatically.
+4. The plugin name is the `.csproj` file name (renaming is not supported); the `.csproj` path and the output DLL path (resolved via MSBuild's `TargetPath`) are stored automatically.
 5. Optionally set a Command Prefix and Load-on-Startup.
 6. Click **Add**.
 
@@ -225,9 +225,9 @@ The `DEVRELOAD` command opens a WPF management palette with the following per-pl
 | **Status indicator** | Green circle when loaded, gray when unloaded |
 | **Worktree dropdown** | Select which git worktree to build from (auto-detected, appears when worktrees exist) |
 | **DBG/REL toggle** | Switch between Debug and Release build configurations |
-| **Reload** | Split button: click = build **and** hot-reload; the **▾** flyout offers **Build only** (build without loading, e.g. to produce a fresh worktree's DLLs before configuring Shared) |
+| **Reload** | Split button: click = build and hot-reload; the **▾** flyout offers **Build only** (build without loading, e.g. to produce a fresh worktree's DLLs before configuring Shared) |
 | **Unload** | Tear down plugin, unregister commands, unload ALC |
-| **Shared** | Configure shared assemblies (loaded into default ALC for WPF XAML compatibility). The button is **green-tinted** when the current branch + build configuration already has a shared-assembly config |
+| **Shared** | Configure shared assemblies (loaded into default ALC for WPF XAML compatibility). The button is green-tinted when the current branch + build configuration already has a shared-assembly config |
 | **Push** | Push the shared-assembly config to a production NSLOAD app |
 | **Auto-load** | Checkbox to auto-load plugin when DevReload starts |
 | **X** | Remove plugin registration |
@@ -236,27 +236,27 @@ Bottom toolbar: **Settings** (NSLOAD CSV path), **+ Add Plugin**, **Reload Confi
 
 ## Shared Assemblies
 
-Some dependencies (notably WPF XAML-referenced NuGets like OxyPlot) must resolve to a single shared type identity across the ALC boundary, so they have to be loaded into the **default** ALC rather than the plugin's isolated one. The **Shared** dialog configures this per build.
+Some dependencies (WPF XAML-referenced NuGets such as OxyPlot) must resolve to a single shared type identity across the ALC boundary, so they have to be loaded into the default ALC rather than the plugin's isolated one. The **Shared** dialog configures this per build.
 
-The configuration is stored **per build directory** in `SharedAssemblies.Config.json` (next to the built DLL) — not in `plugins.json`. Switching branch / worktree / configuration switches build directories and therefore switches configs; if the file is absent, that build has no shared assemblies (no implicit inheritance). The file holds three lists:
+The configuration is stored per build directory in `SharedAssemblies.Config.json`, next to the built DLL and not in `plugins.json`. Switching branch / worktree / configuration switches build directories and therefore switches configs; if the file is absent, that build has no shared assemblies (no implicit inheritance). The file holds three lists:
 
-- **Shared** — loaded into the default ALC via `Assembly.LoadFrom`.
-- **Mixed-mode (C++/CLI)** — shared assemblies that also get an auto-generated `runtimeconfig.json`.
-- **Streamed (no lock)** — shared assemblies loaded via `Assembly.Load(byte[])` so the file lock is released and the project can be rebuilt without restarting AutoCAD (the running image stays loaded for the session).
+- **Shared**: loaded into the default ALC via `Assembly.LoadFrom`.
+- **Mixed-mode (C++/CLI)**: shared assemblies that also get an auto-generated `runtimeconfig.json`.
+- **Streamed (no lock)**: shared assemblies loaded via `Assembly.Load(byte[])` so the file lock is released and the project can be rebuilt without restarting AutoCAD (the running image stays loaded for the session).
 
-Because the dialog lists the DLLs physically present in the build directory, a freshly-selected worktree must be **built first**: if its build directory is missing or empty, Shared tells you to build it via **Reload ▾ → Build only**, then reopen Shared. To carry a configuration over from another branch, use **Copy from `<branch>`** in the dialog — it copies the config (the selection only, not the DLLs) and applies just the entries whose DLL actually exists in the current worktree, reporting any it skipped.
+Because the dialog lists the DLLs physically present in the build directory, a freshly-selected worktree must be built first: if its build directory is missing or empty, Shared tells you to build it via **Reload ▾ → Build only**, then reopen Shared. To carry a configuration over from another branch, use **Copy from `<branch>`** in the dialog. It copies the config (the selection only, not the DLLs) and applies just the entries whose DLL exists in the current worktree, reporting any it skipped.
 
 ## Git Worktree Support
 
 When developing features in git worktrees, DevReload lets you build and load from any worktree without re-registering the plugin:
 
-1. The original `.csproj` path (stored at registration in `projectFilePath`) always points to the **main repo** and is never overwritten.
+1. The original `.csproj` path (stored at registration in `projectFilePath`) always points to the main repo and is never overwritten.
 2. When you open the worktree dropdown in the management palette, DevReload runs `git worktree list` to enumerate available worktrees.
 3. Selecting a worktree remaps the `.csproj` path at build time: `{worktreePath}/{relativeProjectPath}`.
 4. Clicking **Reload** builds from the selected worktree via `dotnet build`.
 5. The selection persists in `plugins.json` as `activeWorktreePath` and survives AutoCAD restarts.
 
-Shared assemblies and mixed-mode DLLs are resolved relative to the built DLL's output directory, which changes to the worktree's output when a worktree is selected — so each worktree carries its own `SharedAssemblies.Config.json`.
+Shared assemblies and mixed-mode DLLs are resolved relative to the built DLL's output directory, which changes to the worktree's output when a worktree is selected, so each worktree carries its own `SharedAssemblies.Config.json`.
 
 A fresh worktree typically isn't built yet, so the flow is: select the worktree → **Reload ▾ → Build only** → **Shared** (configure, or **Copy from** the main branch) → **Reload**.
 
@@ -288,13 +288,13 @@ Plugins are stored in `%APPDATA%\DevReload\plugins.json`:
 | `dllPath` | *(auto)* | Path to last-built output DLL (updated after each build) |
 | `commandPrefix` | `{name}` | Prefix for generated LOAD/DEV/UNLOAD commands (stored upper-cased) |
 | `loadOnStartup` | `false` | Auto-load when DevReload starts |
-| `buildConfiguration` | `"Debug"` | Build configuration — toggle via DBG/REL button in palette |
+| `buildConfiguration` | `"Debug"` | Build configuration. Toggle via DBG/REL button in palette |
 | `projectFilePath` | *(auto)* | Path to `.csproj` in the main repo (immutable after registration) |
 | `activeWorktreePath` | `null` | Selected git worktree root path (`null` = build from main repo) |
 | `productionTarget` | `null` | Target NSLOAD app name for "Push to Production" |
 | `nsloadCsvPath` | `null` | Path to NSLOAD register CSV (top-level config field) |
 
-Shared/mixed/streamed assembly selections are **not** stored here — they live in each build directory's `SharedAssemblies.Config.json` (see [Shared Assemblies](#shared-assemblies)).
+Shared/mixed/streamed assembly selections live in each build directory's `SharedAssemblies.Config.json`, not here (see [Shared Assemblies](#shared-assemblies)).
 
 On startup, old config entries missing `projectFilePath` are migrated by searching for the `.csproj` from the `dllPath`; entries that cannot be migrated are removed. Legacy `sharedAssemblies` and `mixedModeAssemblies` fields from older configs are read once, drained into per-build `SharedAssemblies.Config.json` files where possible, and then dropped.
 
@@ -312,7 +312,7 @@ The management palette is opened with the `DEVRELOAD` command.
 
 ## Build Process
 
-DevReload builds plugins using the .NET CLI directly — no running Visual Studio instance required:
+DevReload builds plugins using the .NET CLI directly:
 
 1. Resolves the effective `.csproj` path (remapped to the active worktree if one is selected).
 2. Queries the output DLL path via `dotnet msbuild -getProperty:TargetPath`.
@@ -320,7 +320,7 @@ DevReload builds plugins using the .NET CLI directly — no running Visual Studi
 4. Verifies the output DLL exists.
 5. Stream-loads the DLL + PDB into an isolated `AssemblyLoadContext`.
 
-Visual Studio is never contacted — registration and builds are entirely VS-independent; you can use any editor.
+Registration and builds are VS-independent. Use any editor.
 
 ## Dev Workflow
 
@@ -330,7 +330,7 @@ Visual Studio is never contacted — registration and builds are entirely VS-ind
 4. Edit your plugin code.
 5. In AutoCAD, type `{PREFIX}DEV` (e.g., `TESTDEV`) or click **Reload** in the palette.
 6. DevReload builds, tears down the old plugin, loads the new DLL.
-7. See your changes immediately — no AutoCAD restart needed.
+7. See your changes immediately. No AutoCAD restart is needed.
 
 The `{PREFIX}DEV` command is safe: it builds **before** tearing down. If the build fails, the old plugin stays loaded and functional.
 
@@ -342,5 +342,5 @@ The `{PREFIX}LOAD` command will auto-build if the DLL doesn't exist yet.
 2. In the management palette, click the worktree dropdown on your plugin.
 3. Select the worktree branch.
 4. If it hasn't been built yet, use **Reload ▾ → Build only** first (and configure **Shared** if your plugin needs it).
-5. Click **Reload** — DevReload builds from the worktree and loads the result.
+5. Click **Reload**. DevReload builds from the worktree and loads the result.
 6. Switch back to `main` in the dropdown when done.

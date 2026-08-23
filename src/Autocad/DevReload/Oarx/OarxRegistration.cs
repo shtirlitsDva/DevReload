@@ -1,0 +1,112 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+
+namespace DevReload.Oarx
+{
+    /// <summary>The three ObjectARX module flavours DevReload can host.</summary>
+    public enum OarxModuleKind
+    {
+        /// <summary>ObjectDBX — custom objects/classes. Loads first, unloads last.</summary>
+        Dbx,
+        /// <summary>ObjectARX — commands and UI. Loads last, unloads first.</summary>
+        Arx,
+        /// <summary>accoreconsole module.</summary>
+        Crx,
+    }
+
+    /// <summary>
+    /// One native module inside an OARX plugin group: the project that produces
+    /// it and, once MSBuild has been asked, where it lands.
+    /// </summary>
+    internal sealed class OarxModule
+    {
+        public required string ProjectFilePath { get; init; }
+
+        /// <summary>Full path to the built module. Null until resolved — there is
+        /// no guessed default, because a wrong output directory is the exact
+        /// wrong-but-plausible failure this design refuses to have (research F7).</summary>
+        public string? TargetPath { get; set; }
+
+        public string ProjectName => Path.GetFileNameWithoutExtension(ProjectFilePath);
+
+        /// <summary>The name the dynamic linker knows this module by: file name
+        /// with extension (research F6). Null until <see cref="TargetPath"/> is
+        /// resolved.</summary>
+        public string? ModuleFileName =>
+            TargetPath == null ? null : Path.GetFileName(TargetPath);
+
+        public OarxModuleKind? Kind =>
+            TargetPath == null ? null : KindOf(TargetPath);
+
+        public bool IsLoaded =>
+            ModuleFileName != null && OarxModuleHost.IsLoaded(ModuleFileName);
+
+        /// <summary>Classify by output extension. Throws rather than guessing:
+        /// a project whose TargetExt is not an ObjectARX one is a registration
+        /// mistake the user needs to see.</summary>
+        public static OarxModuleKind KindOf(string targetPath)
+        {
+            string ext = Path.GetExtension(targetPath);
+            if (ext.Equals(".arx", StringComparison.OrdinalIgnoreCase)) return OarxModuleKind.Arx;
+            if (ext.Equals(".dbx", StringComparison.OrdinalIgnoreCase)) return OarxModuleKind.Dbx;
+            if (ext.Equals(".crx", StringComparison.OrdinalIgnoreCase)) return OarxModuleKind.Crx;
+            throw new OarxModuleException(
+                $"'{Path.GetFileName(targetPath)}' is not an ObjectARX module " +
+                "(expected .arx, .dbx or .crx). Check the project's ArxAppType/TargetExt.");
+        }
+    }
+
+    /// <summary>
+    /// An OARX plugin: an ORDERED set of native modules built from one solution.
+    /// </summary>
+    /// <remarks>
+    /// Order is the whole reason this is a list rather than a single project.
+    /// ObjectARX imposes it — the .dbx owning the custom classes must load before
+    /// the .arx that uses them, and must unload after it. The list is in LOAD
+    /// order; unload walks it backwards.
+    /// </remarks>
+    internal sealed class OarxRegistration
+    {
+        public required string Name { get; init; }
+
+        /// <summary>The solution the modules build under. Not optional and not
+        /// inferred: MSBuild resolves a C++ project's output directory through
+        /// $(SolutionDir), and evaluating a .vcxproj standalone silently points
+        /// TargetPath at a directory the solution build never writes (research F7).</summary>
+        public required string SolutionFilePath { get; init; }
+
+        /// <summary>Modules in LOAD order.</summary>
+        public required List<OarxModule> Modules { get; init; }
+
+        public string BuildConfiguration { get; set; } = "Debug";
+        public string? ActiveWorktreePath { get; set; }
+
+        public List<(string Group, string Name, Autodesk.AutoCAD.Internal.CommandCallback Callback)>
+            LoaderCommands { get; } = new();
+
+        /// <summary>The solution directory MSBuild must be told about, worktree-aware.</summary>
+        public string SolutionDirectory =>
+            Path.GetDirectoryName(EffectiveSolutionPath)!;
+
+        /// <summary>The solution path for the currently selected worktree.</summary>
+        public string EffectiveSolutionPath =>
+            DevReload.Core.GitWorktreeService.ResolveActiveCsproj(
+                SolutionFilePath, ActiveWorktreePath);
+
+        /// <summary>The project path for a module in the currently selected worktree.</summary>
+        public string EffectiveProjectPath(OarxModule module) =>
+            DevReload.Core.GitWorktreeService.ResolveActiveCsproj(
+                module.ProjectFilePath, ActiveWorktreePath);
+
+        /// <summary>True when every module that has been resolved is loaded.
+        /// A group is "loaded" only as a whole — a half-loaded group is the
+        /// state a failed cycle leaves behind and must not read as loaded.</summary>
+        public bool IsLoaded =>
+            Modules.Count > 0 && Modules.All(m => m.IsLoaded);
+
+        public bool IsPartiallyLoaded =>
+            Modules.Any(m => m.IsLoaded) && !IsLoaded;
+    }
+}

@@ -1,0 +1,4 @@
+LIBRARY "LabDbx.dbx"
+EXPORTS
+    acrxEntryPoint PRIVATE
+    acrxGetApiVersion PRIVATE

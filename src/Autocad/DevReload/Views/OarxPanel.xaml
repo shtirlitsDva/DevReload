@@ -1,4 +1,4 @@
-<UserControl x:Class="DevReload.Views.DevReloadPanel"
+<UserControl x:Class="DevReload.Views.OarxPanel"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:DevReload.ViewModels"
@@ -17,14 +17,9 @@
         <!-- ── Bottom toolbar ────────────────────────────────── -->
         <Border DockPanel.Dock="Bottom" Style="{StaticResource ToolbarBar}">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Style="{StaticResource SurfaceBtn}"
-                        Content="Settings"
-                        Command="{Binding SettingsCommand}"
-                        Margin="0,0,8,0"
-                        ToolTip="Configure NSLOAD CSV path"/>
                 <Button Style="{StaticResource AccentBtn}"
-                        Content="+ Add Plugin"
-                        Command="{Binding ShowAddPluginCommand}"
+                        Content="+ Add OARX Group"
+                        Command="{Binding ShowAddOarxCommand}"
                         Margin="0,0,8,0"/>
                 <Button Style="{StaticResource SurfaceBtn}"
                         Content="Reload Config"
@@ -33,37 +28,92 @@
             </StackPanel>
         </Border>
 
-        <!-- ── Add Plugin form (collapsed by default) ────────── -->
+        <!-- ── Add OARX form (collapsed by default) ──────────── -->
         <Border DockPanel.Dock="Bottom"
                 Style="{StaticResource FormPanel}"
                 Margin="0,0,0,1"
-                Visibility="{Binding IsAddingPlugin, Converter={StaticResource BoolToVis}}">
+                Visibility="{Binding IsAddingOarx, Converter={StaticResource BoolToVis}}">
             <StackPanel>
-                <TextBlock Text="Add New Plugin"
+                <TextBlock Text="Add OARX Group"
                            Style="{StaticResource SectionTitle}" Margin="0,0,0,8"/>
 
-                <TextBlock Text="Project"
+                <TextBlock Text="Solution"
                            Style="{StaticResource Caption}" Margin="0,0,0,2"/>
-                <TextBox Text="{Binding NewPluginName, Mode=OneWay}"
+                <TextBox Text="{Binding NewOarxSolution, Mode=OneWay}"
                          Style="{StaticResource ReadOnlyField}"
                          IsReadOnly="True"
+                         Margin="0,0,0,6"
+                         ToolTip="{Binding NewOarxSolution}"/>
+
+                <TextBlock Text="Modules — in LOAD order (.dbx before the .arx that uses it)"
+                           Style="{StaticResource Caption}"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,2"/>
+                <Border Style="{StaticResource ListPanel}" Margin="0,0,0,4">
+                    <ItemsControl ItemsSource="{Binding NewOarxModules}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:OarxModuleDraft}">
+                                <DockPanel Margin="0,0,0,2">
+                                    <Button DockPanel.Dock="Right"
+                                            Style="{StaticResource IconDangerBtn}"
+                                            Content="X"
+                                            Command="{Binding DataContext.RemoveOarxModuleCommand,
+                                                RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip="Remove this module"/>
+                                    <Button DockPanel.Dock="Right"
+                                            Style="{StaticResource RowSurfaceBtn}"
+                                            Content="▼"
+                                            Margin="0,0,4,0"
+                                            Command="{Binding DataContext.MoveOarxModuleDownCommand,
+                                                RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip="Load later"/>
+                                    <Button DockPanel.Dock="Right"
+                                            Style="{StaticResource RowSurfaceBtn}"
+                                            Content="▲"
+                                            Margin="0,0,4,0"
+                                            Command="{Binding DataContext.MoveOarxModuleUpCommand,
+                                                RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip="Load earlier"/>
+                                    <TextBlock Text="{Binding ProjectName}"
+                                               Style="{StaticResource PluginName}"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding ProjectPath}"/>
+                                </DockPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Border>
+                <Button Style="{StaticResource SurfaceBtn}"
+                        Content="+ Project"
+                        HorizontalAlignment="Left"
+                        Margin="0,0,0,8"
+                        Command="{Binding AddOarxProjectCommand}"
+                        ToolTip="Add one or more .vcxproj module projects"/>
+
+                <TextBlock Text="Group Name"
+                           Style="{StaticResource Caption}" Margin="0,0,0,2"/>
+                <TextBox Text="{Binding NewOarxName, UpdateSourceTrigger=PropertyChanged}"
                          Margin="0,0,0,6"/>
 
                 <TextBlock Text="Command Prefix (default: Name)"
                            Style="{StaticResource Caption}" Margin="0,0,0,2"/>
-                <TextBox Text="{Binding NewPluginPrefix, UpdateSourceTrigger=PropertyChanged}"
+                <TextBox Text="{Binding NewOarxPrefix, UpdateSourceTrigger=PropertyChanged}"
                          Margin="0,0,0,8"/>
 
                 <CheckBox Content="Load on Startup"
-                          IsChecked="{Binding NewPluginLoadOnStartup}"
+                          IsChecked="{Binding NewOarxLoadOnStartup}"
                           Margin="0,0,0,8"/>
 
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Style="{StaticResource SurfaceBtn}" Content="Cancel"
-                            Command="{Binding CancelAddPluginCommand}"
+                            Command="{Binding CancelAddOarxCommand}"
                             Margin="0,0,8,0"/>
                     <Button Style="{StaticResource AccentBtn}" Content="Add"
-                            Command="{Binding ConfirmAddPluginCommand}"/>
+                            Command="{Binding ConfirmAddOarxCommand}"/>
                 </StackPanel>
             </StackPanel>
         </Border>
@@ -72,43 +122,45 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <Grid>
                 <!-- Empty state -->
-                <StackPanel Style="{StaticResource EmptyStatePanel}"
+                <StackPanel Style="{StaticResource OarxEmptyStatePanel}"
                             VerticalAlignment="Center" HorizontalAlignment="Center"
                             Margin="20">
-                    <TextBlock Text="No plugins configured"
+                    <TextBlock Text="No OARX groups configured"
                                Style="{StaticResource EmptyTitle}"
                                HorizontalAlignment="Center"
                                Margin="0,0,0,12"/>
-                    <TextBlock Text="Click 'Add Plugin' below to get started."
+                    <TextBlock Text="An OARX group is one or more native modules built under one solution, in load order."
                                Style="{StaticResource Hint}"
+                               TextWrapping="Wrap"
+                               MaxWidth="260"
+                               TextAlignment="Center"
                                HorizontalAlignment="Center"/>
                 </StackPanel>
 
-                <!-- Plugin list -->
-                <ItemsControl ItemsSource="{Binding Plugins}"
-                              Visibility="{Binding HasPlugins, Converter={StaticResource BoolToVis}}"
+                <!-- OARX group list -->
+                <ItemsControl ItemsSource="{Binding OarxPlugins}"
+                              Visibility="{Binding HasOarxPlugins, Converter={StaticResource BoolToVis}}"
                               Margin="8">
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate DataType="{x:Type vm:PluginItemViewModel}">
+                        <DataTemplate DataType="{x:Type vm:OarxPluginItemViewModel}">
                             <Border Style="{StaticResource PluginCard}" Margin="0,0,0,6">
                                 <Grid>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
 
                                     <!-- Row 0: Name + status + worktree + remove -->
-                                    <DockPanel Grid.Row="0" Margin="0,0,0,6">
-                                        <!-- Remove button -->
+                                    <DockPanel Grid.Row="0" Margin="0,0,0,4">
                                         <Button DockPanel.Dock="Right"
                                                 Style="{StaticResource IconDangerBtn}"
                                                 Content="X"
-                                                Command="{Binding DataContext.RemovePluginCommand,
+                                                Command="{Binding DataContext.RemoveOarxPluginCommand,
                                                     RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                 CommandParameter="{Binding Name}"
-                                                ToolTip="Remove plugin"/>
+                                                ToolTip="Unload and remove this OARX group"/>
 
-                                        <!-- Worktree selector -->
                                         <ComboBox DockPanel.Dock="Right"
                                                   Style="{StaticResource WorktreeCombo}"
                                                   ItemsSource="{Binding Worktrees}"
@@ -119,14 +171,12 @@
                                                   VerticalAlignment="Center"
                                                   ToolTip="Select worktree to build from"/>
 
-                                        <!-- Status circle -->
                                         <Ellipse DockPanel.Dock="Left"
                                                  Style="{StaticResource StatusDot}"
                                                  Width="10" Height="10"
                                                  Margin="0,0,8,0"
                                                  VerticalAlignment="Center"/>
 
-                                        <!-- Name + prefix + status -->
                                         <StackPanel Orientation="Horizontal"
                                                     VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Name}"
@@ -143,9 +193,16 @@
                                         </StackPanel>
                                     </DockPanel>
 
-                                    <!-- Row 1: Actions -->
-                                    <DockPanel Grid.Row="1">
-                                        <!-- Load on Startup checkbox -->
+                                    <!-- Row 1: the modules, in load order -->
+                                    <TextBlock Grid.Row="1"
+                                               Text="{Binding Modules}"
+                                               Style="{StaticResource Caption}"
+                                               TextTrimming="CharacterEllipsis"
+                                               Margin="18,0,0,6"
+                                               ToolTip="Load order — unload runs in reverse"/>
+
+                                    <!-- Row 2: Actions -->
+                                    <DockPanel Grid.Row="2">
                                         <CheckBox DockPanel.Dock="Right"
                                                   Style="{StaticResource SmallCheckBox}"
                                                   Content="Auto-load"
@@ -153,24 +210,21 @@
                                                   VerticalAlignment="Center"
                                                   Margin="8,0,0,0"/>
 
-                                        <!-- Action buttons -->
                                         <StackPanel Orientation="Horizontal">
-                                            <!-- Build config dropdown: shows the current configuration;
-                                                 click opens a popup listing every config the project declares -->
-                                            <ToggleButton x:Name="ConfigDrop"
+                                            <ToggleButton x:Name="OarxConfigDrop"
                                                           Style="{StaticResource BuildConfigDropToggle}"
                                                           Content="{Binding SelectedConfiguration}"
                                                           IsChecked="{Binding IsConfigPickerOpen, Mode=TwoWay}"
                                                           Margin="0,0,4,0"
-                                                          ToolTip="Build configuration (click to choose from the project's configurations)"/>
-                                            <Popup PlacementTarget="{Binding ElementName=ConfigDrop}"
+                                                          ToolTip="Build configuration (click to choose from the project's Configuration|x64 pairs)"/>
+                                            <Popup PlacementTarget="{Binding ElementName=OarxConfigDrop}"
                                                    Placement="Bottom" StaysOpen="False"
                                                    AllowsTransparency="True"
                                                    IsOpen="{Binding IsConfigPickerOpen, Mode=TwoWay}"
                                                    DataContext="{Binding PlacementTarget.DataContext,
                                                        RelativeSource={RelativeSource Self}}">
                                                 <Border Style="{StaticResource FlyoutPanel}" Margin="0,2,0,0"
-                                                        MinWidth="{Binding ActualWidth, ElementName=ConfigDrop}">
+                                                        MinWidth="{Binding ActualWidth, ElementName=OarxConfigDrop}">
                                                     <ItemsControl ItemsSource="{Binding AvailableConfigurations}">
                                                         <ItemsControl.ItemTemplate>
                                                             <DataTemplate>
@@ -185,28 +239,35 @@
                                                 </Border>
                                             </Popup>
 
-                                            <!-- Reload split-button: click = Reload (build+load);
-                                                 ▾ flyout = Build only (build, no load) -->
+                                            <!-- Reload = unload → verify writable → build → load.
+                                                 The flyout carries the two halves on their own:
+                                                 load what is already built, or build without loading. -->
                                             <Border Style="{StaticResource SplitBar}" Margin="0,0,4,0">
                                                 <StackPanel Orientation="Horizontal">
                                                     <Button Style="{StaticResource SplitMainBtn}"
                                                             Content="Reload"
                                                             Command="{Binding ReloadCommand}"
-                                                            ToolTip="Build and reload the plugin"/>
-                                                    <ToggleButton x:Name="ReloadFlyout"
+                                                            ToolTip="Unload, rebuild and load the whole group"/>
+                                                    <ToggleButton x:Name="OarxReloadFlyout"
                                                                   Style="{StaticResource SplitArrowToggle}"
                                                                   Content="▾"
                                                                   IsChecked="{Binding IsBuildMenuOpen, Mode=TwoWay}"
                                                                   ToolTip="More build actions"/>
-                                                    <Popup PlacementTarget="{Binding ElementName=ReloadFlyout}"
+                                                    <Popup PlacementTarget="{Binding ElementName=OarxReloadFlyout}"
                                                            Placement="Bottom" StaysOpen="False"
                                                            AllowsTransparency="True"
                                                            IsOpen="{Binding IsBuildMenuOpen, Mode=TwoWay}">
                                                         <Border Style="{StaticResource FlyoutPanel}" Margin="0,2,0,0">
-                                                            <Button Style="{StaticResource RowSurfaceBtn}"
-                                                                    Content="Build only"
-                                                                    Command="{Binding BuildOnlyCommand}"
-                                                                    ToolTip="Build without loading — produces the DLLs so Shared can be configured for this branch"/>
+                                                            <StackPanel>
+                                                                <Button Style="{StaticResource RowSurfaceBtn}"
+                                                                        Content="Load (no build)"
+                                                                        Command="{Binding LoadCommand}"
+                                                                        ToolTip="Load the modules as they currently sit on disk"/>
+                                                                <Button Style="{StaticResource RowSurfaceBtn}"
+                                                                        Content="Build only"
+                                                                        Command="{Binding BuildOnlyCommand}"
+                                                                        ToolTip="Build without loading — only possible while the group is unloaded, because a mapped module locks its file"/>
+                                                            </StackPanel>
                                                         </Border>
                                                     </Popup>
                                                 </StackPanel>
@@ -214,22 +275,8 @@
 
                                             <Button Style="{StaticResource RowDangerBtn}"
                                                     Content="Unload"
-                                                    Margin="0,0,4,0"
                                                     Command="{Binding UnloadCommand}"
                                                     IsEnabled="{Binding IsLoaded}"/>
-                                            <Button Style="{StaticResource SharedBtn}"
-                                                    Content="Shared"
-                                                    Margin="0,0,4,0"
-                                                    Command="{Binding DataContext.SharedAssembliesCommand,
-                                                        RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                    CommandParameter="{Binding Name}"
-                                                    ToolTip="Configure shared assemblies for WPF XAML (green = config present for this branch/build)"/>
-                                            <Button Style="{StaticResource RowSurfaceBtn}"
-                                                    Content="Push"
-                                                    Command="{Binding DataContext.PushToProductionCommand,
-                                                        RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                    CommandParameter="{Binding Name}"
-                                                    ToolTip="Push SharedAssemblies config to production"/>
                                         </StackPanel>
                                     </DockPanel>
                                 </Grid>

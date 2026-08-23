@@ -1,14 +1,19 @@
 using System.Windows.Controls;
+
 using DevReload.ViewModels;
 
 namespace DevReload.Views
 {
+    /// <summary>
+    /// The .NET tab of the DEVRELOAD palette. Shares its view-model with
+    /// <see cref="OarxPanel"/> — see the remarks there.
+    /// </summary>
     public partial class DevReloadPanel : UserControl
     {
-        public DevReloadPanel()
+        public DevReloadPanel(DevReloadViewModel viewModel)
         {
             InitializeComponent();
-            DataContext = new DevReloadViewModel();
+            DataContext = viewModel;
         }
 
         // The worktree list is enumerated lazily (a dotnet/git query) the moment

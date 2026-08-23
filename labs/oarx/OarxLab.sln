@@ -1,0 +1,26 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "LabDbx", "LabDbx\LabDbx.vcxproj", "{6C1B0A11-8F2D-4E7A-9C31-0A5D2E7B4101}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "LabArx", "LabArx\LabArx.vcxproj", "{6C1B0A11-8F2D-4E7A-9C31-0A5D2E7B4102}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6C1B0A11-8F2D-4E7A-9C31-0A5D2E7B4101}.Debug|x64.ActiveCfg = Debug|x64
+		{6C1B0A11-8F2D-4E7A-9C31-0A5D2E7B4101}.Debug|x64.Build.0 = Debug|x64
+		{6C1B0A11-8F2D-4E7A-9C31-0A5D2E7B4101}.Release|x64.ActiveCfg = Release|x64
+		{6C1B0A11-8F2D-4E7A-9C31-0A5D2E7B4101}.Release|x64.Build.0 = Release|x64
+		{6C1B0A11-8F2D-4E7A-9C31-0A5D2E7B4102}.Debug|x64.ActiveCfg = Debug|x64
+		{6C1B0A11-8F2D-4E7A-9C31-0A5D2E7B4102}.Debug|x64.Build.0 = Debug|x64
+		{6C1B0A11-8F2D-4E7A-9C31-0A5D2E7B4102}.Release|x64.ActiveCfg = Release|x64
+		{6C1B0A11-8F2D-4E7A-9C31-0A5D2E7B4102}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Linq;
 using System.Threading;
@@ -9,6 +9,8 @@ using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Runtime;
 using Autodesk.AutoCAD.Windows;
 
+using DevReload.Hud;
+using DevReload.Oarx;
 using DevReload.Rpc;
 using DevReload.Views;
 
@@ -87,7 +89,7 @@ namespace DevReload
             }
 
             var config = PluginConfigLoader.Load();
-            if (config == null || config.Plugins.Count == 0)
+            if (config == null || (config.Plugins.Count == 0 && config.OarxPlugins.Count == 0))
             {
                 ed?.WriteMessage("\nDevReload initialized (no plugins configured).");
                 return;
@@ -99,17 +101,42 @@ namespace DevReload
             foreach (var entry in config.Plugins)
                 RegisterFromConfig(entry);
 
-            // Auto-load only plugins with loadOnStartup = true
+            // ObjectARX groups run their own lifecycle (Oarx/). A bad OARX entry
+            // must not take the whole startup down with it — the .NET plugins
+            // registered above are unrelated to it.
+            foreach (var oarx in config.OarxPlugins)
+            {
+                try { OarxConfigLoader.RegisterFromConfig(oarx); }
+                catch (System.Exception ex)
+                {
+                    ed?.WriteMessage(
+                        $"\nDevReload: OARX '{oarx.Name}' failed to register: {ex.Message}");
+                }
+            }
+
+            // Auto-load only plugins with loadOnStartup = true.
+            //
+            // Explicitly headless: the HUD holds a closing frame for three seconds,
+            // so letting these use the default sink would put one HUD per
+            // auto-loaded plugin between the user and their session. There is also
+            // no document to hang a transient on this early.
             int loaded = 0;
             foreach (var entry in config.Plugins.Where(e => e.LoadOnStartup))
             {
-                PluginManager.Load(entry.Name);
+                PluginManager.Load(entry.Name, NullReloadProgress.Instance);
+                loaded++;
+            }
+            foreach (var oarx in config.OarxPlugins.Where(e => e.LoadOnStartup))
+            {
+                OarxManager.Load(oarx.Name, NullReloadProgress.Instance);
                 loaded++;
             }
 
             var names = PluginManager.GetRegisteredPluginNames();
+            int oarxCount = OarxManager.GetRegisteredNames().Count;
             ed?.WriteMessage(
-                $"\nDevReload: {names.Count} plugin(s) registered, {loaded} auto-loaded.");
+                $"\nDevReload: {names.Count} .NET plugin(s), {oarxCount} OARX group(s), " +
+                $"{loaded} auto-loaded.");
         }
 
         public void Terminate()
@@ -118,6 +145,9 @@ namespace DevReload
             catch { }
             try { _dispatcher?.Dispose(); } catch { }
             PluginManager.UnloadAll();
+            // Native modules must leave with the session too; a mapped .arx would
+            // otherwise keep its file locked for whatever runs next.
+            try { OarxManager.UnloadAll(); } catch { }
         }
 
         // ── Management palette ────────────────────────────────────────
@@ -134,7 +164,13 @@ namespace DevReload
                     MinimumSize = new Size(300, 200),
                     DockEnabled = DockSides.Left | DockSides.Right,
                 };
-                _mgmtPalette.AddVisual("Plugins", new DevReloadPanel());
+                // Two AddVisuals = two AutoCAD-native palette tabs. The tab
+                // chrome is the host's, not ours. Both visuals share ONE
+                // view-model: it subscribes to both plugin registries, so a
+                // second instance would double every registry event.
+                var vm = new ViewModels.DevReloadViewModel();
+                _mgmtPalette.AddVisual(".NET", new DevReloadPanel(vm));
+                _mgmtPalette.AddVisual("OARX", new OarxPanel(vm));
             }
             _mgmtPalette.Visible = true;
         }

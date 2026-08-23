@@ -13,7 +13,17 @@ namespace DevReload
     public class PluginConfig
     {
         public string? NsloadCsvPath { get; set; }
+
+        /// <summary>.NET plugins — collectible ALC, build-then-swap.</summary>
         public List<PluginEntry> Plugins { get; set; } = new();
+
+        /// <summary>ObjectARX plugins — native modules, unload-then-build.
+        /// A separate list rather than a discriminated field on PluginEntry:
+        /// the two lifecycles share no settings (an OARX group has no shared
+        /// assemblies and no single project; a .NET plugin has no module order
+        /// and no solution), so one shape covering both would be mostly-null
+        /// either way.</summary>
+        public List<DevReload.Oarx.OarxPluginEntry> OarxPlugins { get; set; } = new();
     }
 
     public class PluginEntry

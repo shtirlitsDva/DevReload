@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -15,6 +15,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
 using DevReload.Core;
+using DevReload.Hud;
+using DevReload.Oarx;
 using DevReload.Views;
 
 namespace DevReload
@@ -63,6 +65,9 @@ namespace DevReload.ViewModels
             PluginManager.PluginRegistered += OnPluginRegistered;
             PluginManager.PluginUnregistered += OnPluginUnregistered;
             PluginManager.PluginStateChanged += OnPluginStateChanged;
+
+            // The OARX tab projects a second, independent registry the same way.
+            InitializeOarx();
         }
 
         // Load/reload/unload can be driven out-of-band — by the MCP tool surface
@@ -153,6 +158,9 @@ namespace DevReload.ViewModels
             }
 
             HasPlugins = Plugins.Count > 0;
+
+            // Same file, second list — the OARX tab's cards.
+            LoadOarxFromConfig();
         }
 
         private void OnPluginPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -545,14 +553,22 @@ namespace DevReload.ViewModels
                 if (!PluginManager.IsRegistered(entry.Name))
                     DevReloaderCommands.RegisterFromConfig(entry);
 
+            ReloadOarxConfig(fresh);
+
             // Rebuild every card from the freshly-read file so edits to existing
             // entries (build config, worktree) are reflected too.
             LoadFromConfig();
 
-            // Auto-load plugins with loadOnStartup
+            // Auto-load plugins with loadOnStartup. Headless for the same reason as
+            // the startup path: this is a batch, and one three-second HUD per entry
+            // would make a config reload feel like a hang.
             foreach (var entry in _config.Plugins.Where(e => e.LoadOnStartup))
                 if (!PluginManager.IsLoaded(entry.Name))
-                    PluginManager.Load(entry.Name);
+                    PluginManager.Load(entry.Name, NullReloadProgress.Instance);
+
+            foreach (var entry in _config.OarxPlugins.Where(e => e.LoadOnStartup))
+                if (!OarxManager.IsLoaded(entry.Name))
+                    OarxManager.Load(entry.Name, NullReloadProgress.Instance);
 
             RefreshStates();
         }
@@ -562,6 +578,8 @@ namespace DevReload.ViewModels
         private void RefreshStates()
         {
             foreach (var p in Plugins)
+                p.RefreshState();
+            foreach (var p in OarxPlugins)
                 p.RefreshState();
         }
 

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <MSBuildAllProjects Condition="'$(MSBuildVersion)' == '' Or '$(MSBuildVersion)' &lt; '16.0'">$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
@@ -14,6 +14,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Compat.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)CsprojReferenceScanner.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)GitWorktreeService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)IBuildProcessRunner.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)IsolatedPluginContext.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)SharedAssembliesFile.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)SharedAssemblyPreloader.cs" />

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -11,6 +11,7 @@ using Autodesk.AutoCAD.Internal;
 using Autodesk.AutoCAD.Runtime;
 
 using DevReload.Core;
+using DevReload.Hud;
 using DevReload.Rpc;
 
 using Exception = System.Exception;
@@ -20,6 +21,40 @@ namespace DevReload
     public static class PluginManager
     {
         private static readonly Dictionary<string, PluginRegistration> _plugins = new();
+
+        /// <summary>
+        /// The .NET cycle, in the order it runs. Build comes FIRST — the opposite
+        /// of OARX, and deliberately so: a plugin assembly is stream-loaded, so it
+        /// locks nothing on disk and can be rebuilt while the old one is still
+        /// running. Build-first-then-swap means a failed build changes nothing and
+        /// the previous plugin keeps working, where a failed OARX build leaves the
+        /// group unloaded (research F14).
+        /// </summary>
+        private static readonly ReloadCycle Cycle = new(
+            (ReloadStep.Build,  "building"),
+            (ReloadStep.Unload, "unloading the previous ALC"),
+            (ReloadStep.Load,   "loading"));
+
+        /// <summary>
+        /// Where an interactive cycle reports itself: the transient HUD.
+        /// </summary>
+        /// <remarks>
+        /// HUD only, no editor sink — unlike OARX, this lifecycle already writes
+        /// its own command-line messages inline, and adding one would print
+        /// everything twice.
+        ///
+        /// <para>No editor means no drawing to hang a transient on. That is the
+        /// startup path, which is headless by construction and reads the returned
+        /// <see cref="PluginActionResult"/> instead of watching.</para>
+        /// </remarks>
+        private static IReloadProgress DefaultProgress()
+        {
+            var ed = GetEditor();
+            if (ed == null) return NullReloadProgress.Instance;
+
+            return new CompositeReloadProgress(
+                new ReloadHud(warn => ed.WriteMessage("\n[DevReload] " + warn)));
+        }
 
         /// <summary>Raised after a plugin enters the in-memory registry, from
         /// EVERY registration path (startup, palette add, MCP register, config
@@ -48,15 +83,20 @@ namespace DevReload
             return new PluginRegistrationBuilder(pluginName);
         }
 
-        public static PluginActionResult Load(string pluginName)
+        public static PluginActionResult Load(
+            string pluginName, IReloadProgress? progress = null)
         {
             var ed = GetEditor();
             if (!_plugins.TryGetValue(pluginName, out var reg))
                 return new PluginActionResult(pluginName, false, 0, false, "not registered");
 
+            var ui = progress ?? DefaultProgress();
+            ui.Begin($"{pluginName}: load", Cycle);
+
             if (reg.Host.IsLoaded)
             {
                 ed?.WriteMessage($"\n{pluginName} is already loaded.");
+                ui.Finish("already loaded", true);
                 return Result(reg, success: true, "already loaded");
             }
 
@@ -69,78 +109,106 @@ namespace DevReload
                 {
                     string csprojPath = GetEffectiveCsprojPath(reg);
                     ed?.WriteMessage($"\n{pluginName} DLL not found, building...");
+                    ui.Step(ReloadStep.Build);
                     build = AcadBuild.Build(
-                        csprojPath, reg.BuildConfiguration, ed);
+                        csprojPath, reg.BuildConfiguration, ed, ui);
                     if (!build.Success || build.OutputPath == null)
+                    {
+                        ui.Finish("build failed", false);
                         return Result(reg, success: false, "build failed", build);
+                    }
                     reg.DllPath = build.OutputPath;
                     dllPath = build.OutputPath;
                 }
 
                 try
                 {
-                    LoadCore(reg, dllPath);
+                    LoadCore(reg, dllPath, ui);
                 }
                 catch (StalePluginException)
                 {
                     ed?.WriteMessage($"\nStale plugin detected, rebuilding...");
                     string csprojPath = GetEffectiveCsprojPath(reg);
+                    ui.Step(ReloadStep.Build);
                     build = AcadBuild.Build(
-                        csprojPath, reg.BuildConfiguration, ed);
+                        csprojPath, reg.BuildConfiguration, ed, ui);
                     if (!build.Success || build.OutputPath == null)
+                    {
+                        ui.Finish("rebuild failed", false);
                         return Result(reg, success: false, "rebuild failed", build);
+                    }
                     reg.DllPath = build.OutputPath;
                     dllPath = build.OutputPath;
-                    LoadCore(reg, dllPath);
+                    LoadCore(reg, dllPath, ui);
                 }
 
                 ed?.WriteMessage($"\n{pluginName} loaded.{CommandSuffix(reg)}");
+                ui.Finish("loaded", true);
                 return Result(reg, success: true, "loaded", build);
             }
             catch (Exception ex)
             {
                 ed?.WriteMessage($"\n{pluginName} load error: {ex.Message}");
                 ed?.WriteMessage($"\n{ex}");
+                ui.Finish($"{ex.GetType().Name}: {ex.Message}", false);
                 return Result(reg, success: false,
                     $"load error: {ex.GetType().Name}: {ex.Message}", build);
             }
         }
 
-        public static PluginActionResult DevReload(string pluginName)
+        public static PluginActionResult DevReload(
+            string pluginName, IReloadProgress? progress = null)
         {
             var ed = GetEditor();
             if (!_plugins.TryGetValue(pluginName, out var reg))
                 return new PluginActionResult(pluginName, false, 0, false, "not registered");
 
+            var ui = progress ?? DefaultProgress();
+            ui.Begin($"{pluginName}: reload", Cycle);
+
             BuildResult? build = null;
             try
             {
                 string csprojPath = GetEffectiveCsprojPath(reg);
+
+                ui.Step(ReloadStep.Build);
                 build = AcadBuild.Build(
-                    csprojPath, reg.BuildConfiguration, ed);
+                    csprojPath, reg.BuildConfiguration, ed, ui);
                 if (!build.Success || build.OutputPath == null)
+                {
+                    // Nothing was torn down, so whatever was running before this
+                    // call is still running. The OARX verdict in the same red means
+                    // the opposite — there, a failed build leaves nothing loaded —
+                    // so this one says which it is.
+                    ui.Finish(reg.Host.IsLoaded
+                        ? "build failed — still on the previous build"
+                        : "build failed", false);
                     return Result(reg, success: false, "build failed", build);
+                }
                 reg.DllPath = build.OutputPath;
                 string dllPath = build.OutputPath;
 
                 try
                 {
-                    LoadCore(reg, dllPath);
+                    LoadCore(reg, dllPath, ui);
                 }
                 catch (StalePluginException)
                 {
                     string msg = $"{pluginName}: IExtensionApplication version mismatch. Restart AutoCAD.";
                     ed?.WriteMessage("\n" + msg);
+                    ui.Finish("version mismatch — restart AutoCAD", false);
                     return Result(reg, success: false, msg, build);
                 }
 
                 ed?.WriteMessage($"\n{pluginName} dev-reloaded.{CommandSuffix(reg)}");
+                ui.Finish("reloaded", true);
                 return Result(reg, success: true, "dev-reloaded", build);
             }
             catch (Exception ex)
             {
                 ed?.WriteMessage($"\n{pluginName} dev-reload error: {ex.Message}");
                 ed?.WriteMessage($"\n{ex}");
+                ui.Finish($"{ex.GetType().Name}: {ex.Message}", false);
                 return Result(reg, success: false,
                     $"dev-reload error: {ex.GetType().Name}: {ex.Message}", build);
             }
@@ -151,55 +219,73 @@ namespace DevReload
         // built — producing its DLLs — before the user configures shared assemblies
         // and reloads. Loading is intentionally skipped: a wrong/empty shared config
         // would otherwise wedge the session.
-        public static PluginActionResult BuildOnly(string pluginName)
+        public static PluginActionResult BuildOnly(
+            string pluginName, IReloadProgress? progress = null)
         {
             var ed = GetEditor();
             if (!_plugins.TryGetValue(pluginName, out var reg))
                 return new PluginActionResult(pluginName, false, 0, false, "not registered");
 
+            var ui = progress ?? DefaultProgress();
+            ui.Begin($"{pluginName}: build", Cycle);
+
             try
             {
                 string csprojPath = GetEffectiveCsprojPath(reg);
+                ui.Step(ReloadStep.Build);
                 var build = AcadBuild.Build(
-                    csprojPath, reg.BuildConfiguration, ed);
+                    csprojPath, reg.BuildConfiguration, ed, ui);
                 if (!build.Success || build.OutputPath == null)
+                {
+                    ui.Finish("build failed", false);
                     return Result(reg, success: false, "build failed", build);
+                }
 
                 reg.DllPath = build.OutputPath;
                 ed?.WriteMessage($"\n{pluginName} built (not loaded).");
+                ui.Finish("built (not loaded)", true);
                 return Result(reg, success: true, "built", build);
             }
             catch (Exception ex)
             {
                 ed?.WriteMessage($"\n{pluginName} build error: {ex.Message}");
                 ed?.WriteMessage($"\n{ex}");
+                ui.Finish($"{ex.GetType().Name}: {ex.Message}", false);
                 return Result(reg, success: false,
                     $"build error: {ex.GetType().Name}: {ex.Message}");
             }
         }
 
-        public static PluginActionResult Unload(string pluginName)
+        public static PluginActionResult Unload(
+            string pluginName, IReloadProgress? progress = null)
         {
             var ed = GetEditor();
             if (!_plugins.TryGetValue(pluginName, out var reg))
                 return new PluginActionResult(pluginName, false, 0, false, "not registered");
 
+            var ui = progress ?? DefaultProgress();
+            ui.Begin($"{pluginName}: unload", Cycle);
+
             if (!reg.Host.IsLoaded)
             {
                 ed?.WriteMessage($"\n{pluginName} is not loaded.");
+                ui.Finish("not loaded", true);
                 return Result(reg, success: true, "not loaded");
             }
 
             try
             {
+                ui.Step(ReloadStep.Unload);
                 TearDown(reg);
                 ed?.WriteMessage($"\n{pluginName} unloaded.");
+                ui.Finish("unloaded", true);
                 return Result(reg, success: true, "unloaded");
             }
             catch (Exception ex)
             {
                 ed?.WriteMessage($"\n{pluginName} unload error: {ex.Message}");
                 ed?.WriteMessage($"\n{ex}");
+                ui.Finish($"{ex.GetType().Name}: {ex.Message}", false);
                 return Result(reg, success: false,
                     $"unload error: {ex.GetType().Name}: {ex.Message}");
             }
@@ -399,9 +485,13 @@ namespace DevReload
         /// AutoCAD calls IExtensionApplication.Initialize() automatically.
         /// DevReload does NOT call Initialize().
         /// </summary>
-        private static void LoadCore(PluginRegistration reg, string dllPath)
+        private static void LoadCore(
+            PluginRegistration reg, string dllPath, IReloadProgress ui)
         {
+            ui.Step(ReloadStep.Unload);
             TearDown(reg);
+
+            ui.Step(ReloadStep.Load);
 
             // Single source of truth for shared-assembly config: the file in
             // the build directory we're loading from. No cached state on the

@@ -1,9 +1,10 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 
 namespace DevReload.Core
 {
@@ -20,17 +21,34 @@ namespace DevReload.Core
     // about either.
     public static class BuildService
     {
+        // MSBuild synthesises SolutionDir as the PROJECT directory when a project is
+        // evaluated or built standalone. For C++ projects that is not cosmetic: the
+        // default OutDir is $(SolutionDir)$(Platform)\$(Configuration)\, so TargetPath
+        // silently resolves to a directory the solution build never writes to. Callers
+        // that know the solution must pass solutionDir; see docs/oarx-port/research.md F7.
+        //
+        // Trailing backslash is required by MSBuild convention, and a trailing backslash
+        // immediately before the closing quote would escape it — hence the doubling.
+        private static string SolutionDirArg(string? solutionDir)
+        {
+            if (string.IsNullOrEmpty(solutionDir)) return "";
+            string dir = solutionDir!.TrimEnd('\\', '/') + "\\";
+            return $" -p:SolutionDir=\"{dir}\\\"";
+        }
+
         public static BuildResult BuildProject(
             string csprojPath,
             string buildConfiguration,
             string? platform,
-            Action<string>? progress)
+            Action<string>? progress,
+            string? solutionDir = null,
+            IBuildProcessRunner? runner = null)
         {
             string projectDir = Path.GetDirectoryName(csprojPath)!;
             string projectName = Path.GetFileNameWithoutExtension(csprojPath);
 
             string? targetPath = QueryMsBuildProperty(
-                csprojPath, "TargetPath", buildConfiguration, platform);
+                csprojPath, "TargetPath", buildConfiguration, platform, solutionDir);
 
             if (string.IsNullOrEmpty(targetPath))
             {
@@ -67,10 +85,14 @@ namespace DevReload.Core
                 string msbPlatform = string.IsNullOrEmpty(platform)
                     ? ""
                     : $" -p:Platform={platform}";
+                // -restore drives NuGet's PackageReference path. A C++ project either
+                // has no packages or uses packages.config, which -restore does not
+                // handle; running it there is noise at best, so it is skipped.
+                string restore = IsCppProject(csprojPath) ? "" : " -restore";
                 psi = new ProcessStartInfo
                 {
                     FileName = msbuild,
-                    Arguments = $"\"{csprojPath}\" -restore -p:Configuration={buildConfiguration}{msbPlatform} -v:m -nologo",
+                    Arguments = $"\"{csprojPath}\"{restore} -p:Configuration={buildConfiguration}{msbPlatform}{SolutionDirArg(solutionDir)} -v:m -nologo",
                 };
             }
 
@@ -86,14 +108,8 @@ namespace DevReload.Core
             int exitCode;
             try
             {
-                using var proc = new Process { StartInfo = psi };
-                proc.OutputDataReceived += (_, e) => { if (e.Data != null) buildLog.AppendLine(e.Data); };
-                proc.ErrorDataReceived += (_, e) => { if (e.Data != null) buildLog.AppendLine(e.Data); };
-                proc.Start();
-                proc.BeginOutputReadLine();
-                proc.BeginErrorReadLine();
-                proc.WaitForExit();
-                exitCode = proc.ExitCode;
+                exitCode = (runner ?? DefaultBuildProcessRunner.Instance)
+                    .Run(psi, line => buildLog.AppendLine(line));
             }
             catch (Exception ex)
             {
@@ -136,12 +152,13 @@ namespace DevReload.Core
             string projectFilePath,
             string? activeWorktreePath,
             string buildConfiguration,
-            string? platform)
+            string? platform,
+            string? solutionDir = null)
         {
             string csproj = GitWorktreeService.ResolveActiveCsproj(
                 projectFilePath, activeWorktreePath);
             string? targetPath = QueryMsBuildProperty(
-                csproj, "TargetPath", buildConfiguration, platform);
+                csproj, "TargetPath", buildConfiguration, platform, solutionDir);
             return string.IsNullOrEmpty(targetPath)
                 ? null
                 : Path.GetDirectoryName(targetPath);
@@ -157,16 +174,24 @@ namespace DevReload.Core
         public static IReadOnlyList<string> GetConfigurations(
             string projectFilePath,
             string? activeWorktreePath,
-            string? platform)
+            string? platform,
+            string? solutionDir = null)
         {
             string csproj = GitWorktreeService.ResolveActiveCsproj(
                 projectFilePath, activeWorktreePath);
+
+            // C++ projects do not define the `Configurations` property at all — they
+            // declare a ProjectConfiguration item per Configuration|Platform pair.
+            // Asking for the property returns empty, which used to surface as a bare
+            // "could not resolve configurations".
+            if (IsCppProject(csproj))
+                return GetCppConfigurations(csproj, platform, solutionDir);
 
             // The Configuration value passed here is irrelevant to the result:
             // `Configurations` is a top-level property, not one gated on the
             // active configuration. "Debug" is always a valid value to evaluate.
             string? raw = QueryMsBuildProperty(
-                csproj, "Configurations", "Debug", platform);
+                csproj, "Configurations", "Debug", platform, solutionDir);
             if (string.IsNullOrWhiteSpace(raw))
                 return Array.Empty<string>();
 
@@ -174,6 +199,53 @@ namespace DevReload.Core
                 .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
+        }
+
+        // .vcxproj / .vcxitems and friends. Kept as an explicit test rather than
+        // "not SDK-style", because an old-style .csproj is also not SDK-style and
+        // must keep the C# behaviour.
+        public static bool IsCppProject(string projectPath) =>
+            projectPath.EndsWith(".vcxproj", StringComparison.OrdinalIgnoreCase);
+
+        private static IReadOnlyList<string> GetCppConfigurations(
+            string vcxproj, string? platform, string? solutionDir)
+        {
+            string? json = QueryMsBuild(
+                vcxproj, "-getItem:ProjectConfiguration", "Debug", platform, solutionDir);
+            if (string.IsNullOrWhiteSpace(json))
+                return Array.Empty<string>();
+
+            try
+            {
+                using var doc = JsonDocument.Parse(json!);
+                if (!doc.RootElement.TryGetProperty("Items", out var items) ||
+                    !items.TryGetProperty("ProjectConfiguration", out var configs))
+                    return Array.Empty<string>();
+
+                var result = new List<string>();
+                foreach (var entry in configs.EnumerateArray())
+                {
+                    // Only configurations declared for the platform we build are
+                    // selectable; offering Win32 for an x64-only host is a lie.
+                    if (!string.IsNullOrEmpty(platform) &&
+                        entry.TryGetProperty("Platform", out var p) &&
+                        !string.Equals(p.GetString(), platform, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    if (entry.TryGetProperty("Configuration", out var c))
+                    {
+                        string? name = c.GetString();
+                        if (!string.IsNullOrWhiteSpace(name) &&
+                            !result.Contains(name!, StringComparer.OrdinalIgnoreCase))
+                            result.Add(name!);
+                    }
+                }
+                return result;
+            }
+            catch (JsonException)
+            {
+                return Array.Empty<string>();
+            }
         }
 
         // Asks MSBuild for an evaluated property (e.g. TargetPath). Reading a
@@ -184,7 +256,19 @@ namespace DevReload.Core
             string csprojPath,
             string propertyName,
             string buildConfiguration,
-            string? platform)
+            string? platform,
+            string? solutionDir = null)
+            => QueryMsBuild(csprojPath, $"-getProperty:{propertyName}",
+                            buildConfiguration, platform, solutionDir);
+
+        // Shared plumbing for -getProperty / -getItem. Both return on stdout and both
+        // need the same toolchain selection and SolutionDir handling.
+        private static string? QueryMsBuild(
+            string csprojPath,
+            string getArg,
+            string buildConfiguration,
+            string? platform,
+            string? solutionDir)
         {
             try
             {
@@ -197,14 +281,14 @@ namespace DevReload.Core
                 if (IsSdkStyle(csprojPath))
                 {
                     fileName = "dotnet";
-                    arguments = $"msbuild \"{csprojPath}\" -getProperty:{propertyName} -p:Configuration={buildConfiguration}{platformArg}";
+                    arguments = $"msbuild \"{csprojPath}\" {getArg} -p:Configuration={buildConfiguration}{platformArg}";
                 }
                 else
                 {
                     string? msbuild = LocateFrameworkMsBuild();
                     if (msbuild == null) return null;
                     fileName = msbuild;
-                    arguments = $"\"{csprojPath}\" -getProperty:{propertyName} -p:Configuration={buildConfiguration}{platformArg}";
+                    arguments = $"\"{csprojPath}\" {getArg} -p:Configuration={buildConfiguration}{platformArg}{SolutionDirArg(solutionDir)}";
                 }
 
                 var psi = new ProcessStartInfo

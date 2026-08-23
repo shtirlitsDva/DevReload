@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Minimal ObjectARX 2025 settings for the DevReload OARX lab.
+
+  Deliberately does NOT import the SDK's rxsdk_*cfg.props: those force
+  PrecompiledHeader=Use and TreatWarningAsError=true, neither of which a
+  two-file lab module wants. Only dbx.props / arx.props are imported, for the
+  one thing they own that is genuinely SDK policy — TargetExt and the link
+  library set.
+
+  Override the SDK location with -p:ArxSdkDir="D:\ObjectARX\2025\" (trailing
+  backslash required).
+-->
+<Project DefaultTargets="Build" ToolsVersion="Current"
+         xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <PropertyGroup>
+    <ArxSdkDir Condition="'$(ArxSdkDir)'==''">C:\ObjectARX\2025\</ArxSdkDir>
+    <ArxSdkIncs>$(ArxSdkDir)inc;$(ArxSdkDir)inc-x64</ArxSdkIncs>
+    <ArxSdkLibs>$(ArxSdkDir)lib-x64</ArxSdkLibs>
+    <!-- Bumped by a test to prove a reload actually swapped the binary. -->
+    <LabStamp Condition="'$(LabStamp)'==''">0</LabStamp>
+  </PropertyGroup>
+
+  <ImportGroup Label="PropertySheets">
+    <Import Condition="'$(ArxAppType)'=='dbx'" Project="$(ArxSdkDir)inc\dbx.props" />
+    <Import Condition="'$(ArxAppType)'=='arx'" Project="$(ArxSdkDir)inc\arx.props" />
+  </ImportGroup>
+
+  <PropertyGroup>
+    <IncludePath>$(ArxSdkIncs);$(IncludePath)</IncludePath>
+    <LibraryPath>$(ArxSdkLibs);$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PreprocessorDefinitions Condition="'$(ArxAppType)'=='dbx'">_DBXAPP;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(ArxAppType)'=='arx'">_ACRXAPP;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_WIN64;WIN;WIN32;_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS;LAB_STAMP=$(LabStamp);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <TreatWChar_tAsBuiltInType>true</TreatWChar_tAsBuiltInType>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <TargetMachine>MachineX64</TargetMachine>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ImportLibrary>$(IntDir)$(TargetName).lib</ImportLibrary>
+    </Link>
+  </ItemDefinitionGroup>
+</Project>
