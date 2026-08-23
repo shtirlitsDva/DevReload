@@ -63,9 +63,9 @@ Then type `DEVRELOAD` to open the management palette.
 
 ## Quickstart
 
-**Prepare your plugin**: implement `IExtensionApplication`. That is the whole requirement. No marker class, no attributes beyond `[assembly: ExtensionApplication(...)]`.
+**Prepare your plugin**: implement `IExtensionApplication`.
 
-DevReload calls `Initialize()` after load and `Terminate()` before unloading, both on the same instance. Every event subscription and other AutoCAD reference the plugin takes must be released in `Terminate()`, or the old build stays alive alongside the new one (see [One Instance, Both Halves](#one-instance-both-halves)).
+DevReload calls `Initialize()` after load and `Terminate()` before unloading, both on the same instance. Every event subscription, palettes and other AutoCAD reference the plugin takes must be released in `Terminate()`, or the old build stays alive alongside the new one (see [One Instance, Both Halves](#one-instance-both-halves)).
 
 **Use DevReload**
 
