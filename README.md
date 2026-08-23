@@ -169,7 +169,8 @@ Multiple documents can have independent subscriptions. Closed documents are clea
 
 ## Implement IExtensionApplication
 
-`NOTE:` In current version it no longer needs to be a static field that holds references as the Initialize() is now run on our ALC resident instance and NOT on Autocad's internal static instance which we don't have access to.
+`NOTE:` In the current version the fields holding those references no longer need to be `static`. `Initialize()` runs on the instance DevReload constructs inside the plugin's ALC, the same one `Terminate()` runs on. AutoCAD no longer constructs an instance of its own, which was the one we had no reference to.
+
 Your plugin class implements `IExtensionApplication`. Palettes must be cleaned up in `Terminate()`. Use `AcadEventManager` for event subscriptions:
 
 ```csharp
