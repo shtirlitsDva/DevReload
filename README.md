@@ -65,7 +65,7 @@ Then type `DEVRELOAD` to open the management palette.
 
 **Prepare your plugin**: implement `IExtensionApplication`.
 
-DevReload calls `Initialize()` after load and `Terminate()` before unloading, both on the same instance. Every event subscription, palettes and other AutoCAD reference the plugin takes must be released in `Terminate()`, or the old build stays alive alongside the new one (see [One Instance, Both Halves](#one-instance-both-halves)).
+DevReload calls `Initialize()` after load and `Terminate()` before unloading, both on the same instance. Every event subscription, palettes and other AutoCAD reference the plugin takes must be released in `Terminate()`, or the old build stays alive alongside the new one (see [Plugin Instance Lifetime](#plugin-instance-lifetime)).
 
 **Use DevReload**
 
@@ -100,23 +100,23 @@ Note: this was written by AI. I don't know which of these are needed.
 
 Plugins built for DevReload are always loaded through DevReload. There is no separate `NETLOAD` release path to keep working.
 
-### One Instance, Both Halves
+### Plugin Instance Lifetime
 
-DevReload creates your plugin class once, calls `Initialize()` on it after load, and `Terminate()` on that same object when unloading. Instance fields set up in `Initialize()` are visible to `Terminate()`.
+DevReload constructs one instance of your `IExtensionApplication` per load. It calls `Initialize()` on that instance once the assembly is loaded, and `Terminate()` on the same instance before the ALC is unloaded. Fields written in `Initialize()` are readable in `Terminate()`. Instance and static fields both work.
 
-This used to be split. AutoCAD's `ExtensionLoader` built its own instance and called `Initialize()` on that one, while DevReload built a second instance and called `Terminate()` on it, so instance state never survived the round trip and everything cleanup touched had to be `static`. `AutoCadScanSuppressor` takes AutoCAD's scan off DevReload-loaded assemblies, which retires the problem. Static fields still work; they are no longer required.
+### Command Registration
 
-### No NoCommands Marker
+`CommandRegistrar` scans the loaded assembly's exported types and registers every `[CommandMethod]` it finds with `Utils.AddCommand`. Commands registered that way can be removed with `Utils.RemoveCommand`, which DevReload does before it unloads the ALC. `[assembly: CommandClass]` has no effect on this scan; all exported types are read either way.
 
-Plugins need no `[assembly: CommandClass(typeof(NoCommands))]` marker class. Earlier versions of DevReload required one.
+AutoCAD scans assemblies as they load. It raises each one on the static event `Autodesk.AutoCAD.Runtime.ExtensionLoader.DeferredAssemblyLoad`, where two subscribers handle it. One registers every `[CommandMethod]` in the assembly. The other constructs the `IExtensionApplication` and calls `Initialize()` on it.
 
-AutoCAD raises every loaded assembly on the public static event `Autodesk.AutoCAD.Runtime.ExtensionLoader.DeferredAssemblyLoad`, and two subscribers act on it: one registers every `[CommandMethod]` it finds, the other builds the `IExtensionApplication` and calls `Initialize()`. `AutoCadScanSuppressor` replaces the event's backing delegate with a wrapper that drops assemblies loaded into a DevReload `IsolatedPluginContext` and forwards everything else untouched. The test is which load context the assembly is in, so nothing DevReload does not own is ever affected.
+`AutoCadScanSuppressor` replaces that event's backing delegate with a wrapper. The wrapper returns without forwarding when the assembly's load context is a DevReload `IsolatedPluginContext`, and forwards every other assembly to the original subscribers. Plugin dependencies resolve into the same load context, so they take the same path. `Install()` runs from `DevReloaderCommands.Initialize()` before any plugin loads; `Restore()` runs at shutdown.
 
-`CommandRegistrar` then enumerates the assembly's exported types itself and registers each `[CommandMethod]` through the removable `Utils.AddCommand` path, which is what makes reload work.
+A plugin therefore needs no marker class, and one that carries `[assembly: CommandClass(typeof(NoCommands))]` behaves the same as one that does not.
 
-Existing markers are harmless. `CommandRegistrar` ignores `[assembly: CommandClass]` and always scans all exported types, so a plugin that still carries one keeps working unchanged.
+Assemblies loaded outside DevReload are unaffected. A `NETLOAD`ed DLL lands in the default load context, the wrapper forwards it, and AutoCAD registers its commands.
 
-If DevReload cannot install the suppressor (a future AutoCAD renaming the field it depends on), it says so on the command line at startup and leaves AutoCAD's scan alone. On that version plugins need the marker back.
+If the suppressor cannot install, DevReload writes a warning to the command line at startup and AutoCAD's scan stays in place. Plugins on that AutoCAD version need `[assembly: CommandClass(typeof(NoCommands))]` pointing at an empty class.
 
 ## AcadEventManager
 
