@@ -169,6 +169,7 @@ Multiple documents can have independent subscriptions. Closed documents are clea
 
 ## Implement IExtensionApplication
 
+`NOTE:` In current version it no longer needs to be a static field that holds references as the Initialize() is now run on our ALC resident instance and NOT on Autocad's internal static instance which we don't have access to.
 Your plugin class implements `IExtensionApplication`. Palettes must be cleaned up in `Terminate()`. Use `AcadEventManager` for event subscriptions:
 
 ```csharp
