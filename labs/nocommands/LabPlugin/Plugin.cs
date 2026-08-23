@@ -32,6 +32,18 @@ namespace LabPlugin
             File.AppendAllText(Path, "    plugin| " + s + Environment.NewLine);
     }
 
+    /// <summary>
+    /// Declared before <see cref="Ext"/>, so GetExportedTypes returns it first.
+    /// A loader that scans for the first IExtensionApplication picks this one; a
+    /// loader that reads the assembly-level attribute picks Ext. The log says
+    /// which happened.
+    /// </summary>
+    public class Decoy : IExtensionApplication
+    {
+        public void Initialize() => Log.W($"Decoy.Initialize hash={GetHashCode()}");
+        public void Terminate() => Log.W($"Decoy.Terminate  hash={GetHashCode()}");
+    }
+
     public class Ext : IExtensionApplication
     {
         public void Initialize() => Log.W($"Ext.Initialize   hash={GetHashCode()}");
