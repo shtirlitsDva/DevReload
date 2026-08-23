@@ -1,6 +1,6 @@
 # DevReload: Hot-Reload Plugin System for AutoCAD 2025
 
-DevReload lets you edit, build, and reload AutoCAD .NET plugins without restarting AutoCAD. It uses .NET 8 collectible `AssemblyLoadContext` to isolate plugins and stream-loads DLLs so your build can rebuild freely while the old plugin runs. The `{PREFIX}DEV` command builds your project, tears down the old plugin, and loads the new one in one step.
+DevReload lets you edit, build, and reload AutoCAD .NET plugins without restarting AutoCAD. It uses .NET 8 collectible `AssemblyLoadContext` to isolate plugins and stream-loads DLLs so your build can rebuild freely while the old plugin runs. The `{PREFIX}DEV` command builds your project, tears down the old plugin, and loads the new one in one step. There's also an Autocad palette where you can manage plugins you want to reload which is opened by `DEVRELOAD` command.
 
 You register a plugin by picking its `.csproj` file; the plugin name is the project-file name. Builds run directly via `dotnet build`. No Visual Studio instance is required. A per-plugin **Debug/Release toggle** lets you switch build configurations from the management palette.
 
