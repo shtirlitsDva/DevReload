@@ -98,21 +98,54 @@ Note: this was written by AI. I don't know which of these are needed.
 </PropertyGroup>
 ```
 
-### Plugin Instance Lifetime
+## Plugin Instance Lifetime
 
 DevReload constructs one instance of your `IExtensionApplication` per load. It calls `Initialize()` on that instance once the assembly is loaded, and `Terminate()` on the same instance before the ALC is unloaded. Fields written in `Initialize()` are readable in `Terminate()`. Instance and static fields both work.
 
-### Command Registration
+## Command Registration
 
 `CommandRegistrar` scans the loaded assembly's exported types and registers every `[CommandMethod]` it finds with `Utils.AddCommand`. Commands registered that way can be removed with `Utils.RemoveCommand`, which DevReload does before it unloads the ALC. `[assembly: CommandClass]` has no effect on this scan; all exported types are read either way.
 
-AutoCAD scans assemblies as they load. It raises each one on the static event `Autodesk.AutoCAD.Runtime.ExtensionLoader.DeferredAssemblyLoad`, where two subscribers handle it. One registers every `[CommandMethod]` in the assembly. The other constructs the `IExtensionApplication` and calls `Initialize()` on it.
+### What AutoCAD does when an assembly loads
 
-`AutoCadScanSuppressor` replaces that event's backing delegate with a wrapper. The wrapper returns without forwarding when the assembly's load context is a DevReload `IsolatedPluginContext`, and forwards every other assembly to the original subscribers. Plugin dependencies resolve into the same load context, so they take the same path. `Install()` runs from `DevReloaderCommands.Initialize()` before any plugin loads; `Restore()` runs at shutdown.
+`Autodesk.AutoCAD.Runtime.ExtensionLoader` subscribes to `AppDomain.CurrentDomain.AssemblyLoad` at startup. For each assembly it reads the AssemblyRef table and sets two flags: `MayHaveExtensionApplication` if the assembly references `acdbmgd`, `MayHaveCommands` if it references `accoremgd`. A plugin references both. The assembly is then raised on the public static event `ExtensionLoader.DeferredAssemblyLoad`, which has two subscribers:
+
+- `Runtime.ExtensionLoader.OnDeferredAssemblyLoad` reads `[assembly: ExtensionApplication]`, or takes the first exported `IExtensionApplication` if the attribute is absent, constructs it and calls `Initialize()` on it. That instance goes into a static table keyed by assembly, which is emptied when AutoCAD exits.
+- `ApplicationServices.ExtensionLoader.OnExtensionLoad` collects the types named by `[assembly: CommandClass]`, or every exported type if there are none, and registers each `[CommandMethod]` and `[LispFunction]` it finds on them.
+
+Both run synchronously inside `AssemblyLoadContext.LoadFromStream`, before `PluginHost.Load` returns.
+
+### What the suppressor does
+
+The event carries no cancellation flag, so `AutoCadScanSuppressor` works on its delegate directly. `Install()` reads the private static backing field `m_deferredAssemblyLoadEventHandler`, keeps the delegate it finds there, and writes a wrapper in its place:
+
+```csharp
+DeferredAssemblyLoadEventHandler filtered = (sender, e) =>
+{
+    if (AssemblyLoadContext.GetLoadContext(e.LoadedAssembly) is IsolatedPluginContext)
+        return;
+
+    original?.Invoke(sender, e);
+};
+```
+
+The test is which load context the assembly is in. It does not depend on when the assembly loaded, on which thread, or on a flag raised and lowered around the load, so there is no interval in which an unrelated assembly can be caught. Plugin dependencies resolve through the plugin's own `IsolatedPluginContext` and are covered by the same test.
+
+`Install()` runs from `DevReloaderCommands.Initialize()`, before any plugin loads. It throws if the field is absent or is not a `DeferredAssemblyLoadEventHandler`.
+
+`Restore()` runs at shutdown and writes the original delegate back only if the field still holds the wrapper. Anything subscribing to the event after DevReload starts is combined onto the wrapper rather than into it, and Civil 3D's macro recorder does exactly that. Overwriting the field unconditionally would discard those subscribers.
+
+### What follows from it
+
+- Commands come from `CommandRegistrar` alone, through `Utils.AddCommand`, so unloading can take them off the command stack again.
+- AutoCAD constructs no instance of the plugin, so `PluginManager.LoadCore` calls `Initialize()` itself. The call is guarded on `AutoCadScanSuppressor.IsActive`, so an install that failed cannot produce two calls.
+- No part of the plugin reaches AutoCAD's static table, so nothing outside the ALC holds a reference into it and it is collected after unload.
 
 Assemblies loaded outside DevReload are unaffected. A `NETLOAD`ed DLL lands in the default load context, the wrapper forwards it, and AutoCAD registers its commands from the exported types.
 
 If the suppressor cannot install, DevReload writes a warning to the command line at startup and AutoCAD's scan stays in place. Plugins on that AutoCAD version need `[assembly: CommandClass(typeof(NoCommands))]` pointing at an empty class.
+
+`docs/oarx-port/nocommands-interception.md` records the decompiled sources these facts come from, and `labs/nocommands/` is the lab that verifies them against a running AutoCAD.
 
 ## AcadEventManager
 
