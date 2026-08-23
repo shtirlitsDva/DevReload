@@ -54,6 +54,26 @@ namespace DevReload
 
             Editor? ed = Application.DocumentManager.MdiActiveDocument?.Editor;
 
+            // Take AutoCAD's assembly scan off DevReload-loaded plugins before
+            // anything can load one. Without this the host registers their
+            // commands permanently and builds its own plugin instance, which is
+            // what the NoCommands marker used to work around.
+            try
+            {
+                AutoCadScanSuppressor.Install();
+                DevReloadLog.Info("AutoCAD assembly scan suppressed for DevReload ALCs");
+            }
+            catch (System.Exception ex)
+            {
+                // Loud, not silent: without suppression every plugin needs the
+                // marker back, and PluginManager must not call Initialize.
+                DevReloadLog.Info($"Scan suppression FAILED: {ex}");
+                ed?.WriteMessage(
+                    "\nDevReload: WARNING - could not suppress AutoCAD's assembly scan " +
+                    $"({ex.Message}) Plugins on this AutoCAD version still need the " +
+                    "NoCommands marker class.");
+            }
+
             // Bring up the Acad.Rpc host before any plugin loads. The
             // host is alive for the whole AutoCAD session; plugins
             // register/unregister their tools into its single
@@ -148,6 +168,7 @@ namespace DevReload
             // Native modules must leave with the session too; a mapped .arx would
             // otherwise keep its file locked for whatever runs next.
             try { OarxManager.UnloadAll(); } catch { }
+            try { AutoCadScanSuppressor.Restore(); } catch { }
         }
 
         // ── Management palette ────────────────────────────────────────

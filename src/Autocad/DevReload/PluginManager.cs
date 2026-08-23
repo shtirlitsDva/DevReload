@@ -481,10 +481,16 @@ namespace DevReload
 
         /// <summary>
         /// Core load sequence: tear down old → load new from stream →
-        /// register commands.
-        /// AutoCAD calls IExtensionApplication.Initialize() automatically.
-        /// DevReload does NOT call Initialize().
+        /// initialize → register commands.
         /// </summary>
+        /// <remarks>
+        /// DevReload owns the whole lifecycle now. It used to be split: AutoCAD's
+        /// assembly scan built its own instance of the plugin and called
+        /// Initialize on that one, while DevReload built a second instance and
+        /// called Terminate on it, so instance state set up in Initialize was
+        /// invisible to Terminate. AutoCadScanSuppressor removes AutoCAD from the
+        /// picture, leaving one instance that gets both halves.
+        /// </remarks>
         private static void LoadCore(
             PluginRegistration reg, string dllPath, IReloadProgress ui)
         {
@@ -523,17 +529,23 @@ namespace DevReload
 
             var plugin = reg.Host.Load(dllPath, sharedNames);
 
+            // Before the commands, matching the order AutoCAD's own scan used:
+            // it initialized the plugin during LoadFromStream, and DevReload
+            // registered commands afterwards. Guarded, because when suppression
+            // is off the host has already called this and a second call would
+            // initialize the plugin twice.
+            if (AutoCadScanSuppressor.IsActive)
+                plugin.Initialize();
+
             if (reg.Registrar != null)
             {
                 reg.Registrar.RegisterFromAssembly(reg.Host.LoadedAssembly!);
             }
 
             // Register the freshly-loaded assembly's tools into the
-            // unified MCP surface. AutoCAD has already invoked the
-            // plugin's IExtensionApplication.Initialize() via its
-            // AssemblyLoad-event-driven scan; tool registration happens
-            // immediately after so the new tools become visible to the
-            // agent as soon as Initialize completes its work.
+            // unified MCP surface. This runs after Initialize, so a plugin
+            // that sets up state its tools need has already done so by the
+            // time the agent can see them.
             try
             {
                 if (AcadRpcHost.IsInitialized && reg.Host.LoadedAssembly != null)

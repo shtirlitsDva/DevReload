@@ -19,12 +19,17 @@ namespace LabPlugin
 
     internal static class Log
     {
-        internal static void W(string s)
-        {
-            string? path = Environment.GetEnvironmentVariable("DEVRELOAD_LAB_LOG");
-            if (path == null) throw new InvalidOperationException("DEVRELOAD_LAB_LOG unset");
-            File.AppendAllText(path, "    plugin| " + s + Environment.NewLine);
-        }
+        /// <summary>
+        /// A fixed path, not an env var: this plugin also gets loaded by an
+        /// AutoCAD that DevReload's MCP bridge started, which does not inherit
+        /// the shell environment the lab script runs in.
+        /// </summary>
+        internal static readonly string Path = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "devreload-lab.log");
+
+        internal static void W(string s) =>
+            File.AppendAllText(Path, "    plugin| " + s + Environment.NewLine);
     }
 
     public class Ext : IExtensionApplication

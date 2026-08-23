@@ -192,6 +192,45 @@ namespace LabProbe
             catch (System.Exception ex) { W("FATAL: " + ex); }
         }
 
+        /// <summary>
+        /// Does Utils.AddCommand throw when AutoCAD already registered that name?
+        /// It matters beyond the rejected option-2: CommandRegistrar registers
+        /// under the assembly SIMPLE name while AutoCAD uses the FULL name, so if
+        /// different groups are tolerated a failed suppression would produce a
+        /// silent duplicate instead of a loud error.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void DuplicateProbe()
+        {
+            var alc = new LabAlc("dup");
+            Assembly asm;
+            using (var ms = new MemoryStream(File.ReadAllBytes(Path.Combine(_dir, "LabPlugin.dll"))))
+                asm = alc.LoadFromStream(ms);
+
+            W($"           AutoCAD registered LABPING : {CmdRegistered("LABPING")}");
+            W($"           AutoCAD's group            : \"{asm.FullName}\"");
+            W($"           CommandRegistrar's group   : \"{asm.GetName().Name}\"");
+
+            TryAdd(asm.GetName().Name!, "different group");
+            TryAdd(asm.FullName!, "same group   ");
+
+            Utils.RemoveCommand(asm.FullName!, "LABPING");
+        }
+
+        private static void TryAdd(string group, string label)
+        {
+            try
+            {
+                Utils.AddCommand(group, "LABPING", "LABPING", CommandFlags.Modal, () => { });
+                W($"           AddCommand, {label} : succeeded");
+                Utils.RemoveCommand(group, "LABPING");
+            }
+            catch (System.Exception ex)
+            {
+                W($"           AddCommand, {label} : {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
         private static void RunCore()
         {
             bool startingUp = (bool)Field(RuntimeLoader, "m_startingUp").GetValue(null)!;
@@ -227,6 +266,10 @@ namespace LabProbe
                 if (CmdRegistered("LABPING")) Utils.RemoveCommand(def.FullName!, "LABPING");
             }
             finally { RestoreFilter(); }
+
+            W("");
+            W("-- 5. registering a command AutoCAD already auto-registered");
+            DuplicateProbe();
 
             W("");
             W("== done ==");

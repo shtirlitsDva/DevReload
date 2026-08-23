@@ -9,9 +9,12 @@ itself?
 <answer>
 Yes. Two mechanisms work; both are proven live in `labs/nocommands/`.
 
-One of them also fixes a defect this research turned up: **DevReload leaks the
-collectible ALC on every reload today**, marker or no marker. See
-`<the-leak>`.
+**Option 1 is implemented** in `src/Autocad/DevReload/AutoCadScanSuppressor.cs`.
+Plugins no longer need the marker. See `<live-verification>` for the run against
+the real code rather than the lab harness.
+
+It also fixes a defect this research turned up: DevReload leaked the collectible
+ALC on every reload, marker or no marker. See `<the-leak>`.
 </answer>
 
 <how-autocad-actually-does-it>
@@ -132,7 +135,18 @@ removes a command AutoCAD auto-registered. The group name for a
    dual-instance wart stays.
 3. The ALC still leaks (`<the-leak>`).
 
-It also leaves a brief window in which the command is registered twice.
+It also leaves a window in which the command is registered twice, once by
+AutoCAD under the assembly full name and once by `CommandRegistrar` under the
+assembly simple name. That is survivable but only by accident: `Utils.AddCommand`
+discards the `Acad::ErrorStatus` the command stack returns, so a duplicate is
+silently accepted. `CommandClass.AddCommand`, AutoCAD's own path, wraps the same
+call in `Interop.Check` and **does** throw `eDuplicateKey`. That asymmetry is
+where the classic symptom comes from: the throw is raised by AutoCAD's scan on
+the second reload, not by DevReload's registration on the first.
+
+The same asymmetry is why option 1 fails loudly at startup instead of quietly at
+registration time. If the suppressor could not install and DevReload registered
+anyway, `Utils.AddCommand` would not complain.
 </option-2-unregister-afterwards>
 
 <rejected>
@@ -235,6 +249,18 @@ Line 4 is the safety check: with the filter installed, an assembly loaded into
 the **default** ALC is still processed by AutoCAD exactly as before. The filter
 touches only what DevReload owns.
 
+The same run repeated under two more conditions, byte-identical results both
+times:
+
+* **Civil 3D profile** (`acad.exe /product C3D`). Same two subscribers, same
+  outcomes. The approach is not sensitive to the vertical.
+* **From start-up**, with the probe autoloaded as an ApplicationPlugins bundle so
+  it ran from `IExtensionApplication.Initialize` with
+  `ExtensionLoader.m_startingUp = True`. That is the branch DevReload's
+  `loadOnStartup` plugins go through, and `ProcessDeferred` dispatches
+  differently there. A permanent filter is immune to it, because the decision is
+  per-assembly rather than per-moment.
+
 Two earlier revisions of this lab were wrong and were discarded. The first held
 a live local reference to the ALC across the GC, so "still alive" measured the
 harness, not AutoCAD. The second reported holder counts and lisp state as
@@ -243,29 +269,77 @@ deltas now, and the scenarios are ordered so the process-global lisp name is
 never pre-set by an earlier scenario.
 </the-lab>
 
-<what-changes-in-devreload>
-Only if you take option 1. Scope, for your call:
-
+<what-changed-in-devreload>
 | module | change |
 | --- | --- |
-| new, `DevReload/Loader/AutoCadScanSuppressor.cs` | install/restore the filter; hard-fail if the field is gone |
-| `DevReloaderCommands.Initialize` / `Terminate` | install / restore |
-| `PluginManager.LoadCore` | call `plugin.Initialize()` after load — AutoCAD no longer does |
+| new, `DevReload/AutoCadScanSuppressor.cs` | install/restore the filter; throws rather than degrade quietly if the field is gone |
+| `DevReloaderCommands.Initialize` / `Terminate` | install / restore; a failed install is reported on the command line |
+| `PluginManager.LoadCore` | calls `plugin.Initialize()` after load, guarded on `IsActive` so a failed install does not double-initialize |
 | `CommandRegistrar` | unchanged; it already ignores `[assembly: CommandClass]` and scans all exported types |
-| `README.md`, `skills/acd-agentic-dev/SKILL.md` | drop the marker requirement; correct the "permanent, no public API to remove" claim |
+| `README.md`, `skills/acd-agentic-dev/SKILL.md` | marker requirement dropped; the "permanent, no public API to remove" claim corrected |
 
-`NoCommands` markers in existing plugins stay harmless — `CommandRegistrar`
-already ignores the attribute.
-</what-changes-in-devreload>
+`NoCommands` markers in existing plugins stay harmless, because
+`CommandRegistrar` ignores the attribute either way.
+</what-changed-in-devreload>
+
+<live-verification>
+Against the published bundle in a real Civil 3D session, using `LabPlugin` — the
+unprepared plugin, no marker — registered as an ordinary DevReload plugin.
+
+Loaded once, then reloaded three times. All four succeeded. Under the previous
+code the second reload would have thrown `eDuplicateKey`.
+
+The plugin's own log, one line per lifecycle call:
+
+```
+Ext.Initialize   hash=11726308
+Ext.Terminate    hash=11726308
+Ext.Initialize   hash=25653181
+Ext.Terminate    hash=25653181
+Ext.Initialize   hash=44904986
+Ext.Terminate    hash=44904986
+Ext.Initialize   hash=36098836
+LABPING invoked
+```
+
+Every `Initialize` is paired with a `Terminate` **on the same instance hash**,
+exactly one per load. That is the dual-instance problem gone: one object gets
+both halves. `LABPING invoked` is the command `CommandRegistrar` registered.
+
+Reflecting into the host afterwards, with the plugin still loaded:
+
+```
+handlers          DevReload.AutoCadScanSuppressor+<>c__DisplayClass5_0.<Install>b__0
+                  Autodesk.AutoCAD.MacroRecorderUi.ThisApplication.domain_AssemblyLoad
+acdbmgd holders   no LabPlugin, no Acd.Mcp
+accoremgd holders no LabPlugin, no Acd.Mcp
+live plugin ALCs  PluginIsolated::Acd.Mcp.dll
+                  PluginIsolated::LabPlugin.dll
+LABPING           ARXCmd
+```
+
+Four `LabPlugin` ALCs were created across the load and three reloads. **One is
+alive.** The other three were collected, which is the leak fix on real reloads
+rather than in the harness. After unloading, `LabPlugin`'s ALC is gone entirely
+and `LABPING` reads `NoneCmd`.
+
+The handler list also shows something the lab never produced: Civil 3D's
+`MacroRecorderUi` subscribed to the event **after** DevReload installed, so it
+combined onto the wrapper instead of sitting inside it. Two consequences, both
+already handled. That late subscriber is not filtered, which is fine because it
+does not register commands. And the field is no longer reference-equal to the
+wrapper, so `Restore()` deliberately leaves it alone rather than overwriting the
+field and dropping the macro recorder.
+</live-verification>
 
 <separate-findings>
 Reported, not acted on.
 
-* `README.md:122` and `skills/acd-agentic-dev/SKILL.md:263` both assert that
-  AutoCAD's auto-registrations cannot be removed. Disproved above regardless of
-  which option you pick.
-* `PluginManager.cs:485` comments that DevReload does not call `Initialize()`
-  because AutoCAD does. True today, and the reason for the dual-instance wart.
-* `labs/` is untracked and now contains build output (`bin/`, `obj/`, `stage/`,
-  `lab.log`, `lab.scr`). Needs `.gitignore` treatment before any commit.
+All three are now fixed; kept here as the record.
+
+* `README.md` and `skills/acd-agentic-dev/SKILL.md` both asserted that AutoCAD's
+  auto-registrations cannot be removed. Disproved by `<option-2-unregister-afterwards>`.
+* `PluginManager.LoadCore` documented that DevReload does not call
+  `Initialize()` because AutoCAD does. That was the dual-instance wart.
+* `labs/` build output needed `.gitignore` treatment.
 </separate-findings>

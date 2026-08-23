@@ -63,17 +63,9 @@ Then type `DEVRELOAD` to open the management palette.
 
 ## Quickstart
 
-**Prepare your plugin** (prevents stale commands on reload):
-Add an empty `NoCommands` marker class that prevents AutoCAD from registering `[CommandMethod]`s when the DLL is (re)loaded.
-`DevReload` manages registering and unregistering of commands on load/reload via `Utils.AddCommand`, which is the only mechanism AutoCAD exposes that supports unregistration.
+**Prepare your plugin**: implement `IExtensionApplication`. That is the whole requirement. No marker class, no attributes beyond `[assembly: ExtensionApplication(...)]`.
 
-```csharp
-[assembly: CommandClass(typeof(YourNamespace.NoCommands))]
-// ...
-public class NoCommands { }
-```
-
-Your plugin must implement `IExtensionApplication`. DevReload calls `Terminate()` when unloading a plugin before reloading. All event subscriptions and other AutoCAD references must be unregistered in `Terminate()` using *static* fields, because AutoCAD and DevReload create separate instances of your class (see Dual-Instance Problem below).
+DevReload calls `Initialize()` after load and `Terminate()` before unloading, both on the same instance. Every event subscription and other AutoCAD reference the plugin takes must be released in `Terminate()`, or the old build stays alive alongside the new one (see [One Instance, Both Halves](#one-instance-both-halves)).
 
 **Use DevReload**
 
@@ -108,30 +100,23 @@ Note: this was written by AI. I don't know which of these are needed.
 
 Plugins built for DevReload are always loaded through DevReload. There is no separate `NETLOAD` release path to keep working.
 
-### Dual-Instance Problem & Static State
+### One Instance, Both Halves
 
-AutoCAD and DevReload create separate instances of your plugin class:
-- **Instance A**: AutoCAD's `ExtensionLoader` scans every loaded assembly for `IExtensionApplication` implementations, instantiates each one, and calls `Initialize()`. (`[assembly: ExtensionApplication(typeof(MyPlugin))]` is the explicit form; the scan happens regardless.)
-- **Instance B**: DevReload creates its own instance via `Activator.CreateInstance` so it can hold a typed reference, and calls `Terminate()` on that instance when unloading.
+DevReload creates your plugin class once, calls `Initialize()` on it after load, and `Terminate()` on that same object when unloading. Instance fields set up in `Initialize()` are visible to `Terminate()`.
 
-These are different objects. Instance fields set in `Initialize()` on Instance A are NOT visible to `Terminate()` on Instance B. **Use static fields for anything cleanup touches.** The `AcadEventManager` (see below) solves this for event subscriptions.
+This used to be split. AutoCAD's `ExtensionLoader` built its own instance and called `Initialize()` on that one, while DevReload built a second instance and called `Terminate()` on it, so instance state never survived the round trip and everything cleanup touched had to be `static`. `AutoCadScanSuppressor` takes AutoCAD's scan off DevReload-loaded assemblies, which retires the problem. Static fields still work; they are no longer required.
 
-### CommandClass Suppression
+### No NoCommands Marker
 
-AutoCAD's `ExtensionLoader` scans loaded assemblies for `[CommandMethod]` attributes and registers them via `CommandClass.AddCommand`. These registrations are permanent. No public API removes them. On reload, this causes `eDuplicateKey` errors and stale commands.
+Plugins need no `[assembly: CommandClass(typeof(NoCommands))]` marker class. Earlier versions of DevReload required one.
 
-Suppress the scan by pointing it at an empty marker class (canonical name `NoCommands`):
+AutoCAD raises every loaded assembly on the public static event `Autodesk.AutoCAD.Runtime.ExtensionLoader.DeferredAssemblyLoad`, and two subscribers act on it: one registers every `[CommandMethod]` it finds, the other builds the `IExtensionApplication` and calls `Initialize()`. `AutoCadScanSuppressor` replaces the event's backing delegate with a wrapper that drops assemblies loaded into a DevReload `IsolatedPluginContext` and forwards everything else untouched. The test is which load context the assembly is in, so nothing DevReload does not own is ever affected.
 
-```csharp
-[assembly: CommandClass(typeof(MyNamespace.NoCommands))]
+`CommandRegistrar` then enumerates the assembly's exported types itself and registers each `[CommandMethod]` through the removable `Utils.AddCommand` path, which is what makes reload work.
 
-namespace MyNamespace
-{
-    public class NoCommands { }
-}
-```
+Existing markers are harmless. `CommandRegistrar` ignores `[assembly: CommandClass]` and always scans all exported types, so a plugin that still carries one keeps working unchanged.
 
-With this attribute present, AutoCAD scans ONLY `NoCommands` and finds zero commands. DevReload's `CommandRegistrar` then enumerates the assembly's exported types itself and registers each `[CommandMethod]` via the removable `Utils.AddCommand` path. Apply this unconditionally.
+If DevReload cannot install the suppressor (a future AutoCAD renaming the field it depends on), it says so on the command line at startup and leaves AutoCAD's scan alone. On that version plugins need the marker back.
 
 ## AcadEventManager
 
@@ -155,7 +140,7 @@ Multiple documents can have independent subscriptions. Closed documents are clea
 
 ## Implement IExtensionApplication
 
-Your plugin class implements `IExtensionApplication`. Palettes must be stored in a static field and cleaned up in `Terminate()`. Use `AcadEventManager` for event subscriptions:
+Your plugin class implements `IExtensionApplication`. Palettes must be cleaned up in `Terminate()`. Use `AcadEventManager` for event subscriptions:
 
 ```csharp
 using Autodesk.AutoCAD.Runtime;
@@ -163,12 +148,9 @@ using Autodesk.AutoCAD.Windows;
 using EventManager;
 
 [assembly: ExtensionApplication(typeof(MyNamespace.MyPlugin))]
-[assembly: CommandClass(typeof(MyNamespace.NoCommands))]
 
 namespace MyNamespace
 {
-    public class NoCommands { }
-
     public class MyPlugin : IExtensionApplication
     {
         private static PaletteSet? _palette;

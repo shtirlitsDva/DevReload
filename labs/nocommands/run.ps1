@@ -28,7 +28,7 @@ foreach ($p in @("$stage\LabPlugin.dll", "$stage\LabPluginMarked.dll", $probe)) 
     if (-not (Test-Path $p)) { throw "build output missing: $p" }
 }
 
-$log = "$here\lab.log"
+$log = "$env:LOCALAPPDATA\devreload-lab.log"
 if (Test-Path $log) { Remove-Item $log }
 
 $scr = "$here\lab.scr"
