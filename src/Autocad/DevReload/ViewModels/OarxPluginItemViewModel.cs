@@ -36,6 +36,28 @@ namespace DevReload.ViewModels
         public string Name => Entry.Name;
         public string CommandPrefix => (Entry.CommandPrefix ?? Entry.Name).ToUpperInvariant();
 
+        /// <summary>Compact "props 2 · pre 2 · post 1" chip so the group's
+        /// build properties and companions are visible without opening the edit
+        /// form. Empty (chip collapsed) when the group has none.</summary>
+        public string CompanionsSummary
+        {
+            get
+            {
+                int props = Entry.MsBuildProperties.Count;
+                int pre = Entry.PreloadNativeModules.Count + Entry.PreloadManagedAssemblies.Count;
+                int post = Entry.PostloadManagedAssemblies.Count;
+                return props + pre + post == 0 ? "" : $"props {props} · pre {pre} · post {post}";
+            }
+        }
+
+        public bool HasCompanions => CompanionsSummary.Length > 0;
+
+        public string CompanionsToolTip => string.Join("\n",
+            Entry.MsBuildProperties.Select(p => $"prop  {p}")
+            .Concat(Entry.PreloadNativeModules.Select(p => $"pre (native)  {p}"))
+            .Concat(Entry.PreloadManagedAssemblies.Select(p => $"pre (managed)  {p}"))
+            .Concat(Entry.PostloadManagedAssemblies.Select(p => $"post (managed)  {p}")));
+
         [ObservableProperty] private bool _isLoaded;
         [ObservableProperty] private string _status = "Unloaded";
         [ObservableProperty] private string _modules = "";
@@ -122,6 +144,10 @@ namespace DevReload.ViewModels
         {
             IsLoaded = OarxManager.IsRegistered(Name) && OarxManager.IsLoaded(Name);
             Status = IsLoaded ? "Loaded" : "Unloaded";
+            // A config edit staged while the group was loaded — the next
+            // load/reload applies it; say so until then.
+            if (OarxManager.HasPendingConfig(Name))
+                Status += " · config change staged";
             Modules = string.Join("  ->  ", OarxManager.DescribeModules(Name));
             RefreshWorktrees();
         }

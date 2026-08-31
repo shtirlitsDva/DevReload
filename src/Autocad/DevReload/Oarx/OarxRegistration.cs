@@ -106,6 +106,18 @@ namespace DevReload.Oarx
         public List<(string Group, string Name, Autodesk.AutoCAD.Internal.CommandCallback Callback)>
             LoaderCommands { get; } = new();
 
+        /// <summary>The plugins.json entry this registration was built from.
+        /// Kept so a config resync can tell an EDITED entry from an unchanged
+        /// one — diffing by name alone is how hand-edited companions used to be
+        /// silently ignored until restart.</summary>
+        public required OarxPluginEntry Source { get; set; }
+
+        /// <summary>A config edit that arrived while the group was LOADED. A
+        /// loaded group's registration is never yanked out from under its mapped
+        /// modules; the pending entry is applied at the next Load/Reload, when
+        /// the modules are out anyway.</summary>
+        public OarxPluginEntry? PendingEntry { get; set; }
+
         /// <summary>The solution directory MSBuild must be told about, worktree-aware.</summary>
         public string SolutionDirectory =>
             Path.GetDirectoryName(EffectiveSolutionPath)!;

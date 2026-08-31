@@ -44,6 +44,22 @@ namespace DevReload.Oarx
     public record RegisterOarxResult(bool Success, string Name, string Message);
 
     /// <summary>
+    /// A partial update of one OARX group. Null = keep the current value; an
+    /// EMPTY list = clear. The group's name is its identity and is not
+    /// patchable (rename = remove + re-add); the solution is likewise fixed —
+    /// it defines what the group IS, not how it behaves.
+    /// </summary>
+    public sealed record OarxPluginPatch(
+        string? CommandPrefix = null,
+        bool? LoadOnStartup = null,
+        string? BuildConfiguration = null,
+        IReadOnlyList<string>? ProjectFilePaths = null,
+        IReadOnlyList<string>? MsBuildProperties = null,
+        IReadOnlyList<string>? PreloadNativeModules = null,
+        IReadOnlyList<string>? PreloadManagedAssemblies = null,
+        IReadOnlyList<string>? PostloadManagedAssemblies = null);
+
+    /// <summary>
     /// plugins.json ↔ <see cref="OarxManager"/> bridge. Mirrors
     /// <c>PluginConfigLoader</c>'s role for .NET plugins and shares its file.
     /// </summary>
@@ -53,7 +69,15 @@ namespace DevReload.Oarx
         /// its {PREFIX}LOAD / DEV / UNLOAD commands.</summary>
         internal static void RegisterFromConfig(OarxPluginEntry entry)
         {
-            var reg = new OarxRegistration
+            OarxManager.Add(BuildRegistration(entry));
+            OarxManager.RegisterLoaderCommands(
+                entry.Name, entry.CommandPrefix ?? entry.Name);
+        }
+
+        /// <summary>Project one config entry into a live registration. Shared by
+        /// registration and by the pending-config swap in the manager.</summary>
+        internal static OarxRegistration BuildRegistration(OarxPluginEntry entry) =>
+            new()
             {
                 Name = entry.Name,
                 SolutionFilePath = entry.SolutionFilePath,
@@ -66,12 +90,8 @@ namespace DevReload.Oarx
                 PreloadNativeModules = entry.PreloadNativeModules.ToList(),
                 PreloadManagedAssemblies = entry.PreloadManagedAssemblies.ToList(),
                 PostloadManagedAssemblies = entry.PostloadManagedAssemblies.ToList(),
+                Source = entry,
             };
-
-            OarxManager.Add(reg);
-            OarxManager.RegisterLoaderCommands(
-                entry.Name, entry.CommandPrefix ?? entry.Name);
-        }
 
         /// <summary>
         /// Add an OARX plugin to plugins.json and register it live. Sole entry
@@ -134,6 +154,65 @@ namespace DevReload.Oarx
             PluginConfigLoader.Save(config);
             RegisterFromConfig(entry);
             return new RegisterOarxResult(true, resolved, "registered");
+        }
+
+        /// <summary>
+        /// Patch an existing OARX group in plugins.json AND live. Sole entry
+        /// point for "edit an OARX group" — the palette's edit form and the MCP
+        /// update tool both come here, mirroring <see cref="RegisterNewPlugin"/>.
+        /// </summary>
+        /// <remarks>
+        /// No unload is required: properties apply at the next BUILD, companions
+        /// at the next LOAD, so a loaded group takes the patch immediately and
+        /// nothing running is disturbed. The one exception is the module list —
+        /// a loaded group's modules cannot be swapped under it, so that part is
+        /// staged and applied at the next Load/Reload.
+        /// </remarks>
+        public static OarxActionResult UpdatePlugin(string name, OarxPluginPatch patch)
+        {
+            // Validate before touching anything — a bad patch must not
+            // half-apply.
+            if (patch.MsBuildProperties != null)
+                foreach (var p in patch.MsBuildProperties)
+                {
+                    int eq = p.IndexOf('=');
+                    if (eq <= 0)
+                        return new OarxActionResult(name, false, OarxManager.IsLoaded(name),
+                            $"MSBuild property '{p}' is not Name=Value");
+                }
+            if (patch.ProjectFilePaths != null)
+            {
+                if (patch.ProjectFilePaths.Count == 0)
+                    return new OarxActionResult(name, false, OarxManager.IsLoaded(name),
+                        "a group cannot have zero modules — unregister it instead");
+                foreach (var p in patch.ProjectFilePaths)
+                    if (!File.Exists(p))
+                        return new OarxActionResult(name, false, OarxManager.IsLoaded(name),
+                            $"project not found: {p}");
+            }
+
+            var config = PluginConfigLoader.Load();
+            var entry = config?.OarxPlugins.FirstOrDefault(
+                p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (config == null || entry == null)
+                return new OarxActionResult(name, false, false, "not in plugins.json");
+
+            bool prefixChanged = patch.CommandPrefix != null &&
+                !string.Equals(entry.CommandPrefix ?? entry.Name,
+                    patch.CommandPrefix, StringComparison.OrdinalIgnoreCase);
+
+            if (patch.CommandPrefix != null)
+                entry.CommandPrefix = patch.CommandPrefix.Trim().ToUpperInvariant();
+            if (patch.LoadOnStartup != null) entry.LoadOnStartup = patch.LoadOnStartup.Value;
+            if (patch.BuildConfiguration != null) entry.BuildConfiguration = patch.BuildConfiguration;
+            if (patch.ProjectFilePaths != null) entry.ProjectFilePaths = patch.ProjectFilePaths.ToList();
+            if (patch.MsBuildProperties != null) entry.MsBuildProperties = patch.MsBuildProperties.ToList();
+            if (patch.PreloadNativeModules != null) entry.PreloadNativeModules = patch.PreloadNativeModules.ToList();
+            if (patch.PreloadManagedAssemblies != null) entry.PreloadManagedAssemblies = patch.PreloadManagedAssemblies.ToList();
+            if (patch.PostloadManagedAssemblies != null) entry.PostloadManagedAssemblies = patch.PostloadManagedAssemblies.ToList();
+
+            PluginConfigLoader.Save(config);
+            return OarxManager.ApplyEntry(entry, prefixChanged);
         }
 
         public static bool UpdateEntry(string name, Action<OarxPluginEntry> mutate)

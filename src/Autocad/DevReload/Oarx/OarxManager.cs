@@ -48,6 +48,7 @@ namespace DevReload.Oarx
         string BuildConfiguration,
         string SolutionFilePath,
         string? ActiveWorktreePath,
+        bool ConfigPending,
         IReadOnlyList<OarxModuleInfo> Modules);
 
     /// <summary>
@@ -107,6 +108,7 @@ namespace DevReload.Oarx
                 BuildConfiguration: reg.BuildConfiguration,
                 SolutionFilePath: reg.SolutionFilePath,
                 ActiveWorktreePath: reg.ActiveWorktreePath,
+                ConfigPending: reg.PendingEntry != null,
                 Modules: reg.Modules.Select(m => new OarxModuleInfo(
                     ProjectFilePath: m.ProjectFilePath,
                     ProjectName: m.ProjectName,
@@ -128,6 +130,119 @@ namespace DevReload.Oarx
             _plugins.Remove(name);
             Unregistered?.Invoke(name);
             return true;
+        }
+
+        // ── Config edits ──────────────────────────────────────────────
+
+        /// <summary>True when the live registration was built from an entry
+        /// equal to <paramref name="entry"/> — the diff a config resync needs.
+        /// Serialize-compare: cheap, and it cannot drift from the entry shape.</summary>
+        public static bool MatchesSource(string name, OarxPluginEntry entry) =>
+            _plugins.TryGetValue(name, out var reg) &&
+            System.Text.Json.JsonSerializer.Serialize(reg.Source) ==
+            System.Text.Json.JsonSerializer.Serialize(entry);
+
+        public static bool HasPendingConfig(string name) =>
+            _plugins.TryGetValue(name, out var reg) && reg.PendingEntry != null;
+
+        /// <summary>Stage a changed on-disk entry against a group whose modules
+        /// are currently mapped. Applied by the next Load/Reload; the running
+        /// registration is never yanked out from under loaded modules.</summary>
+        internal static void StagePendingEntry(string name, OarxPluginEntry entry)
+        {
+            if (!_plugins.TryGetValue(name, out var reg)) return;
+            reg.PendingEntry = entry;
+            StateChanged?.Invoke(name);
+        }
+
+        /// <summary>
+        /// Take a freshly saved config entry live. Everything except the module
+        /// list applies immediately regardless of load state — properties are
+        /// read at the next build, companions at the next load. A changed module
+        /// list on a group with mapped modules is staged instead.
+        /// </summary>
+        internal static OarxActionResult ApplyEntry(OarxPluginEntry entry, bool prefixChanged)
+        {
+            if (!_plugins.TryGetValue(entry.Name, out var reg))
+                return new OarxActionResult(entry.Name, true, false,
+                    "updated plugins.json (group is not registered live)");
+
+            bool modulesChanged = !reg.Modules.Select(m => m.ProjectFilePath)
+                .SequenceEqual(entry.ProjectFilePaths, StringComparer.OrdinalIgnoreCase);
+
+            if (modulesChanged && (reg.IsLoaded || reg.IsPartiallyLoaded))
+            {
+                // Safe fields live now, module list at the next cycle.
+                PatchLiveFields(reg, entry, prefixChanged);
+                reg.PendingEntry = entry;
+                StateChanged?.Invoke(entry.Name);
+                return new OarxActionResult(entry.Name, true, reg.IsLoaded,
+                    "updated — the changed module list applies at the next load/reload " +
+                    "(the current modules stay mapped until then)");
+            }
+
+            if (modulesChanged)
+            {
+                SwapRegistration(reg, entry);
+                return new OarxActionResult(entry.Name, true, false, "updated");
+            }
+
+            PatchLiveFields(reg, entry, prefixChanged);
+            reg.Source = entry;
+            reg.PendingEntry = null;
+            StateChanged?.Invoke(entry.Name);
+            return new OarxActionResult(entry.Name, true, reg.IsLoaded,
+                reg.IsLoaded
+                    ? "updated — properties apply at the next build, companions at the next load"
+                    : "updated");
+        }
+
+        private static void PatchLiveFields(
+            OarxRegistration reg, OarxPluginEntry entry, bool prefixChanged)
+        {
+            reg.BuildConfiguration = entry.BuildConfiguration;
+            reg.MsBuildProperties.Clear();
+            reg.MsBuildProperties.AddRange(entry.MsBuildProperties);
+            reg.PreloadNativeModules.Clear();
+            reg.PreloadNativeModules.AddRange(entry.PreloadNativeModules);
+            reg.PreloadManagedAssemblies.Clear();
+            reg.PreloadManagedAssemblies.AddRange(entry.PreloadManagedAssemblies);
+            reg.PostloadManagedAssemblies.Clear();
+            reg.PostloadManagedAssemblies.AddRange(entry.PostloadManagedAssemblies);
+
+            if (prefixChanged)
+            {
+                foreach (var (group, cmd, _) in reg.LoaderCommands)
+                    Utils.RemoveCommand(group, cmd);
+                reg.LoaderCommands.Clear();
+                RegisterLoaderCommands(entry.Name, entry.CommandPrefix ?? entry.Name);
+            }
+        }
+
+        /// <summary>Replace a registration wholesale from its entry. Only legal
+        /// with nothing mapped — the callers guarantee that.</summary>
+        private static OarxRegistration SwapRegistration(
+            OarxRegistration reg, OarxPluginEntry entry)
+        {
+            foreach (var (group, cmd, _) in reg.LoaderCommands)
+                Utils.RemoveCommand(group, cmd);
+            reg.LoaderCommands.Clear();
+
+            var fresh = OarxConfigLoader.BuildRegistration(entry);
+            _plugins[entry.Name] = fresh;
+            RegisterLoaderCommands(entry.Name, entry.CommandPrefix ?? entry.Name);
+            StateChanged?.Invoke(entry.Name);
+            return fresh;
+        }
+
+        /// <summary>Apply a staged config entry once the group's modules are
+        /// out. Returns the registration the cycle must continue with.</summary>
+        private static OarxRegistration ConsumePending(
+            OarxRegistration reg, IReloadProgress ui)
+        {
+            if (reg.PendingEntry == null) return reg;
+            ui.Line("applying the config change that was staged while the group was loaded");
+            return SwapRegistration(reg, reg.PendingEntry);
         }
 
         // ── Lifecycle ─────────────────────────────────────────────────
@@ -155,7 +270,24 @@ namespace DevReload.Oarx
                     RunPreloads(reg, ui);
                     RunPostloads(reg, ui);
                     ui.Finish("already loaded", true);
-                    return Result(reg, true, "already loaded (companions ensured)");
+                    return Result(reg, true, reg.PendingEntry == null
+                        ? "already loaded (companions ensured)"
+                        : "already loaded (companions ensured); a staged config " +
+                          "change applies at the next reload");
+                }
+
+                // A staged config edit applies now — the group is not (fully)
+                // loaded, so the module list is free to change. A partial load
+                // is emptied first so no old module stays mapped unmanaged.
+                if (reg.PendingEntry != null)
+                {
+                    if (reg.IsPartiallyLoaded)
+                    {
+                        ui.Step(ReloadStep.Unload);
+                        ui.Line("clearing a partially-loaded group");
+                        UnloadModules(reg, ui);
+                    }
+                    reg = ConsumePending(reg, ui);
                 }
 
                 ui.Step(ReloadStep.Preflight);
@@ -215,6 +347,16 @@ namespace DevReload.Oarx
 
                 ui.Step(ReloadStep.Unload);
                 UnloadModules(reg, ui);
+
+                // With the OLD module set out, a staged config edit can land.
+                // The new module list needs its own target resolution before
+                // the writability check below can speak about it.
+                if (reg.PendingEntry != null)
+                {
+                    reg = ConsumePending(reg, ui);
+                    var reResolve = ResolveTargets(reg, ui);
+                    if (reResolve != null) { ui.Finish(reResolve, false); return Result(reg, false, reResolve); }
+                }
 
                 // The unload said it succeeded. This is where that is checked
                 // against the only authority that matters — whether the linker
@@ -477,6 +619,7 @@ namespace DevReload.Oarx
         {
             if (!_plugins.TryGetValue(name, out var reg)) return false;
             reg.BuildConfiguration = buildConfiguration;
+            reg.Source.BuildConfiguration = buildConfiguration;
             OarxConfigLoader.UpdateEntry(name, e => e.BuildConfiguration = buildConfiguration);
             StateChanged?.Invoke(name);
             return true;
@@ -488,6 +631,7 @@ namespace DevReload.Oarx
         {
             if (!_plugins.TryGetValue(name, out var reg)) return false;
             reg.ActiveWorktreePath = worktreePath;
+            reg.Source.ActiveWorktreePath = worktreePath;
             OarxConfigLoader.UpdateEntry(name, e => e.ActiveWorktreePath = worktreePath);
             StateChanged?.Invoke(name);
             return true;

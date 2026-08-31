@@ -82,6 +82,23 @@ namespace DevReload.Rpc
                 preloadManagedAssemblies, postloadManagedAssemblies);
 
         [AcadRpcTool, RunOnAcadMainThread,
+         Description("Patch an existing OARX group in plugins.json AND live — the edit counterpart of register_new_plugin, so companions or properties can change without an unregister/re-register round-trip. Every parameter except name is optional: omitted = keep the current value, an EMPTY array = clear. The group's name and solution are its identity and cannot be patched (rename = unregister + register). No unload is needed: msbuildProperties apply at the group's next BUILD and the companion lists at its next LOAD. The one exception is projectFilePaths on a group whose modules are mapped — that change is STAGED and applied automatically at the next load/reload (the response says so, and list_plugins shows configPending until then).")]
+        public static OarxActionResult UpdatePlugin(
+            [Description("Registered OARX group name as in plugins.json")] string name,
+            [Description("New command prefix for the generated {prefix}LOAD/DEV/UNLOAD commands; the old commands are replaced immediately")] string? commandPrefix = null,
+            [Description("Auto-load at AutoCAD startup")] bool? loadOnStartup = null,
+            [Description("Any configuration the solution declares")] string? buildConfiguration = null,
+            [Description("Replacement module .vcxproj list, in LOAD order (.dbx before .arx). Staged if the group is currently loaded.")] string[]? projectFilePaths = null,
+            [Description("Replacement 'Name=Value' MSBuild property list")] string[]? msbuildProperties = null,
+            [Description("Replacement list of native DLLs pinned by full path before the modules load")] string[]? preloadNativeModules = null,
+            [Description("Replacement list of managed assemblies loaded before the modules")] string[]? preloadManagedAssemblies = null,
+            [Description("Replacement list of managed assemblies loaded after the modules (an interop here PINS its dbx — the group stops being reloadable once it has run)")] string[]? postloadManagedAssemblies = null) =>
+            OarxConfigLoader.UpdatePlugin(name, new OarxPluginPatch(
+                commandPrefix, loadOnStartup, buildConfiguration, projectFilePaths,
+                msbuildProperties, preloadNativeModules,
+                preloadManagedAssemblies, postloadManagedAssemblies));
+
+        [AcadRpcTool, RunOnAcadMainThread,
          Description("Remove an OARX group from the live registry AND from plugins.json. Does NOT unload it first — call unload_plugin before this if the modules are loaded, otherwise they stay mapped with no registration to manage them.")]
         public static OarxActionResult Unregister(
             [Description("Registered OARX group name")] string name) =>

@@ -10,6 +10,42 @@
                      dictionary to resolve when the assembly is loaded by AutoCAD. -->
                 <ResourceDictionary Source="../Themes/Theme.xaml"/>
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- One row of an Advanced list (property or companion path):
+                 shared by all four lists — the row knows its own collection,
+                 so a single set of move/remove commands serves them all. -->
+            <DataTemplate x:Key="OarxAdvancedRow" DataType="{x:Type vm:OarxPathRow}">
+                <DockPanel Margin="0,0,0,2">
+                    <Button DockPanel.Dock="Right"
+                            Style="{StaticResource IconDangerBtn}"
+                            Content="X"
+                            Command="{Binding DataContext.RemoveOarxRowCommand,
+                                RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                            CommandParameter="{Binding}"
+                            ToolTip="Remove"/>
+                    <Button DockPanel.Dock="Right"
+                            Style="{StaticResource RowSurfaceBtn}"
+                            Content="▼"
+                            Margin="0,0,4,0"
+                            Command="{Binding DataContext.MoveOarxRowDownCommand,
+                                RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                            CommandParameter="{Binding}"
+                            ToolTip="Run later"/>
+                    <Button DockPanel.Dock="Right"
+                            Style="{StaticResource RowSurfaceBtn}"
+                            Content="▲"
+                            Margin="0,0,4,0"
+                            Command="{Binding DataContext.MoveOarxRowUpCommand,
+                                RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                            CommandParameter="{Binding}"
+                            ToolTip="Run earlier"/>
+                    <TextBlock Text="{Binding Display}"
+                               Style="{StaticResource PluginName}"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding Value}"/>
+                </DockPanel>
+            </DataTemplate>
         </ResourceDictionary>
     </UserControl.Resources>
 
@@ -28,14 +64,23 @@
             </StackPanel>
         </Border>
 
-        <!-- ── Add OARX form (collapsed by default) ──────────── -->
+        <!-- ── Add/Edit OARX form (collapsed by default) ─────── -->
         <Border DockPanel.Dock="Bottom"
                 Style="{StaticResource FormPanel}"
                 Margin="0,0,0,1"
                 Visibility="{Binding IsAddingOarx, Converter={StaticResource BoolToVis}}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="520">
             <StackPanel>
-                <TextBlock Text="Add OARX Group"
+                <TextBlock Text="{Binding OarxFormTitle}"
                            Style="{StaticResource SectionTitle}" Margin="0,0,0,8"/>
+
+                <!-- Editing a group whose modules are mapped right now: nothing
+                     running is disturbed, so say when the changes land. -->
+                <TextBlock Style="{StaticResource Hint}"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,8"
+                           Visibility="{Binding IsEditingLoadedOarx, Converter={StaticResource BoolToVis}}"
+                           Text="⚠ Group is loaded — property changes apply at the next build, companion changes at the next load, module-list changes at the next load/reload."/>
 
                 <TextBlock Text="Solution"
                            Style="{StaticResource Caption}" Margin="0,0,0,2"/>
@@ -97,6 +142,7 @@
                 <TextBlock Text="Group Name"
                            Style="{StaticResource Caption}" Margin="0,0,0,2"/>
                 <TextBox Text="{Binding NewOarxName, UpdateSourceTrigger=PropertyChanged}"
+                         IsEnabled="{Binding IsOarxNameEditable}"
                          Margin="0,0,0,6"/>
 
                 <TextBlock Text="Command Prefix (default: Name)"
@@ -108,14 +154,64 @@
                           IsChecked="{Binding NewOarxLoadOnStartup}"
                           Margin="0,0,0,8"/>
 
+                <!-- ── Advanced: MSBuild properties + companions ── -->
+                <Expander Header="Advanced" IsExpanded="False" Margin="0,0,0,8">
+                    <StackPanel Margin="0,6,0,0">
+                        <TextBlock Text="MSBuild properties (Name=Value)"
+                                   Style="{StaticResource Caption}" Margin="0,0,0,2"/>
+                        <ItemsControl ItemsSource="{Binding NewOarxProps}"
+                                      ItemTemplate="{StaticResource OarxAdvancedRow}"/>
+                        <DockPanel Margin="0,2,0,8">
+                            <Button DockPanel.Dock="Right"
+                                    Style="{StaticResource SurfaceBtn}"
+                                    Content="+ Property"
+                                    Margin="4,0,0,0"
+                                    Command="{Binding AddOarxPropCommand}"/>
+                            <TextBox Text="{Binding NewOarxPropDraft, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="e.g. NdhFastDevLoop=true"/>
+                        </DockPanel>
+
+                        <TextBlock Text="Preload — native DLLs (pinned by full path before the modules load)"
+                                   Style="{StaticResource Caption}"
+                                   TextWrapping="Wrap" Margin="0,0,0,2"/>
+                        <ItemsControl ItemsSource="{Binding NewOarxPreloadNative}"
+                                      ItemTemplate="{StaticResource OarxAdvancedRow}"/>
+                        <Button Style="{StaticResource SurfaceBtn}" Content="+ DLL"
+                                HorizontalAlignment="Left" Margin="0,2,0,8"
+                                Command="{Binding AddOarxPreloadNativeCommand}"/>
+
+                        <TextBlock Text="Preload — managed assemblies (loaded before the modules)"
+                                   Style="{StaticResource Caption}"
+                                   TextWrapping="Wrap" Margin="0,0,0,2"/>
+                        <ItemsControl ItemsSource="{Binding NewOarxPreloadManaged}"
+                                      ItemTemplate="{StaticResource OarxAdvancedRow}"/>
+                        <Button Style="{StaticResource SurfaceBtn}" Content="+ Assembly"
+                                HorizontalAlignment="Left" Margin="0,2,0,8"
+                                Command="{Binding AddOarxPreloadManagedCommand}"/>
+
+                        <TextBlock Text="Postload — managed assemblies (loaded after the modules)"
+                                   Style="{StaticResource Caption}"
+                                   TextWrapping="Wrap" Margin="0,0,0,2"/>
+                        <ItemsControl ItemsSource="{Binding NewOarxPostloadManaged}"
+                                      ItemTemplate="{StaticResource OarxAdvancedRow}"/>
+                        <Button Style="{StaticResource SurfaceBtn}" Content="+ Assembly"
+                                HorizontalAlignment="Left" Margin="0,2,0,2"
+                                Command="{Binding AddOarxPostloadManagedCommand}"/>
+                        <TextBlock Style="{StaticResource Hint}" TextWrapping="Wrap"
+                                   Margin="0,2,0,0"
+                                   Text="⚠ An interop that pins a dbx makes the group refuse unload — that is by design, not an error."/>
+                    </StackPanel>
+                </Expander>
+
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Style="{StaticResource SurfaceBtn}" Content="Cancel"
                             Command="{Binding CancelAddOarxCommand}"
                             Margin="0,0,8,0"/>
-                    <Button Style="{StaticResource AccentBtn}" Content="Add"
+                    <Button Style="{StaticResource AccentBtn}" Content="Save"
                             Command="{Binding ConfirmAddOarxCommand}"/>
                 </StackPanel>
             </StackPanel>
+            </ScrollViewer>
         </Border>
 
         <!-- ── Main content ──────────────────────────────────── -->
@@ -161,6 +257,15 @@
                                                 CommandParameter="{Binding Name}"
                                                 ToolTip="Unload and remove this OARX group"/>
 
+                                        <Button DockPanel.Dock="Right"
+                                                Style="{StaticResource RowSurfaceBtn}"
+                                                Content="✎"
+                                                Margin="0,0,4,0"
+                                                Command="{Binding DataContext.ShowEditOarxCommand,
+                                                    RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding Name}"
+                                                ToolTip="Edit this group — modules, prefix, MSBuild properties, companions"/>
+
                                         <ComboBox DockPanel.Dock="Right"
                                                   Style="{StaticResource WorktreeCombo}"
                                                   ItemsSource="{Binding Worktrees}"
@@ -190,6 +295,14 @@
                                                        Style="{StaticResource Caption}"
                                                        Margin="8,0,0,0"
                                                        VerticalAlignment="Center"/>
+                                            <Border Background="Transparent"
+                                                    Margin="8,0,0,0"
+                                                    VerticalAlignment="Center"
+                                                    ToolTip="{Binding CompanionsToolTip}"
+                                                    Visibility="{Binding HasCompanions, Converter={StaticResource BoolToVis}}">
+                                                <TextBlock Text="{Binding CompanionsSummary}"
+                                                           Style="{StaticResource Caption}"/>
+                                            </Border>
                                         </StackPanel>
                                     </DockPanel>
 
