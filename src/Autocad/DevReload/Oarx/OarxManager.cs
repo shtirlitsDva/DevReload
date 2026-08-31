@@ -146,8 +146,16 @@ namespace DevReload.Oarx
             {
                 if (reg.IsLoaded)
                 {
+                    // The modules may be resident without this group having run —
+                    // the dynamic linker keys on FILE NAME, so a demand-loaded
+                    // copy from another directory reads as "loaded" here. The
+                    // companions are idempotent, so deliver them regardless: a
+                    // load command's contract is "the whole stack is up", not
+                    // "the native half happened to be".
+                    RunPreloads(reg, ui);
+                    RunPostloads(reg, ui);
                     ui.Finish("already loaded", true);
-                    return Result(reg, true, "already loaded");
+                    return Result(reg, true, "already loaded (companions ensured)");
                 }
 
                 ui.Step(ReloadStep.Preflight);
@@ -173,7 +181,9 @@ namespace DevReload.Oarx
                 }
 
                 ui.Step(ReloadStep.Load);
+                RunPreloads(reg, ui);
                 LoadModules(reg, ui);
+                RunPostloads(reg, ui);
                 ui.Finish("loaded", true);
                 return Result(reg, true, "loaded");
             }
@@ -238,7 +248,9 @@ namespace DevReload.Oarx
                 }
 
                 ui.Step(ReloadStep.Load);
+                RunPreloads(reg, ui);
                 LoadModules(reg, ui);
+                RunPostloads(reg, ui);
                 ui.Finish("reloaded", true);
                 return Result(reg, true, "reloaded");
             }
@@ -347,7 +359,8 @@ namespace DevReload.Oarx
                     return $"project file not found: {proj}";
 
                 string? target = BuildService.QueryMsBuildProperty(
-                    proj, "TargetPath", reg.BuildConfiguration, Platform, solutionDir);
+                    proj, "TargetPath", reg.BuildConfiguration, Platform, solutionDir,
+                    reg.MsBuildProperties);
 
                 if (string.IsNullOrEmpty(target))
                     return $"MSBuild could not resolve TargetPath for '{m.ProjectName}' " +
@@ -359,6 +372,27 @@ namespace DevReload.Oarx
                 ui.Line($"{m.ProjectName} -> {Path.GetFileName(target)}");
             }
             return null;
+        }
+
+        /// <summary>Companions that come BEFORE the modules: full-path native pins
+        /// (so base-name references bind to the canonical copies) and managed
+        /// assemblies that must be running while a module initialises (a trace UI
+        /// listening for a dbx's load-time logs).</summary>
+        private static void RunPreloads(OarxRegistration reg, IReloadProgress ui)
+        {
+            foreach (var p in reg.PreloadNativeModules)
+                OarxCompanionHost.PinNative(p, ui);
+            foreach (var p in reg.PreloadManagedAssemblies)
+                OarxCompanionHost.LoadManaged(p, ui);
+        }
+
+        /// <summary>Companions that come AFTER the modules: managed assemblies
+        /// that import from a module and must not be the thing that maps it
+        /// (a mixed-mode interop over the group's dbx).</summary>
+        private static void RunPostloads(OarxRegistration reg, IReloadProgress ui)
+        {
+            foreach (var p in reg.PostloadManagedAssemblies)
+                OarxCompanionHost.LoadManaged(p, ui);
         }
 
         private static void LoadModules(OarxRegistration reg, IReloadProgress ui)
@@ -398,7 +432,7 @@ namespace DevReload.Oarx
                 // through ui.Line as well would report each line twice.
                 var result = BuildService.BuildProject(
                     proj, reg.BuildConfiguration, Platform, null, solutionDir,
-                    new PumpedBuildRunner(ui));
+                    new PumpedBuildRunner(ui), reg.MsBuildProperties);
 
                 if (!result.Success)
                     return ($"build FAILED for '{m.ProjectName}' " +

@@ -25,6 +25,19 @@ namespace DevReload.Oarx
         public string? ActiveWorktreePath { get; set; }
         public string? CommandPrefix { get; set; }
         public bool LoadOnStartup { get; set; }
+
+        /// <summary>Extra "Name=Value" MSBuild properties for this group's builds
+        /// and property queries.</summary>
+        public List<string> MsBuildProperties { get; set; } = new();
+
+        /// <summary>Native DLLs pinned by full path before the modules load.</summary>
+        public List<string> PreloadNativeModules { get; set; } = new();
+
+        /// <summary>Managed assemblies (NETLOAD-equivalent) loaded before the modules.</summary>
+        public List<string> PreloadManagedAssemblies { get; set; } = new();
+
+        /// <summary>Managed assemblies (NETLOAD-equivalent) loaded after the modules.</summary>
+        public List<string> PostloadManagedAssemblies { get; set; } = new();
     }
 
     /// <summary>Outcome of registering a new OARX plugin.</summary>
@@ -49,6 +62,10 @@ namespace DevReload.Oarx
                     .ToList(),
                 BuildConfiguration = entry.BuildConfiguration,
                 ActiveWorktreePath = entry.ActiveWorktreePath,
+                MsBuildProperties = entry.MsBuildProperties.ToList(),
+                PreloadNativeModules = entry.PreloadNativeModules.ToList(),
+                PreloadManagedAssemblies = entry.PreloadManagedAssemblies.ToList(),
+                PostloadManagedAssemblies = entry.PostloadManagedAssemblies.ToList(),
             };
 
             OarxManager.Add(reg);
@@ -66,7 +83,11 @@ namespace DevReload.Oarx
             string buildConfiguration = "Debug",
             string? name = null,
             string? commandPrefix = null,
-            bool loadOnStartup = false)
+            bool loadOnStartup = false,
+            IReadOnlyList<string>? msbuildProperties = null,
+            IReadOnlyList<string>? preloadNativeModules = null,
+            IReadOnlyList<string>? preloadManagedAssemblies = null,
+            IReadOnlyList<string>? postloadManagedAssemblies = null)
         {
             if (string.IsNullOrWhiteSpace(solutionFilePath))
                 return new RegisterOarxResult(false, "", "solutionFilePath is required");
@@ -103,6 +124,10 @@ namespace DevReload.Oarx
                 CommandPrefix = string.IsNullOrWhiteSpace(commandPrefix)
                     ? null : commandPrefix!.Trim().ToUpperInvariant(),
                 LoadOnStartup = loadOnStartup,
+                MsBuildProperties = msbuildProperties?.ToList() ?? new List<string>(),
+                PreloadNativeModules = preloadNativeModules?.ToList() ?? new List<string>(),
+                PreloadManagedAssemblies = preloadManagedAssemblies?.ToList() ?? new List<string>(),
+                PostloadManagedAssemblies = postloadManagedAssemblies?.ToList() ?? new List<string>(),
             };
 
             config.OarxPlugins.Add(entry);

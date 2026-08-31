@@ -83,6 +83,26 @@ namespace DevReload.Oarx
         public string BuildConfiguration { get; set; } = "Debug";
         public string? ActiveWorktreePath { get; set; }
 
+        /// <summary>Extra "Name=Value" MSBuild properties for this group's builds
+        /// and property queries (e.g. a repo's fast-dev-loop switch).</summary>
+        public List<string> MsBuildProperties { get; init; } = new();
+
+        /// <summary>Native DLLs mapped by FULL PATH before the modules load, so
+        /// later base-name references bind to these copies. Never unloaded.</summary>
+        public List<string> PreloadNativeModules { get; init; } = new();
+
+        /// <summary>Managed assemblies loaded (NETLOAD-equivalent, default ALC)
+        /// BEFORE the modules — e.g. a trace UI that must be listening while a
+        /// dbx logs during load. Never unloaded.</summary>
+        public List<string> PreloadManagedAssemblies { get; init; } = new();
+
+        /// <summary>Managed assemblies loaded AFTER the modules — e.g. a
+        /// mixed-mode interop that statically imports the dbx it wraps and must
+        /// not be the thing that maps it. Never unloaded, which also means a
+        /// postloaded interop PINS its dbx: a group with one loads fine but can
+        /// only be reloaded before the first postload has run.</summary>
+        public List<string> PostloadManagedAssemblies { get; init; } = new();
+
         public List<(string Group, string Name, Autodesk.AutoCAD.Internal.CommandCallback Callback)>
             LoaderCommands { get; } = new();
 

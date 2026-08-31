@@ -70,10 +70,16 @@ namespace DevReload.Rpc
             [Description("Any configuration the solution declares (default 'Debug')")] string buildConfiguration = "Debug",
             [Description("Group name. Defaults to the LAST module project's file name, which for a dbx+arx pair is the .arx — what the user calls the plugin.")] string? name = null,
             [Description("Optional command prefix for the generated {prefix}LOAD/DEV/UNLOAD commands. Defaults to the group name.")] string? commandPrefix = null,
-            [Description("Auto-load at AutoCAD startup")] bool loadOnStartup = false) =>
+            [Description("Auto-load at AutoCAD startup")] bool loadOnStartup = false,
+            [Description("Extra 'Name=Value' MSBuild properties applied to this group's builds AND its TargetPath queries (e.g. a repo's fast-dev-loop switch).")] string[]? msbuildProperties = null,
+            [Description("Native DLLs mapped by FULL PATH before the modules load, so later base-name references bind to these canonical copies (a shared logging hub). Never unloaded; a same-named module already mapped from elsewhere is warned about loudly.")] string[]? preloadNativeModules = null,
+            [Description("Managed assemblies loaded (NETLOAD-equivalent, default ALC) BEFORE the modules — e.g. a trace UI that must be listening while a dbx logs during load. Never unloaded; idempotent per assembly.")] string[]? preloadManagedAssemblies = null,
+            [Description("Managed assemblies loaded AFTER the modules — e.g. a mixed-mode interop that statically imports the group's dbx. Never unloaded, so such an interop PINS the dbx: the group loads fine but stops being reloadable once the postload has run.")] string[]? postloadManagedAssemblies = null) =>
             OarxConfigLoader.RegisterNewPlugin(
                 solutionFilePath, projectFilePaths, buildConfiguration,
-                name, commandPrefix, loadOnStartup);
+                name, commandPrefix, loadOnStartup,
+                msbuildProperties, preloadNativeModules,
+                preloadManagedAssemblies, postloadManagedAssemblies);
 
         [AcadRpcTool, RunOnAcadMainThread,
          Description("Remove an OARX group from the live registry AND from plugins.json. Does NOT unload it first — call unload_plugin before this if the modules are loaded, otherwise they stay mapped with no registration to manage them.")]

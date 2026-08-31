@@ -36,19 +36,41 @@ namespace DevReload.Core
             return $" -p:SolutionDir=\"{dir}\\\"";
         }
 
+        // Extra "Name=Value" MSBuild properties a registration carries (e.g. a
+        // repo's fast-dev-loop switch). Applied to the build AND to property
+        // queries — a property can steer where TargetPath lands, so resolving
+        // with one set and building with another would be the wrong-but-plausible
+        // split this code refuses elsewhere.
+        private static string ExtraPropsArg(IReadOnlyList<string>? extraProperties)
+        {
+            if (extraProperties == null || extraProperties.Count == 0) return "";
+            var sb = new StringBuilder();
+            foreach (var pair in extraProperties)
+            {
+                int eq = pair.IndexOf('=');
+                if (eq <= 0) continue; // no name — nothing sane to pass
+                string name = pair[..eq].Trim();
+                string value = pair[(eq + 1)..].Trim();
+                sb.Append($" -p:{name}=\"{value}\"");
+            }
+            return sb.ToString();
+        }
+
         public static BuildResult BuildProject(
             string csprojPath,
             string buildConfiguration,
             string? platform,
             Action<string>? progress,
             string? solutionDir = null,
-            IBuildProcessRunner? runner = null)
+            IBuildProcessRunner? runner = null,
+            IReadOnlyList<string>? extraProperties = null)
         {
             string projectDir = Path.GetDirectoryName(csprojPath)!;
             string projectName = Path.GetFileNameWithoutExtension(csprojPath);
 
             string? targetPath = QueryMsBuildProperty(
-                csprojPath, "TargetPath", buildConfiguration, platform, solutionDir);
+                csprojPath, "TargetPath", buildConfiguration, platform, solutionDir,
+                extraProperties);
 
             if (string.IsNullOrEmpty(targetPath))
             {
@@ -69,7 +91,7 @@ namespace DevReload.Core
                 psi = new ProcessStartInfo
                 {
                     FileName = "dotnet",
-                    Arguments = $"build \"{csprojPath}\" -c {buildConfiguration}{platformArg}",
+                    Arguments = $"build \"{csprojPath}\" -c {buildConfiguration}{platformArg}{ExtraPropsArg(extraProperties)}",
                 };
             }
             else
@@ -92,7 +114,7 @@ namespace DevReload.Core
                 psi = new ProcessStartInfo
                 {
                     FileName = msbuild,
-                    Arguments = $"\"{csprojPath}\"{restore} -p:Configuration={buildConfiguration}{msbPlatform}{SolutionDirArg(solutionDir)} -v:m -nologo",
+                    Arguments = $"\"{csprojPath}\"{restore} -p:Configuration={buildConfiguration}{msbPlatform}{SolutionDirArg(solutionDir)}{ExtraPropsArg(extraProperties)} -v:m -nologo",
                 };
             }
 
@@ -257,9 +279,10 @@ namespace DevReload.Core
             string propertyName,
             string buildConfiguration,
             string? platform,
-            string? solutionDir = null)
+            string? solutionDir = null,
+            IReadOnlyList<string>? extraProperties = null)
             => QueryMsBuild(csprojPath, $"-getProperty:{propertyName}",
-                            buildConfiguration, platform, solutionDir);
+                            buildConfiguration, platform, solutionDir, extraProperties);
 
         // Shared plumbing for -getProperty / -getItem. Both return on stdout and both
         // need the same toolchain selection and SolutionDir handling.
@@ -268,7 +291,8 @@ namespace DevReload.Core
             string getArg,
             string buildConfiguration,
             string? platform,
-            string? solutionDir)
+            string? solutionDir,
+            IReadOnlyList<string>? extraProperties = null)
         {
             try
             {
@@ -281,14 +305,14 @@ namespace DevReload.Core
                 if (IsSdkStyle(csprojPath))
                 {
                     fileName = "dotnet";
-                    arguments = $"msbuild \"{csprojPath}\" {getArg} -p:Configuration={buildConfiguration}{platformArg}";
+                    arguments = $"msbuild \"{csprojPath}\" {getArg} -p:Configuration={buildConfiguration}{platformArg}{ExtraPropsArg(extraProperties)}";
                 }
                 else
                 {
                     string? msbuild = LocateFrameworkMsBuild();
                     if (msbuild == null) return null;
                     fileName = msbuild;
-                    arguments = $"\"{csprojPath}\" {getArg} -p:Configuration={buildConfiguration}{platformArg}{SolutionDirArg(solutionDir)}";
+                    arguments = $"\"{csprojPath}\" {getArg} -p:Configuration={buildConfiguration}{platformArg}{SolutionDirArg(solutionDir)}{ExtraPropsArg(extraProperties)}";
                 }
 
                 var psi = new ProcessStartInfo
