@@ -6,8 +6,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{AE3D5623-4BC
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DevReload", "src\Autocad\DevReload\DevReload.csproj", "{F20D38A6-0AA5-13A5-7AA3-D587D97DBFFB}"
 EndProject
-Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "EventManager", "src\Autocad\EventManager\EventManager.shproj", "{B2C3D4E5-F6A7-8901-BCDE-F23456789012}"
-EndProject
 Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "WpfSHARED", "src\Shared\WpfSHARED\WpfSHARED.shproj", "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Acad.Rpc.Core", "src\Shared\Acad.Rpc.Core\Acad.Rpc.Core.csproj", "{BC4B33EF-ED84-44FF-BDAD-719AEA03A85A}"
@@ -200,7 +198,6 @@ Global
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{F20D38A6-0AA5-13A5-7AA3-D587D97DBFFB} = {AE3D5623-4BCD-4510-8529-B35335B4F56F}
-		{B2C3D4E5-F6A7-8901-BCDE-F23456789012} = {AE3D5623-4BCD-4510-8529-B35335B4F56F}
 		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890} = {AE3D5623-4BCD-4510-8529-B35335B4F56F}
 		{BC4B33EF-ED84-44FF-BDAD-719AEA03A85A} = {AE3D5623-4BCD-4510-8529-B35335B4F56F}
 		{5BA9A6E6-455B-4FC8-A241-8E743FDFF4BE} = {AE3D5623-4BCD-4510-8529-B35335B4F56F}
@@ -231,7 +228,6 @@ Global
 		src\Shared\DevReload.BuildCore\DevReload.BuildCore.projitems*{780b2a93-28cd-435a-8aaf-3d7cdac044ca}*SharedItemsImports = 13
 		src\Shared\DevReload.BuildCore\DevReload.BuildCore.projitems*{87bcbdd9-13a8-4a0b-b525-3b34662c1447}*SharedItemsImports = 5
 		src\Shared\WpfSHARED\WpfSHARED.projitems*{a1b2c3d4-e5f6-7890-abcd-ef1234567890}*SharedItemsImports = 13
-		src\Autocad\EventManager\EventManager.projitems*{b2c3d4e5-f6a7-8901-bcde-f23456789012}*SharedItemsImports = 13
 		src\Shared\DevReload.BuildCore\DevReload.BuildCore.projitems*{f20d38a6-0aa5-13a5-7aa3-d587d97dbffb}*SharedItemsImports = 5
 		src\Shared\WpfSHARED\WpfSHARED.projitems*{f20d38a6-0aa5-13a5-7aa3-d587d97dbffb}*SharedItemsImports = 5
 	EndGlobalSection

@@ -1,8 +1,7 @@
 # Migrate-SharedImports.ps1 — one-time migration for plugin repos that import
-# DevReload's shared projects (EventManager, WpfSHARED) by marketplace path.
+# DevReload's shared projects (WpfSHARED) by marketplace path.
 #
 # The 2026-06 repo restructure moved:
-#   src\EventManager  -> src\Autocad\EventManager
 #   src\WpfSHARED     -> src\Shared\WpfSHARED
 #
 # Run this ONCE, right after updating the devreload Claude plugin (which
@@ -20,8 +19,6 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $rewrites = @(
-    @{ Old = 'src\EventManager\EventManager.projitems'; New = 'src\Autocad\EventManager\EventManager.projitems' },
-    @{ Old = 'src/EventManager/EventManager.projitems'; New = 'src/Autocad/EventManager/EventManager.projitems' },
     @{ Old = 'src\WpfSHARED\WpfSHARED.projitems';       New = 'src\Shared\WpfSHARED\WpfSHARED.projitems' },
     @{ Old = 'src/WpfSHARED/WpfSHARED.projitems';       New = 'src/Shared/WpfSHARED/WpfSHARED.projitems' }
 )
@@ -35,7 +32,7 @@ foreach ($root in $Roots) {
         $new = $text
         foreach ($rw in $rewrites) {
             # Only touch devreload marketplace/repo imports, not unrelated
-            # projects that happen to have a src\EventManager of their own.
+            # projects that happen to have a src\WpfSHARED of their own.
             $new = $new -replace ('(devreload[^"'']*)' + [regex]::Escape($rw.Old)), ('$1' + $rw.New.Replace('\', '\\'))
         }
         if ($new -ne $text) {

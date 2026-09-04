@@ -149,7 +149,7 @@ If the suppressor cannot install, DevReload writes a warning to the command line
 
 ## AcadEventManager
 
-The `EventManager` shared project (`src/Autocad/EventManager/`) provides `AcadEventManager`, a centralized tracker for per-document event subscriptions. Import it as a shared project so it compiles directly into your plugin DLL (no extra dependency).
+DevReload no longer ships an `AcadEventManager`. The one this section describes lives in the `EventManager` shared project of the [Autocad-Civil3d-Tools](https://github.com/shtirlitsDva/Autocad-Civil3d-Tools) repo (`Acad-C3D-Tools/EventManager/`), which is its single source of truth; plugins in that ecosystem import it by relative path. If you do not have that repo, implement the pattern below yourself — it is a dozen lines.
 
 **Problem:** Subscribing to a `Document`-level event (like `CommandEnded`) on one document, then unsubscribing from `MdiActiveDocument` in `Terminate()` breaks if the user switched documents. Storing a `Document` reference breaks if that document is closed before `Terminate()`.
 

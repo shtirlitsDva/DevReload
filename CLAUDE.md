@@ -21,7 +21,7 @@ dotnet build src/Autocad/DevReload/DevReload.csproj -c Release -p:Platform=x64
 
 ## Repo Layout
 
-- `src/Autocad/` — AutoCAD host: `DevReload` (plugin + palette), `EventManager` (AcadEventManager shproj), `Acad.Process`, `Acad.Rpc.Bridge`
+- `src/Autocad/` — AutoCAD host: `DevReload` (plugin + palette), `Acad.Process`, `Acad.Rpc.Bridge`
 - `src/Shared/` — host-agnostic: `Acad.Rpc.Core` (MCP/RPC engine; legacy name, used by both hosts), `WpfSHARED` (shproj, owns Theme.xaml), `DevReload.BuildCore` (shproj: BuildService, GitWorktreeService, SharedAssembliesFile, IsolatedPluginContext)
 - `src/Revit/` — Revit host: `RevitDevReload.R22/R23/R24` (net48, legacy byte-loader) and `RevitDevReload.R25` (net8, collectible ALC) over `RevitDevReload.Shared.shproj`; `Revit.Cli` test/agent driver
 
@@ -86,7 +86,6 @@ The system has a clear layered architecture centered around plugin lifecycle man
 - `SharedAssembliesWindow` — dialog for configuring shared/mixed-mode assemblies
 
 **Shared projects** (compiled into consuming projects, no separate DLLs):
-- `EventManager` — `AcadEventManager` for per-document event subscription tracking with auto-cleanup
 - `WpfSHARED` — reusable WPF forms (`StringGridFormCaller`, `TGridFormCaller`) used as selection dialogs
 
 ## Key Design Decisions

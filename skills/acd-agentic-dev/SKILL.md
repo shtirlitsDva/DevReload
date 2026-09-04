@@ -325,7 +325,7 @@ Rich `Initialize()` / `Terminate()` bodies are the norm in production plugins (p
 </use-static-fields-for-cleanup-state>
 
 <event-subscriptions-via-acadeventmanager>
-DevReload ships `src/Autocad/EventManager/AcadEventManager.cs` as a **shared project** — import it via `<Import Project="..\..\src\Autocad\EventManager\EventManager.projitems" />` (or equivalent). It compiles into the plugin DLL, no NuGet, no extra dependency.
+`AcadEventManager` is not shipped by DevReload. It lives in the `EventManager` shared project of the [Autocad-Civil3d-Tools](https://github.com/shtirlitsDva/Autocad-Civil3d-Tools) repo (`Acad-C3D-Tools/EventManager/`) — its single source of truth — and plugins in that ecosystem import it by relative path, e.g. `<Import Project="..\..\..\..\..\shtirlitsDva\Autocad-Civil3d-Tools\Acad-C3D-Tools\EventManager\EventManager.projitems" Label="Shared" />`. It compiles into the plugin DLL, no NuGet, no extra dependency. Without that repo, implement the same tracking yourself.
 
 It exists because naive event cleanup breaks in two ways that are silent in Release and lethal in Debug:
 
@@ -343,7 +343,7 @@ MyPlugin.Events!.Track(doc, () => doc.CommandEnded -= OnCommandEnded);
 _events?.Dispose();   // unsubscribes every tracked handler across every document
 ```
 
-Use it for every event subscription touching AutoCAD's `Application.*`, `DocumentManager.*`, or per-`Document` events. If you find yourself writing a manual `List<Action> _unsubscribes` field, stop — that's what `AcadEventManager` is.
+Use this shape for every event subscription touching AutoCAD's `Application.*`, `DocumentManager.*`, or per-`Document` events. If you find yourself writing a manual `List<Action> _unsubscribes` field, stop — that's what `AcadEventManager` is.
 </event-subscriptions-via-acadeventmanager>
 </reload-safe-plugin-shape>
 
