@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -10,6 +10,8 @@ using DevReload.Core;
 using FlaUI.Core.AutomationElements;
 
 using RevitDevReload.Core;
+
+using DevReload.Diagnostics;
 
 namespace Revit.Cli
 {
@@ -255,8 +257,19 @@ namespace Revit.Cli
                     {
                         string name;
                         string type;
-                        try { name = el.Name; type = el.ControlType.ToString(); }
-                        catch { continue; }
+                        try
+                        {
+                            name = el.Name;
+                            type = el.ControlType.ToString();
+                        }
+                        catch (Exception ex)
+                        {
+                            // Category B - report, do not rethrow. Same as
+                            // DialogWatcher.SafeName: elements come and go while
+                            // the tree is being walked.
+                            DevReloadDiagnostics.Report("Program: UIA descendant read", ex);
+                            continue;
+                        }
                         if (!string.IsNullOrWhiteSpace(name))
                             Console.WriteLine($"  [{type}] '{name}'");
                     }

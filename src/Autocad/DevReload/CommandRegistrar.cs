@@ -1,9 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Autodesk.AutoCAD.Internal;
 using Autodesk.AutoCAD.Runtime;
+
+using DevReload.Diagnostics;
 
 namespace DevReload
 {
@@ -89,7 +91,15 @@ namespace DevReload
                     .DocumentManager.MdiActiveDocument;
                 doc?.Editor.WriteMessage("\n" + inner.ToString() + "\n");
             }
-            catch { }
+            catch (System.Exception reportEx)
+            {
+                // Category B — report, do not rethrow. This method IS the error
+                // reporter for a plugin command that already threw; throwing here
+                // would replace the plugin's exception with an editor failure and
+                // lose the original. The file sink still records both.
+                DevReloadDiagnostics.Report("CommandRegistrar.ReportException (editor write)", reportEx);
+                DevReloadDiagnostics.Report("CommandRegistrar: original command exception", inner);
+            }
         }
 
         /// <summary>
@@ -99,9 +109,17 @@ namespace DevReload
         /// </summary>
         public void UnregisterAll()
         {
+            // Collect-then-aggregate. Every command must be attempted even if one
+            // RemoveCommand throws: a command left registered holds a delegate into
+            // the collectible ALC, which is exactly what stops it being collected.
+            // The list is cleared regardless, for the same reason.
+            var failures = new List<System.Exception>();
             foreach (var cmd in _commands)
-                Utils.RemoveCommand(cmd.Group, cmd.GlobalName);
+                DevReloadDiagnostics.Step(failures,
+                    $"RemoveCommand({cmd.Group}.{cmd.GlobalName})",
+                    () => Utils.RemoveCommand(cmd.Group, cmd.GlobalName));
             _commands.Clear();
+            DevReloadDiagnostics.ThrowIfAny("CommandRegistrar.UnregisterAll", failures);
         }
     }
 }

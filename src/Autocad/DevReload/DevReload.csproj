@@ -67,4 +67,5 @@
 
 		<Message Importance="high" Text="Bundle created at $(BundleDir)" />
 	</Target>
+  <Import Project="..\..\Shared\DevReload.Diagnostics\DevReload.Diagnostics.projitems" Label="Shared" />
 </Project>

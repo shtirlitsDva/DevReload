@@ -9,6 +9,7 @@ using Autodesk.AutoCAD.Internal;
 using Autodesk.AutoCAD.Runtime;
 
 using DevReload.Core;
+using DevReload.Diagnostics;
 using DevReload.Hud;
 
 using Exception = System.Exception;
@@ -123,12 +124,19 @@ namespace DevReload.Oarx
         public static bool UnregisterInMemory(string name)
         {
             if (!_plugins.TryGetValue(name, out var reg)) return false;
-            try { UnloadModules(reg, NullReloadProgress.Instance); } catch (Exception) { }
+            // Category A. Reported and collected rather than discarded: a module
+            // that fails to unmap keeps its .arx file locked, which is exactly the
+            // failure worth knowing about. Rethrown after the registration is
+            // cleaned up, so the in-memory state stays consistent either way.
+            var failures = new List<Exception>();
+            DevReloadDiagnostics.Step(failures, $"{name}: UnloadModules",
+                () => UnloadModules(reg, NullReloadProgress.Instance));
             foreach (var (group, cmd, _) in reg.LoaderCommands)
                 Utils.RemoveCommand(group, cmd);
             reg.LoaderCommands.Clear();
             _plugins.Remove(name);
             Unregistered?.Invoke(name);
+            DevReloadDiagnostics.ThrowIfAny($"OarxManager.UnregisterInMemory({name})", failures);
             return true;
         }
 
@@ -468,16 +476,20 @@ namespace DevReload.Oarx
         public static OarxActionResult UnloadAll()
         {
             int n = 0;
+            // Category A. One group failing to unmap must not stop the others
+            // from being unmapped, but it must not vanish either — a still-mapped
+            // .arx keeps its file locked for whatever runs next.
+            var failures = new List<Exception>();
             foreach (var reg in _plugins.Values)
             {
-                try
-                {
-                    if (!reg.Modules.Any(m => m.IsLoaded)) continue;
-                    UnloadModules(reg, NullReloadProgress.Instance);
-                    n++;
-                }
-                catch (Exception) { /* best-effort during shutdown */ }
+                if (!reg.Modules.Any(m => m.IsLoaded)) continue;
+                int before = failures.Count;
+                DevReloadDiagnostics.Step(failures, $"{reg.Name}: UnloadModules",
+                    () => UnloadModules(reg, NullReloadProgress.Instance));
+                // Only count groups that actually came out.
+                if (failures.Count == before) n++;
             }
+            DevReloadDiagnostics.ThrowIfAny("OarxManager.UnloadAll", failures);
             return new OarxActionResult("*", true, false, $"unloaded {n} OARX group(s)");
         }
 
@@ -599,7 +611,13 @@ namespace DevReload.Oarx
                     ui.Line($"NOTE: another AutoCAD is running (pid {string.Join(", ", others)}). " +
                             "If it has these modules loaded, the rebuild will be blocked.");
             }
-            catch (Exception) { }
+            catch (Exception ex)
+            {
+                // Category B — report, do not rethrow. This only prints an advisory
+                // note before a build; failing to enumerate processes must not stop
+                // the build the user actually asked for.
+                DevReloadDiagnostics.Report("OarxManager: sibling-AutoCAD probe", ex);
+            }
         }
 
         // ── Settings ──────────────────────────────────────────────────

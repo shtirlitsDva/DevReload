@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -9,6 +9,8 @@ using System.Windows.Automation.Provider;
 using System.Windows.Interop;
 using System.Windows.Media;
 using UiMcp.Dto;
+
+using DevReload.Diagnostics;
 
 namespace UiMcp.Wpf;
 
@@ -113,7 +115,14 @@ public static class WpfInspector
             return ((int)Math.Round(tl.X), (int)Math.Round(tl.Y),
                     (int)Math.Round(br.X - tl.X), (int)Math.Round(br.Y - tl.Y));
         }
-        catch { return (0, 0, 0, 0); }
+        catch (Exception ex)
+        {
+            // Category B - report, do not rethrow. An element that cannot be
+            // mapped to screen coordinates reports an empty rect; the UI
+            // inspection continues over the rest of the tree.
+            DevReloadDiagnostics.Report("WpfInspector: screen rect", ex);
+            return (0, 0, 0, 0);
+        }
     }
 
     private static (string? text, string? value) PeerTextValue(Visual v)
@@ -128,7 +137,13 @@ public static class WpfInspector
             if (peer.GetPattern(PatternInterface.Value) is IValueProvider vp) value = vp.Value;
             return (text, value);
         }
-        catch { return (null, null); }
+        catch (Exception ex)
+        {
+            // Category B - same reason: one uncooperative automation peer must
+            // not abort the snapshot.
+            DevReloadDiagnostics.Report("WpfInspector: automation peer", ex);
+            return (null, null);
+        }
     }
 
     private static void DumpViewModel(object dc, Dictionary<string, string?> into)

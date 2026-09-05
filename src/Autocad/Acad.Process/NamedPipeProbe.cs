@@ -1,6 +1,8 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
+
+using DevReload.Diagnostics;
 
 namespace Acad.Process;
 
@@ -22,6 +24,13 @@ public static class NamedPipeProbe
                 .Any(f => string.Equals(
                     Path.GetFileName(f), pipeName, StringComparison.OrdinalIgnoreCase));
         }
-        catch { return false; }
+        catch (Exception ex)
+        {
+            // Category B - report, do not rethrow. "Cannot list the pipe
+            // namespace" and "the pipe is not there" are the same answer to the
+            // caller, but only one of them is worth investigating.
+            DevReloadDiagnostics.Report($"NamedPipeProbe.Exists({pipeName})", ex);
+            return false;
+        }
     }
 }

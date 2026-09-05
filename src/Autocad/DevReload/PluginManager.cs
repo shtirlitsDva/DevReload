@@ -11,6 +11,7 @@ using Autodesk.AutoCAD.Internal;
 using Autodesk.AutoCAD.Runtime;
 
 using DevReload.Core;
+using DevReload.Diagnostics;
 using DevReload.Hud;
 using DevReload.Rpc;
 
@@ -297,15 +298,21 @@ namespace DevReload
                 .Where(r => r.Host.IsLoaded)
                 .Select(r => r.PluginName)
                 .ToList();
+            // Same collect-then-aggregate contract as TearDown itself: one
+            // plugin failing to tear down must not stop the others from being
+            // torn down, but it must not disappear either.
+            var failures = new List<Exception>();
             foreach (var reg in _plugins.Values)
-            {
-                try { TearDown(reg); }
-                catch { /* best-effort during shutdown */ }
-            }
+                DevReloadDiagnostics.Step(failures, $"UnloadAll({reg.PluginName})",
+                    () => TearDown(reg));
             // UnloadAll doesn't route through Result(), so notify the palette
-            // here for every card that actually flipped to unloaded.
+            // here for every card that actually flipped to unloaded. Done before
+            // the rethrow below so the UI still reflects what did get unloaded.
             foreach (var name in loadedBefore)
                 PluginStateChanged?.Invoke(name);
+
+            DevReloadDiagnostics.ThrowIfAny("PluginManager.UnloadAll", failures);
+
             return new UnloadAllResult(
                 Total: _plugins.Count,
                 UnloadedNow: loadedBefore.Count,
@@ -562,27 +569,40 @@ namespace DevReload
 
         private static void TearDown(PluginRegistration reg)
         {
+            // Collect-then-aggregate. Every step below runs, every failure is
+            // reported the moment it happens, and the collected failures are
+            // rethrown at the end. Throwing on the first failure would skip the
+            // ALC unload and leak more than the previous silent version did.
+            //
+            // This is the chain that used to hide a plugin's Terminate() blowing
+            // up: the palette stayed on screen and nothing anywhere said why.
+            var failures = new List<Exception>();
+            string name = reg.PluginName;
+
             // RPC unregister fires FIRST so any inbound agent call lands
             // after the SDK has already removed the tool. The plugin's
             // Terminate then runs with no inbound RPC traffic possible.
-            try
+            DevReloadDiagnostics.Step(failures, $"{name}: RPC UnregisterAssembly", () =>
             {
                 if (AcadRpcHost.IsInitialized && reg.Host.LoadedAssembly != null)
                 {
                     AcadRpcHost.Current.UnregisterAssembly(reg.Host.LoadedAssembly);
                 }
-            }
-            catch { /* best-effort during teardown */ }
+            });
 
-            reg.Registrar?.UnregisterAll();
+            DevReloadDiagnostics.Step(failures, $"{name}: UnregisterAll commands",
+                () => reg.Registrar?.UnregisterAll());
 
             if (reg.Host.IsLoaded)
             {
-                try { reg.Host.Plugin?.Terminate(); }
-                catch { /* best-effort */ }
+                DevReloadDiagnostics.Step(failures, $"{name}: IExtensionApplication.Terminate",
+                    () => reg.Host.Plugin?.Terminate());
 
-                reg.Host.Unload();
+                DevReloadDiagnostics.Step(failures, $"{name}: ALC unload",
+                    () => reg.Host.Unload());
             }
+
+            DevReloadDiagnostics.ThrowIfAny($"TearDown({name})", failures);
         }
 
         private static string GetEffectiveCsprojPath(PluginRegistration reg)

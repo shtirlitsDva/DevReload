@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -8,6 +8,8 @@ using System.Runtime.InteropServices;
 using Autodesk.AutoCAD.Runtime;
 
 using Exception = System.Exception;
+
+using DevReload.Diagnostics;
 
 namespace DevReload.Oarx
 {
@@ -65,16 +67,33 @@ namespace DevReload.Oarx
         public static bool IsLoaded(string moduleFileName)
         {
             if (string.IsNullOrWhiteSpace(moduleFileName)) return false;
-            try { return Linker.IsModuleLoaded(moduleFileName); }
-            catch (Exception) { return false; }
+            try
+            {
+                return Linker.IsModuleLoaded(moduleFileName);
+            }
+            catch (Exception ex)
+            {
+                // Category B - report, do not rethrow. "Not loaded" is the safe
+                // answer, but a linker that cannot answer is worth knowing about:
+                // it makes a group look unloaded when it may not be.
+                DevReloadDiagnostics.Report($"OarxModuleHost.IsLoaded({moduleFileName})", ex);
+                return false;
+            }
         }
 
         /// <summary>Every module the linker currently reports, lowercased file
         /// names. Used for diagnostics, not for control flow.</summary>
         public static IReadOnlyList<string> LoadedModules()
         {
-            try { return Linker.GetLoadedModules().Cast<string>().ToList(); }
-            catch (Exception) { return Array.Empty<string>(); }
+            try
+            {
+                return Linker.GetLoadedModules().Cast<string>().ToList();
+            }
+            catch (Exception ex)
+            {
+                DevReloadDiagnostics.Report("OarxModuleHost.LoadedModules", ex);
+                return Array.Empty<string>();
+            }
         }
 
         /// <summary>
@@ -162,6 +181,8 @@ namespace DevReload.Oarx
                 using var fs = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.None);
                 return true;
             }
+            // Both mean the same thing and are the QUESTION being asked, not a
+            // fault: the file is still locked. Nothing to report.
             catch (IOException) { return false; }
             catch (UnauthorizedAccessException) { return false; }
         }
@@ -207,7 +228,12 @@ namespace DevReload.Oarx
                     .Any(m => string.Equals(
                         m.ModuleName, moduleFileName, StringComparison.OrdinalIgnoreCase));
             }
-            catch (Exception) { return false; }
+            catch (Exception ex)
+            {
+                DevReloadDiagnostics.Report(
+                    $"OarxModuleHost: module-table probe for {moduleFileName}", ex);
+                return false;
+            }
         }
 
         private static List<int> OtherAutocadProcesses()
@@ -220,7 +246,11 @@ namespace DevReload.Oarx
                     .Where(id => id != self)
                     .ToList();
             }
-            catch (Exception) { return new List<int>(); }
+            catch (Exception ex)
+            {
+                DevReloadDiagnostics.Report("OarxModuleHost.OtherAutocadProcesses", ex);
+                return new List<int>();
+            }
         }
 
         // A load failure is nearly always a missing sibling DLL. Saying which

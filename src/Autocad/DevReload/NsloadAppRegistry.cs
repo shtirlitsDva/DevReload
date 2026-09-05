@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using DevReload.Diagnostics;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -61,7 +62,13 @@ namespace DevReload
                         }
                     }
                 }
-                catch { /* best-effort — ignore corrupt config */ }
+                catch (Exception ex)
+                {
+                    // Category B — report, do not rethrow. One corrupt NSLOAD
+                    // config must not hide the apps declared by the others, but
+                    // the corruption itself should be recoverable from the log.
+                    DevReloadDiagnostics.Report("NsloadAppRegistry: config parse", ex);
+                }
             }
 
             return result;

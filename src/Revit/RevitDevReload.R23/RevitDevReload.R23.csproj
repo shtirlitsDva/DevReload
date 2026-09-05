@@ -53,4 +53,5 @@
 			<Generator>MSBuild:Compile</Generator>
 		</Page>
 	</ItemGroup>
+  <Import Project="..\..\Shared\DevReload.Diagnostics\DevReload.Diagnostics.projitems" Label="Shared" />
 </Project>

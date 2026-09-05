@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -9,6 +9,8 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Acad.Rpc.Core;
+
+using DevReload.Diagnostics;
 
 namespace Acad.Rpc.Bridge;
 
@@ -85,7 +87,7 @@ public sealed class BridgeRpcHost : IDisposable
         finally
         {
             lock (_stdoutGate) { _stdout = null; }
-            try { writer.Dispose(); } catch { }
+            DevReloadDiagnostics.DisposeReporting(writer, "BridgeRpcHost stdout writer");
         }
     }
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -9,6 +9,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+
+using DevReload.Diagnostics;
 
 namespace Acad.Rpc.Core;
 
@@ -105,7 +107,17 @@ public sealed class RpcCore
             hasSurface = SafeGetTypes(asm)
                 .Any(t => t.GetCustomAttribute<AcadRpcSurfaceAttribute>() != null);
         }
-        catch { return; }
+        catch (Exception ex)
+        {
+            // Category B - report, do not rethrow. Auto-discovery runs over every
+            // assembly in the process; one that cannot be reflected over is
+            // skipped rather than taking discovery down, but silently skipping a
+            // plugin that MEANT to contribute tools is exactly the bug this log
+            // now makes findable.
+            DevReloadDiagnostics.Report(
+                $"RpcCore: surface probe on {asm.GetName().Name}", ex);
+            return;
+        }
         if (hasSurface) RegisterAssembly(asm);
     }
 

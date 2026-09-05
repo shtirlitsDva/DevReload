@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -9,6 +9,8 @@ using Autodesk.Revit.UI;
 
 using RevitDevReload.Core;
 using RevitDevReload.Ui;
+
+using DevReload.Diagnostics;
 
 namespace RevitDevReload
 {
@@ -64,11 +66,16 @@ namespace RevitDevReload
 
         public Result OnShutdown(UIControlledApplication application)
         {
+            // Category A - every loaded plugin is unloaded even if one fails,
+            // then the collected failures are rethrown.
+            var failures = new List<Exception>();
             foreach (var reg in RevitPluginManager.All)
             {
                 if (reg.IsLoaded)
                 {
-                    try { RevitPluginManager.Unload(reg.Entry.Name); } catch { }
+                    var name = reg.Entry.Name;
+                    DevReloadDiagnostics.Step(failures, $"{name}: OnShutdown unload",
+                        () => RevitPluginManager.Unload(name));
                 }
             }
             _pipeServer?.Dispose();
@@ -104,8 +111,13 @@ namespace RevitDevReload
                 // The host owns the DevReload tab: created here at startup
                 // with the manager button in its own panel; plugin panels
                 // (DevReloadRibbonService) come and go beside it.
+                // NOT a swallowed error: the Revit API has no "does this tab
+                // exist?" query, so throwing ArgumentException IS how it answers.
+                // This fires on every startup after the first and means success,
+                // not failure — reporting it would be pure noise. Deliberately
+                // narrow: any other exception type still propagates.
                 try { application.CreateRibbonTab(DevReloadRibbonService.TabName); }
-                catch (Autodesk.Revit.Exceptions.ArgumentException) { /* exists */ }
+                catch (Autodesk.Revit.Exceptions.ArgumentException) { /* tab already exists */ }
 
                 RibbonPanel panel = application.CreateRibbonPanel(
                     DevReloadRibbonService.TabName, "Manager");

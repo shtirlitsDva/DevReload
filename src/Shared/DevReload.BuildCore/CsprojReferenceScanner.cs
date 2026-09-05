@@ -1,8 +1,10 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Xml.Linq;
+
+using DevReload.Diagnostics;
 
 namespace DevReload.Core
 {
@@ -38,8 +40,18 @@ namespace DevReload.Core
             string normBuildDir = NormalizeDir(buildDir);
 
             XDocument doc;
-            try { doc = XDocument.Load(csprojPath); }
-            catch { return result; }
+            try
+            {
+                doc = XDocument.Load(csprojPath);
+            }
+            catch (Exception ex)
+            {
+                // Category B - report, do not rethrow. An unparseable csproj
+                // yields no references rather than failing the caller, but the
+                // parse error is what explains a mysteriously empty result.
+                DevReloadDiagnostics.Report($"CsprojReferenceScanner.Load({csprojPath})", ex);
+                return result;
+            }
 
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
