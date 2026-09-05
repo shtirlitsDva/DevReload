@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using DevReload.Diagnostics;
 using System.Collections.Generic;
 using System.ComponentModel;
 using Acad.Rpc.Core;
@@ -120,7 +121,12 @@ public static class VisionTools
                 images.Add(new ToolImage(Convert.ToBase64String(s.Png)));
                 w = s.Width; h = s.Height;
             }
-            catch { /* a dropped frame must not abort the gesture */ }
+            catch (Exception ex)
+            {
+                // Category B — report, do not rethrow. A dropped frame must not
+                // abort the gesture being captured.
+                DevReloadDiagnostics.Report("VisionTools: frame capture", ex);
+            }
         });
 
         return new ToolResult

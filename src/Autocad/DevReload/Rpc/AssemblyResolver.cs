@@ -1,7 +1,9 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Reflection;
 using System.Runtime.Loader;
+
+using DevReload.Diagnostics;
 
 namespace DevReload.Rpc;
 
@@ -24,12 +26,12 @@ internal static class AssemblyResolver
         _probeDir = Path.GetDirectoryName(typeof(AssemblyResolver).Assembly.Location);
         if (string.IsNullOrEmpty(_probeDir))
         {
-            DevReloadLog.Info("AssemblyResolver: cannot determine probe dir; not installing");
+            DevReloadDiagnostics.Info("AssemblyResolver: cannot determine probe dir; not installing");
             return;
         }
         AssemblyLoadContext.Default.Resolving += OnResolving;
         _installed = true;
-        DevReloadLog.Info($"AssemblyResolver: installed, probing {_probeDir}");
+        DevReloadDiagnostics.Info($"AssemblyResolver: installed, probing {_probeDir}");
     }
 
     private static Assembly? OnResolving(AssemblyLoadContext alc, AssemblyName name)
@@ -40,12 +42,15 @@ internal static class AssemblyResolver
         try
         {
             var loaded = alc.LoadFromAssemblyPath(candidate);
-            DevReloadLog.Info($"AssemblyResolver: resolved {name.Name} {name.Version} ← {candidate}");
+            DevReloadDiagnostics.Info($"AssemblyResolver: resolved {name.Name} {name.Version} ← {candidate}");
             return loaded;
         }
         catch (Exception ex)
         {
-            DevReloadLog.Info($"AssemblyResolver: failed to load {candidate}: {ex.Message}");
+            // Reported, not swallowed. Returning null is correct — a probe miss
+            // just means this is not the assembly we can supply — but the reason
+            // must be recoverable from the log.
+            DevReloadDiagnostics.Report($"AssemblyResolver.LoadFromAssemblyPath({candidate})", ex);
             return null;
         }
     }

@@ -1,7 +1,9 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
+
+using DevReload.Diagnostics;
 
 namespace Acad.Process;
 
@@ -29,8 +31,17 @@ internal static class RotEnumerator
                 if (!seen.Add(displayName)) continue;
 
                 object value;
-                try { rot.GetObject(monikers[0], out value); }
-                catch { continue; }
+                try
+                {
+                    rot.GetObject(monikers[0], out value);
+                }
+                catch (Exception ex)
+                {
+                    // Category B - report, do not rethrow. One dead ROT entry
+                    // must not truncate the enumeration of the live ones.
+                    DevReloadDiagnostics.Report($"RotEnumerator.GetObject({displayName})", ex);
+                    continue;
+                }
 
                 yield return (displayName, value);
             }

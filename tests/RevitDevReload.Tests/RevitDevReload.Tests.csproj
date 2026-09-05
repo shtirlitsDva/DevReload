@@ -46,4 +46,5 @@
   </ItemGroup>
 
   <Import Project="..\..\src\Shared\DevReload.BuildCore\DevReload.BuildCore.projitems" Label="Shared" />
+  <Import Project="..\..\src\Shared\DevReload.Diagnostics\DevReload.Diagnostics.projitems" Label="Shared" />
 </Project>

@@ -1,9 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 
 using System.Text.Json.Nodes;
 
 using Acad.Process;
+
+using DevReload.Diagnostics;
 
 namespace Acad.Rpc.Bridge;
 
@@ -76,7 +78,7 @@ public sealed class ForwarderPool : IDisposable
             // connection's own Disconnect(), which has already nulled its reader
             // loop, so the second Disconnect() inside Dispose() is a no-op and
             // cannot self-wait.
-            try { dead.Dispose(); } catch { }
+            DevReloadDiagnostics.DisposeReporting(dead, $"ForwarderPool evicted connection pid {conn.Pid}");
             _log($"ForwarderPool: pid {conn.Pid} pipe dropped; evicted dead connection.");
         }
 
@@ -120,7 +122,10 @@ public sealed class ForwarderPool : IDisposable
     public void Dispose()
     {
         _binding.Changed -= OnBindingChanged;
-        foreach (var c in _conns.Values) { try { c.Dispose(); } catch { } }
+        // Category B — every pooled connection must be attempted; one that
+        // fails to close must not strand the rest.
+        foreach (var c in _conns.Values)
+            DevReloadDiagnostics.DisposeReporting(c, $"ForwarderPool connection pid {c.Pid}");
         _conns.Clear();
     }
 }

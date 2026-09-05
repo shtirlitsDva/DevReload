@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -6,6 +6,8 @@ using System.Threading;
 
 using FlaUI.Core.AutomationElements;
 using FlaUI.UIA3;
+
+using DevReload.Diagnostics;
 
 namespace Revit.Cli
 {
@@ -135,8 +137,18 @@ namespace Revit.Cli
 
         private static string SafeName(AutomationElement element)
         {
-            try { return element.Name ?? ""; }
-            catch { return ""; }
+            try
+            {
+                return element.Name ?? "";
+            }
+            catch (Exception ex)
+            {
+                // Category B - report, do not rethrow. UI Automation throws when
+                // an element vanishes mid-enumeration, which is routine while
+                // dialogs open and close; the empty name just fails to match.
+                DevReloadDiagnostics.Report("DialogWatcher.SafeName", ex);
+                return "";
+            }
         }
 
         // Revit may show the security dialog from a child process; include

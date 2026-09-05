@@ -1,9 +1,12 @@
-using System;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
+
+using DevReload.Diagnostics;
 
 namespace RevitDevReload.Core
 {
@@ -88,8 +91,11 @@ namespace RevitDevReload.Core
                     // already read false, but the server end still requires
                     // Disconnect() before the next WaitForConnection — skipping
                     // it wedges the pipe forever (every later connect times out).
-                    try { server.Disconnect(); }
-                    catch { }
+                    // Category B - report, do not rethrow. This is the finally
+                    // that keeps the pipe usable; throwing would replace the
+                    // fault that got us here and wedge the pipe anyway.
+                    DevReloadDiagnostics.RunReporting(
+                        "PipeServer: Disconnect between clients", server.Disconnect);
                 }
             }
         }
@@ -139,10 +145,16 @@ namespace RevitDevReload.Core
 
         public void Dispose()
         {
+            // Category A - collect and rethrow, but only after the thread has
+            // been joined and the CTS disposed. Throwing early would leave the
+            // reader thread running against a half-torn-down server.
+            var failures = new List<Exception>();
             _cts.Cancel();
-            try { _server?.Dispose(); } catch { }
+            DevReloadDiagnostics.Step(failures, "PipeServer: server dispose",
+                () => _server?.Dispose());
             _thread?.Join(2000);
             _cts.Dispose();
+            DevReloadDiagnostics.ThrowIfAny("PipeServer.Dispose", failures);
         }
     }
 }

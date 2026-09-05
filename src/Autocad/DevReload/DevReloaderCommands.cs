@@ -9,6 +9,7 @@ using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Runtime;
 using Autodesk.AutoCAD.Windows;
 
+using DevReload.Diagnostics;
 using DevReload.Hud;
 using DevReload.Oarx;
 using DevReload.Rpc;
@@ -42,9 +43,17 @@ namespace DevReload
 
         public void Initialize()
         {
+            // Give the diagnostics sink a way onto the command line. Every
+            // reported failure in this assembly — the whole plugin lifecycle
+            // path — surfaces where the user is already looking, instead of
+            // only in %LOCALAPPDATA%\DevReload\devreload.log. Resolved per
+            // call because MdiActiveDocument is null this early in startup.
+            DevReloadDiagnostics.HostWriter = msg =>
+                Application.DocumentManager.MdiActiveDocument?.Editor?.WriteMessage(msg);
+
             // First-line file log so we can verify autoload at all,
             // independent of whether an editor is attached at Initialize.
-            DevReloadLog.Info("DevReloaderCommands.Initialize entered");
+            DevReloadDiagnostics.Info("DevReloaderCommands.Initialize entered");
 
             // Bridge AutoCAD's .NET 8 host runtime to our bundled
             // dependency graph (MCP SDK + Microsoft.Extensions.* 10.x
@@ -61,13 +70,13 @@ namespace DevReload
             try
             {
                 AutoCadScanSuppressor.Install();
-                DevReloadLog.Info("AutoCAD assembly scan suppressed for DevReload ALCs");
+                DevReloadDiagnostics.Info("AutoCAD assembly scan suppressed for DevReload ALCs");
             }
             catch (System.Exception ex)
             {
                 // Loud, not silent: without suppression every plugin needs the
                 // marker back, and PluginManager must not call Initialize.
-                DevReloadLog.Info($"Scan suppression FAILED: {ex}");
+                DevReloadDiagnostics.Report("AutoCadScanSuppressor.Install", ex);
                 ed?.WriteMessage(
                     "\nDevReload: WARNING - could not suppress AutoCAD's assembly scan " +
                     $"({ex.Message}) Plugins on this AutoCAD version still need the " +
@@ -85,7 +94,7 @@ namespace DevReload
                 var host = AcadRpcHost.Initialize(new AcadRpcHostOptions(
                     PipeName: $"acad-rpc-{pid}",
                     MainThreadDispatcher: _dispatcher,
-                    Log: DevReloadLog.Info));
+                    Log: DevReloadDiagnostics.Info));
 
                 // Zero-glue plugin contribution: any assembly in any
                 // non-collectible ALC with an [AcadRpcSurface] gets
@@ -98,14 +107,13 @@ namespace DevReload
                 host.EnableAutoDiscovery();
 
                 _ = host.StartAsync(CancellationToken.None);
-                DevReloadLog.Info($"RPC pipe opening at \\\\.\\pipe\\acad-rpc-{pid}");
+                DevReloadDiagnostics.Info($"RPC pipe opening at \\\\.\\pipe\\acad-rpc-{pid}");
                 ed?.WriteMessage(
                     $"\nDevReload: RPC pipe opened at \\\\.\\pipe\\acad-rpc-{pid}");
             }
             catch (System.Exception ex)
             {
-                DevReloadLog.Info($"RPC host failed to start: {ex}");
-                ed?.WriteMessage($"\nDevReload: RPC host failed to start: {ex.Message}");
+                DevReloadDiagnostics.Report("AcadRpcHost.StartAsync", ex);
             }
 
             var config = PluginConfigLoader.Load();
@@ -161,14 +169,31 @@ namespace DevReload
 
         public void Terminate()
         {
-            try { AcadRpcHost.Current.ShutdownAsync().GetAwaiter().GetResult(); }
-            catch { }
-            try { _dispatcher?.Dispose(); } catch { }
-            PluginManager.UnloadAll();
+            // Collect-then-aggregate: every step runs and every failure is
+            // reported as it happens, then the lot is rethrown. Throwing on the
+            // first failure would skip the steps below it and leak more than the
+            // old silent version did.
+            //
+            // Consequence worth knowing: this rethrow lands in AutoCAD's own
+            // shutdown, so a genuinely broken teardown now surfaces as a noisy
+            // exit rather than a silent one. That is the intended trade — a
+            // failed teardown is a real defect and should not be invisible.
+            var failures = new System.Collections.Generic.List<System.Exception>();
+
+            DevReloadDiagnostics.Step(failures, "AcadRpcHost.Shutdown",
+                () => AcadRpcHost.Current.ShutdownAsync().GetAwaiter().GetResult());
+            DevReloadDiagnostics.Step(failures, "AcadIdlePumpDispatcher.Dispose",
+                () => _dispatcher?.Dispose());
+            DevReloadDiagnostics.Step(failures, "PluginManager.UnloadAll",
+                () => PluginManager.UnloadAll());
             // Native modules must leave with the session too; a mapped .arx would
             // otherwise keep its file locked for whatever runs next.
-            try { OarxManager.UnloadAll(); } catch { }
-            try { AutoCadScanSuppressor.Restore(); } catch { }
+            DevReloadDiagnostics.Step(failures, "OarxManager.UnloadAll",
+                () => OarxManager.UnloadAll());
+            DevReloadDiagnostics.Step(failures, "AutoCadScanSuppressor.Restore",
+                () => AutoCadScanSuppressor.Restore());
+
+            DevReloadDiagnostics.ThrowIfAny("DevReloaderCommands.Terminate", failures);
         }
 
         // ── Management palette ────────────────────────────────────────

@@ -23,4 +23,5 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Shared\Acad.Rpc.Core\Acad.Rpc.Core.csproj" />
   </ItemGroup>
+  <Import Project="..\..\Shared\DevReload.Diagnostics\DevReload.Diagnostics.projitems" Label="Shared" />
 </Project>

@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using DevReload.Diagnostics;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -281,7 +282,13 @@ namespace DevReload
                             return f;
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    // Category B — report, do not rethrow. This is a best-effort
+                    // walk up the directory tree looking for a .csproj; an
+                    // unreadable directory means "keep looking", not "fail".
+                    DevReloadDiagnostics.Report("PluginConfig: csproj probe", ex);
+                }
 
                 // Stop if we hit a .csproj at some level (ambiguous)
                 dir = Path.GetDirectoryName(dir);

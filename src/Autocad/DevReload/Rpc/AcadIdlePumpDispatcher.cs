@@ -1,10 +1,12 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 using Acad.Rpc.Core;
 using Autodesk.AutoCAD.ApplicationServices;
 using UiMcp.Win32;
+
+using DevReload.Diagnostics;
 
 namespace DevReload.Rpc;
 
@@ -126,7 +128,14 @@ public sealed class AcadIdlePumpDispatcher : IAcadMainThreadDispatcher, IDisposa
             var h = Application.MainWindow?.Handle ?? IntPtr.Zero;
             return h != IntPtr.Zero && !NativeMethods.IsWindowEnabled(h);
         }
-        catch { return false; }
+        catch (Exception ex)
+        {
+            // Category B - report, do not rethrow. This is a probe asking "is a
+            // modal up?"; if it cannot tell, "no" is the safe answer and the pump
+            // keeps running. Throwing would take the idle pump down with it.
+            DevReloadDiagnostics.Report("AcadIdlePumpDispatcher.ModalDialogIsBlocking", ex);
+            return false;
+        }
     }
 
     private void OnIdle(object? sender, EventArgs e)
@@ -134,15 +143,37 @@ public sealed class AcadIdlePumpDispatcher : IAcadMainThreadDispatcher, IDisposa
         while (_queue.TryDequeue(out var work))
         {
             try { work(); }
-            catch { /* tcs already captured the exception */ }
+            catch (Exception ex)
+            {
+                // Category B - report, do not rethrow. This runs on AutoCAD's Idle
+                // event: an exception escaping here takes the host down. The work
+                // item's own TaskCompletionSource already carries the failure back
+                // to its caller, so this line is a second copy for the log, not the
+                // only record.
+                DevReloadDiagnostics.Report("AcadIdlePumpDispatcher: queued work item", ex);
+            }
         }
     }
 
     public void Dispose()
     {
         if (!_subscribed) return;
-        try { Application.Idle -= OnIdle; }
-        catch { }
-        _subscribed = false;
+        // Category A - report and rethrow. Failing to unsubscribe leaves a live
+        // delegate on AutoCAD's Idle event, which is a real leak. The flag is
+        // cleared in a finally so the object does not claim to still be
+        // subscribed after a failed attempt.
+        try
+        {
+            Application.Idle -= OnIdle;
+        }
+        catch (Exception ex)
+        {
+            DevReloadDiagnostics.Report("AcadIdlePumpDispatcher.Dispose (Idle unsubscribe)", ex);
+            throw;
+        }
+        finally
+        {
+            _subscribed = false;
+        }
     }
 }

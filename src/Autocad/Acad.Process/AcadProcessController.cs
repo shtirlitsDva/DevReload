@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -7,6 +7,8 @@ using System.Threading.Tasks;
 using SysProcess = System.Diagnostics.Process;
 using SysProcessStartInfo = System.Diagnostics.ProcessStartInfo;
 using SysProcessWindowStyle = System.Diagnostics.ProcessWindowStyle;
+
+using DevReload.Diagnostics;
 
 namespace Acad.Process;
 
@@ -115,7 +117,18 @@ public sealed class AcadProcessController
         _ = Task.Run(async () =>
         {
             await Task.Delay(TimeSpan.FromSeconds(60)).ConfigureAwait(false);
-            try { File.Delete(path); } catch { /* tempdir cleanup will reap eventually */ }
+            try
+            {
+                File.Delete(path);
+            }
+            catch (Exception ex)
+            {
+                // Category B - report, do not rethrow. This is a detached
+                // fire-and-forget cleanup; an exception here would surface as an
+                // unobserved task fault, and the temp directory reaps the file
+                // eventually anyway.
+                DevReloadDiagnostics.Report($"AcadProcessController: delete script {path}", ex);
+            }
         });
         return path;
     }
@@ -146,7 +159,12 @@ public sealed class AcadProcessController
                     LastState: null,
                     Reason: null);
             try { await Task.Delay(250, ct).ConfigureAwait(false); }
-            catch (TaskCanceledException) { break; }
+            catch (TaskCanceledException)
+            {
+                // Expected, not a fault: the caller cancelled the wait. The
+                // timeout result below is the correct answer.
+                break;
+            }
         }
         return new AcadWaitResult(
             Succeeded: false,
@@ -161,8 +179,17 @@ public sealed class AcadProcessController
     {
         var result = new List<AcadProcessInfo>();
         SysProcess[] procs;
-        try { procs = SysProcess.GetProcessesByName("acad"); }
-        catch { return result; }
+        try
+        {
+            procs = SysProcess.GetProcessesByName("acad");
+        }
+        catch (Exception ex)
+        {
+            // Category B - report, do not rethrow. Callers treat an empty list
+            // as "no AutoCAD found"; the reason must still be recoverable.
+            DevReloadDiagnostics.Report("AcadProcessController.EnumerateProcesses", ex);
+            return result;
+        }
 
         foreach (var p in procs)
         {
@@ -191,7 +218,13 @@ public sealed class AcadProcessController
             return string.Equals(
                 SafeProcessName(p), "acad", StringComparison.OrdinalIgnoreCase);
         }
-        catch { return false; }
+        catch (Exception ex)
+        {
+            // Category B - report, do not rethrow. A pid that has gone away (or
+            // that we cannot open) is simply not one of ours.
+            DevReloadDiagnostics.Report($"AcadProcessController.IsAcadPid({pid})", ex);
+            return false;
+        }
     }
 
     /// <summary>Hard kill — last-resort when COM Quit doesn't return in
@@ -226,14 +259,32 @@ public sealed class AcadProcessController
 
     private static string SafeMainModuleName(SysProcess p)
     {
-        try { return p.MainModule?.ModuleName ?? "acad.exe"; }
-        catch { return "acad.exe"; }
+        try
+        {
+            return p.MainModule?.ModuleName ?? "acad.exe";
+        }
+        catch (Exception ex)
+        {
+            // Category B - report, do not rethrow. Reading MainModule across a
+            // privilege boundary throws routinely; the default name is the
+            // designed answer, but the failure is no longer invisible.
+            DevReloadDiagnostics.Report("AcadProcessController.SafeMainModuleName", ex);
+            return "acad.exe";
+        }
     }
 
     private static string SafeProcessName(SysProcess p)
     {
-        try { return p.ProcessName; }
-        catch { return string.Empty; }
+        try
+        {
+            return p.ProcessName;
+        }
+        catch (Exception ex)
+        {
+            // Category B - same reason as SafeMainModuleName.
+            DevReloadDiagnostics.Report("AcadProcessController.SafeProcessName", ex);
+            return string.Empty;
+        }
     }
 
 }

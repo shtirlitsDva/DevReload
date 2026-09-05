@@ -23,4 +23,5 @@
        against .NET 8 BCL's System.Text.Json so this assembly stays
        compatible with AutoCAD 2025's hosted runtime. -->
 
+  <Import Project="..\DevReload.Diagnostics\DevReload.Diagnostics.projitems" Label="Shared" />
 </Project>

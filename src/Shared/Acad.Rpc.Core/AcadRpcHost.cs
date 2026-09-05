@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipes;
@@ -9,6 +9,8 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 
+using DevReload.Diagnostics;
+
 namespace Acad.Rpc.Core;
 
 /// <summary>
@@ -18,6 +20,7 @@ namespace Acad.Rpc.Core;
 /// </summary>
 public sealed class AcadRpcHost
 {
+
     private static AcadRpcHost? _current;
 
     public static AcadRpcHost Current => _current ??
@@ -98,11 +101,29 @@ public sealed class AcadRpcHost
     {
         if (!IsRunning) return;
         IsRunning = false;
-        try { _serverLoopCts?.Cancel(); } catch { }
+        // Category B throughout this method — shutdown must reach its end.
+        try
+        {
+            _serverLoopCts?.Cancel();
+        }
+        catch (Exception ex)
+        {
+            DevReloadDiagnostics.Report("AcadRpcHost.Shutdown: cancel server loop", ex);
+        }
         if (_serverLoopTask != null)
         {
-            try { await _serverLoopTask.ConfigureAwait(false); }
-            catch { }
+            try
+            {
+                await _serverLoopTask.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // The expected way this task ends once the token is cancelled.
+            }
+            catch (Exception ex)
+            {
+                DevReloadDiagnostics.Report("AcadRpcHost.Shutdown: server loop", ex);
+            }
         }
         _serverLoopCts?.Dispose();
         _serverLoopCts = null;
@@ -129,7 +150,16 @@ public sealed class AcadRpcHost
             catch (Exception ex)
             {
                 _options.Log?.Invoke($"AcadRpcHost: failed to create pipe server: {ex.GetType().Name}: {ex.Message}");
-                try { await Task.Delay(500, ct).ConfigureAwait(false); } catch { return; }
+                DevReloadDiagnostics.Report("AcadRpcHost: create pipe server", ex);
+                try
+                {
+                    await Task.Delay(500, ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected: cancellation ends the accept loop.
+                    return;
+                }
                 continue;
             }
 
@@ -139,13 +169,14 @@ public sealed class AcadRpcHost
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                try { pipe.Dispose(); } catch { }
+                DevReloadDiagnostics.DisposeReporting(pipe, "AcadRpcHost accept pipe (cancelled)");
                 return;
             }
             catch (Exception ex)
             {
                 _options.Log?.Invoke($"AcadRpcHost: WaitForConnection failed: {ex.GetType().Name}: {ex.Message}");
-                try { pipe.Dispose(); } catch { }
+                DevReloadDiagnostics.Report("AcadRpcHost.WaitForConnection", ex);
+                DevReloadDiagnostics.DisposeReporting(pipe, "AcadRpcHost accept pipe (failed)");
                 continue;
             }
 
@@ -175,9 +206,9 @@ public sealed class AcadRpcHost
         finally
         {
             lock (_connectionsGate) { _connections.Remove(conn); }
-            try { writer.Dispose(); } catch { }
-            try { reader.Dispose(); } catch { }
-            try { pipe.Dispose(); } catch { }
+            DevReloadDiagnostics.DisposeReporting(writer, "AcadRpcHost client writer");
+            DevReloadDiagnostics.DisposeReporting(reader, "AcadRpcHost client reader");
+            DevReloadDiagnostics.DisposeReporting(pipe, "AcadRpcHost client pipe");
         }
     }
 
@@ -260,6 +291,16 @@ public sealed class AcadRpcHost
 
     private async Task SafeNotifyAsync(Connection conn, JsonObject notif)
     {
-        try { await WriteAsync(conn, notif).ConfigureAwait(false); } catch { }
+        // Category B — report, do not rethrow. This is a fire-and-forget
+        // broadcast to every connected client; one that has gone away must not
+        // stop the notification reaching the rest.
+        try
+        {
+            await WriteAsync(conn, notif).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            DevReloadDiagnostics.Report("AcadRpcHost.SafeNotifyAsync", ex);
+        }
     }
 }

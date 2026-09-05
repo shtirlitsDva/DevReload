@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Pipes;
@@ -8,6 +8,8 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Acad.Rpc.Core;
+
+using DevReload.Diagnostics;
 
 namespace Acad.Rpc.Bridge;
 
@@ -49,7 +51,16 @@ public sealed class InstanceConnection : IDisposable
         {
             if (ProcessHasExited(Pid)) return false;
             if (DateTime.UtcNow >= deadline || ct.IsCancellationRequested) return IsConnected;
-            try { await Task.Delay(100, ct).ConfigureAwait(false); } catch { return IsConnected; }
+            try
+            {
+                await Task.Delay(100, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected: the caller cancelled the wait. Current state is the
+                // honest answer.
+                return IsConnected;
+            }
         }
         return true;
     }
@@ -128,8 +139,15 @@ public sealed class InstanceConnection : IDisposable
             {
                 pipe.Dispose();
                 int delayMs = attempt++ < 20 ? 250 : 1000;
-                try { await Task.Delay(delayMs, ct).ConfigureAwait(false); }
-                catch (OperationCanceledException) { return; }
+                try
+                {
+                    await Task.Delay(delayMs, ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected: cancellation ends the reconnect loop.
+                    return;
+                }
                 continue;
             }
 
@@ -163,12 +181,27 @@ public sealed class InstanceConnection : IDisposable
                 if (string.IsNullOrWhiteSpace(line)) continue;
 
                 JsonNode? node;
-                try { node = JsonNode.Parse(line); } catch { continue; }
+                // Category B — report, do not rethrow. A malformed line from the
+                // instance is skipped, not fatal to the reader loop, but it is a
+                // protocol fault worth having in the log.
+                try
+                {
+                    node = JsonNode.Parse(line);
+                }
+                catch (Exception parseEx)
+                {
+                    DevReloadDiagnostics.Report("InstanceConnection: malformed pipe line", parseEx);
+                    continue;
+                }
                 if (node is not JsonObject obj) continue;
 
                 if (obj["method"] != null && obj["id"] == null)
                 {
-                    try { NotificationReceived?.Invoke(obj); } catch { }
+                    // Category B — report, do not rethrow. One bad subscriber
+                    // must not kill the reader loop for every other consumer.
+                    DevReloadDiagnostics.RunReporting(
+                        "InstanceConnection.NotificationReceived subscriber",
+                        () => NotificationReceived?.Invoke(obj));
                     continue;
                 }
 
@@ -185,8 +218,16 @@ public sealed class InstanceConnection : IDisposable
                 }
             }
         }
-        catch (OperationCanceledException) { }
-        catch (Exception ex) { _log($"InstanceConnection: reader loop exited: {ex.Message}"); }
+        catch (OperationCanceledException)
+        {
+            // Not a failure: this is how the reader loop is meant to end once
+            // its token is cancelled. Nothing to report.
+        }
+        catch (Exception ex)
+        {
+            _log($"InstanceConnection: reader loop exited: {ex.Message}");
+            DevReloadDiagnostics.Report("InstanceConnection: reader loop", ex);
+        }
         finally { Disconnect(); }
     }
 
@@ -200,12 +241,16 @@ public sealed class InstanceConnection : IDisposable
             wasConnected = pipe != null && pipe.IsConnected;
             _pipe = null; _writer = null; _reader = null; _readerCts = null; _readerLoop = null;
         }
-        try { rcts?.Cancel(); } catch { }
-        try { loop?.Wait(2000); } catch { }
-        try { writer?.Dispose(); } catch { }
-        try { reader?.Dispose(); } catch { }
-        try { pipe?.Dispose(); } catch { }
-        try { rcts?.Dispose(); } catch { }
+        // Category B throughout — Disconnect runs on the unwind path (including
+        // from the reader loop's own finally). Every step is attempted and every
+        // failure recorded; throwing here would strand the steps below it and
+        // replace whatever fault brought us here.
+        DevReloadDiagnostics.RunReporting("InstanceConnection: cancel reader", () => rcts?.Cancel());
+        DevReloadDiagnostics.RunReporting("InstanceConnection: await reader loop", () => loop?.Wait(2000));
+        DevReloadDiagnostics.DisposeReporting(writer, "InstanceConnection writer");
+        DevReloadDiagnostics.DisposeReporting(reader, "InstanceConnection reader");
+        DevReloadDiagnostics.DisposeReporting(pipe, "InstanceConnection pipe");
+        DevReloadDiagnostics.DisposeReporting(rcts, "InstanceConnection reader CTS");
         foreach (var kv in _pending) kv.Value.TrySetException(new IOException("instance pipe disconnected"));
         _pending.Clear();
         if (wasConnected) ConnectionChanged?.Invoke(false);
@@ -215,14 +260,33 @@ public sealed class InstanceConnection : IDisposable
     {
         CancellationTokenSource? cts;
         lock (_gate) { cts = _connectCts; _connectCts = null; }
-        try { cts?.Cancel(); cts?.Dispose(); } catch { }
+        DevReloadDiagnostics.RunReporting("InstanceConnection.Dispose: connect CTS", () =>
+        {
+            cts?.Cancel();
+            cts?.Dispose();
+        });
         Disconnect();
     }
 
     private static bool ProcessHasExited(int pid)
     {
-        try { using var p = System.Diagnostics.Process.GetProcessById(pid); return p.HasExited; }
-        catch (ArgumentException) { return true; }
-        catch { return false; }
+        try
+        {
+            using var p = System.Diagnostics.Process.GetProcessById(pid);
+            return p.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            // Not a fault: GetProcessById throws this precisely when the pid is
+            // gone, which is the question being asked.
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // Category B - report, do not rethrow. Anything else means we could
+            // not tell; assuming the process is alive keeps the connection.
+            DevReloadDiagnostics.Report($"InstanceConnection.ProcessHasExited({pid})", ex);
+            return false;
+        }
     }
 }

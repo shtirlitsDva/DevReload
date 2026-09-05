@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using DevReload.Diagnostics;
 
 namespace DevReload.Hud
 {
@@ -125,6 +126,16 @@ namespace DevReload.Hud
         public void Finish(string v, bool ok) { foreach (var s in _sinks) Safe(() => s.Finish(v, ok)); }
 
         // A reporting sink must never be the reason a reload fails.
-        private static void Safe(Action a) { try { a(); } catch (Exception) { } }
+        /// <summary>
+        /// Category B — report, do not rethrow. Every call here paints the
+        /// transient HUD. A drawing-surface glitch must not abort the reload the
+        /// HUD is merely narrating, so the failure is recorded and painting
+        /// continues.
+        /// </summary>
+        private static void Safe(Action a)
+        {
+            try { a(); }
+            catch (Exception ex) { DevReloadDiagnostics.Report("ReloadHud paint", ex); }
+        }
     }
 }
