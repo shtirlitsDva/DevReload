@@ -118,7 +118,8 @@ namespace DevReload.ViewModels
                 return;
 
             Entry.BuildConfiguration = value;
-            OarxManager.UpdateBuildConfiguration(Name, value);
+            OarxConfigLoader.UpdatePlugin(
+                Name, new OarxPluginPatch(BuildConfiguration: value));
         }
 
         partial void OnSelectedWorktreeChanged(WorktreeItem? value)
@@ -132,7 +133,11 @@ namespace DevReload.ViewModels
             Entry.ActiveWorktreePath = newPath;
             if (!changed) return;
 
-            OarxManager.UpdateActiveWorktree(Name, Entry.ActiveWorktreePath);
+            // "" is the patch's clear-to-main-checkout sentinel; null would mean
+            // "leave the worktree as it is", which is the opposite of what the
+            // main-checkout entry in the picker says.
+            OarxConfigLoader.UpdatePlugin(Name, new OarxPluginPatch(
+                ActiveWorktreePath: Entry.ActiveWorktreePath ?? ""));
             // A different branch's projects may declare a different set of
             // Configuration|Platform pairs.
             RefreshConfigurations();

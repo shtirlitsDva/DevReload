@@ -6,6 +6,8 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 
+using DevReload.Diagnostics;
+
 namespace DevReload.Core
 {
     // Host-agnostic build engine shared by the AutoCAD plugin and the Revit
@@ -170,7 +172,21 @@ namespace DevReload.Core
         // or null when MSBuild can't resolve it yet (e.g. the worktree has never
         // been built/restored). NO fallback: null means "not resolvable / not
         // built" and the caller must handle it (e.g. tell the user to build first).
-        public static string? ResolveBuildDir(
+        /// <summary>
+        /// The assembly the given project+configuration produces, resolved in the
+        /// ACTIVE worktree. MSBuild's TargetPath is the only authority on this —
+        /// it is what the build itself will write.
+        /// </summary>
+        /// <remarks>
+        /// This exists so no caller has to REMEMBER an output path. A remembered
+        /// one is derived state with three inputs (project, configuration,
+        /// worktree) and no invalidation, which is how a plugin ended up loading
+        /// the main checkout's DLL while its worktree was selected.
+        /// Returns null when MSBuild cannot be asked (never restored, wrong
+        /// platform, no dotnet) — the caller decides how to report that; there is
+        /// deliberately no guessed path.
+        /// </remarks>
+        public static string? ResolveTargetPath(
             string projectFilePath,
             string? activeWorktreePath,
             string buildConfiguration,
@@ -179,8 +195,20 @@ namespace DevReload.Core
         {
             string csproj = GitWorktreeService.ResolveActiveCsproj(
                 projectFilePath, activeWorktreePath);
-            string? targetPath = QueryMsBuildProperty(
+            return QueryMsBuildProperty(
                 csproj, "TargetPath", buildConfiguration, platform, solutionDir);
+        }
+
+        public static string? ResolveBuildDir(
+            string projectFilePath,
+            string? activeWorktreePath,
+            string buildConfiguration,
+            string? platform,
+            string? solutionDir = null)
+        {
+            string? targetPath = ResolveTargetPath(
+                projectFilePath, activeWorktreePath, buildConfiguration,
+                platform, solutionDir);
             return string.IsNullOrEmpty(targetPath)
                 ? null
                 : Path.GetDirectoryName(targetPath);
@@ -264,8 +292,13 @@ namespace DevReload.Core
                 }
                 return result;
             }
-            catch (JsonException)
+            catch (JsonException ex)
             {
+                // Category B - report, do not rethrow. An empty list is what the
+                // caller turns into "could not resolve configurations"; the shape
+                // MSBuild actually returned is only knowable from the log.
+                DevReloadDiagnostics.Report(
+                    $"BuildService.GetCppConfigurations({vcxproj})", ex);
                 return Array.Empty<string>();
             }
         }
@@ -329,15 +362,41 @@ namespace DevReload.Core
                 };
 
                 using var proc = Process.Start(psi);
-                if (proc == null) return null;
+                if (proc == null)
+                {
+                    DevReloadDiagnostics.Info(
+                        $"MSBuild query {getArg}: could not start '{fileName}'.");
+                    return null;
+                }
 
+                // Both streams are read before the wait: MSBuild writes its
+                // diagnostics to stderr, and a full pipe buffer on either stream
+                // deadlocks a process that is waiting to write more.
                 string output = proc.StandardOutput.ReadToEnd().Trim();
+                string error = proc.StandardError.ReadToEnd().Trim();
                 proc.WaitForExit();
 
-                return proc.ExitCode == 0 && !string.IsNullOrEmpty(output) ? output : null;
+                if (proc.ExitCode == 0 && !string.IsNullOrEmpty(output)) return output;
+
+                // The failure reason used to end here, discarded, and the caller
+                // could only say "could not resolve". MSBuild's own words are the
+                // whole diagnosis — project never restored, configuration the
+                // project does not declare, wrong platform.
+                DevReloadDiagnostics.Info(
+                    $"MSBuild query {getArg} for '{csprojPath}' " +
+                    $"({buildConfiguration}|{platform ?? "AnyCPU"}) returned nothing " +
+                    $"(exit {proc.ExitCode}). " +
+                    (error.Length > 0 ? error : "no output on stderr."));
+                return null;
             }
-            catch
+            catch (Exception ex)
             {
+                // Category B - report, do not rethrow. A property query is a
+                // question; the callers all handle "no answer" and turn it into
+                // their own message. What must not happen is the reason vanishing,
+                // which is what the bare catch here used to do.
+                DevReloadDiagnostics.Report(
+                    $"BuildService.QueryMsBuild({getArg}, {csprojPath})", ex);
                 return null;
             }
         }
@@ -355,8 +414,13 @@ namespace DevReload.Core
                 string head = new string(buffer, 0, read);
                 return head.Contains("<Project Sdk=") || head.Contains("<Project  Sdk=");
             }
-            catch
+            catch (Exception ex)
             {
+                // Category B - report, do not rethrow. An unreadable project file
+                // answers "not SDK-style", which routes the caller to MSBuild.exe;
+                // that is the better guess for a file we cannot read, but it is a
+                // guess and the reason belongs in the log.
+                DevReloadDiagnostics.Report($"BuildService.IsSdkStyle({csprojPath})", ex);
                 return false;
             }
         }
@@ -394,8 +458,13 @@ namespace DevReload.Core
                     .Select(l => l.Trim())
                     .FirstOrDefault(l => l.Length > 0 && File.Exists(l));
             }
-            catch
+            catch (Exception ex)
             {
+                // Category B - report, do not rethrow. No vswhere means no
+                // full-framework MSBuild, which the caller already reports as
+                // "install VS Build Tools" — but only the log can say whether
+                // vswhere was missing or failed.
+                DevReloadDiagnostics.Report("BuildService.LocateFrameworkMsBuild", ex);
                 _frameworkMsBuild = null;
             }
             return _frameworkMsBuild;

@@ -57,7 +57,9 @@ public sealed class AcadRpcHost
     private AcadRpcHost(AcadRpcHostOptions options)
     {
         _options = options;
-        Core = new RpcCore(options.MainThreadDispatcher, serverName: "Acad.Rpc", log: options.Log);
+        Core = new RpcCore(
+            options.MainThreadDispatcher, serverName: "Acad.Rpc",
+            log: options.Log, stateChecks: options.StateChecks);
         Core.ToolListChanged += TryNotifyListChanged;
     }
 

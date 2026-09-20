@@ -205,10 +205,19 @@ namespace DevReload.Oarx
                     : "updated");
         }
 
+        /// <remarks>
+        /// Deliberately does NOT invalidate the modules' resolved TargetPaths when
+        /// the configuration or the worktree changes. The dynamic linker keys a
+        /// loaded module on its FILE NAME (research F6), and that name is the same
+        /// in every configuration and every worktree — so the group's loaded state
+        /// stays readable across the switch, and the next Load/Reload re-resolves
+        /// the paths anyway.
+        /// </remarks>
         private static void PatchLiveFields(
             OarxRegistration reg, OarxPluginEntry entry, bool prefixChanged)
         {
             reg.BuildConfiguration = entry.BuildConfiguration;
+            reg.ActiveWorktreePath = entry.ActiveWorktreePath;
             reg.MsBuildProperties.Clear();
             reg.MsBuildProperties.AddRange(entry.MsBuildProperties);
             reg.PreloadNativeModules.Clear();
@@ -622,38 +631,11 @@ namespace DevReload.Oarx
 
         // ── Settings ──────────────────────────────────────────────────
 
-        /// <summary>
-        /// Change the configuration a group builds under, in memory and in
-        /// plugins.json.
-        /// </summary>
-        /// <remarks>
-        /// Deliberately does NOT invalidate the resolved TargetPaths. The
-        /// dynamic linker keys a loaded module on its FILE NAME (research F6),
-        /// and that name is the same in every configuration and every worktree —
-        /// so the group's loaded state stays readable across the switch, and the
-        /// next Load/Reload re-resolves the paths anyway.
-        /// </remarks>
-        public static bool UpdateBuildConfiguration(string name, string buildConfiguration)
-        {
-            if (!_plugins.TryGetValue(name, out var reg)) return false;
-            reg.BuildConfiguration = buildConfiguration;
-            reg.Source.BuildConfiguration = buildConfiguration;
-            OarxConfigLoader.UpdateEntry(name, e => e.BuildConfiguration = buildConfiguration);
-            StateChanged?.Invoke(name);
-            return true;
-        }
-
-        /// <summary>Point the group at another git worktree. See the remark on
-        /// <see cref="UpdateBuildConfiguration"/> for why load state survives.</summary>
-        public static bool UpdateActiveWorktree(string name, string? worktreePath)
-        {
-            if (!_plugins.TryGetValue(name, out var reg)) return false;
-            reg.ActiveWorktreePath = worktreePath;
-            reg.Source.ActiveWorktreePath = worktreePath;
-            OarxConfigLoader.UpdateEntry(name, e => e.ActiveWorktreePath = worktreePath);
-            StateChanged?.Invoke(name);
-            return true;
-        }
+        // No UpdateBuildConfiguration / UpdateActiveWorktree here, on purpose.
+        // Both used to exist for the palette while the MCP surface wrote the same
+        // fields through OarxConfigLoader.UpdatePlugin — two write paths to one
+        // field, which is how the worktree ended up reachable from the palette and
+        // not from the tool. Every caller goes through UpdatePlugin now.
 
         /// <summary>Module file names in load order, for display. Falls back to
         /// the project name for modules MSBuild has not been asked about yet —

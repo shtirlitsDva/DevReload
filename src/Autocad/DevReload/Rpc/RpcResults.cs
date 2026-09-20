@@ -8,6 +8,11 @@ namespace DevReload.Rpc
     // The agent sees structured data, not flat strings, so it can branch
     // on fields like Success or filter by Loaded without parsing prose.
 
+    /// <param name="DllPath">The assembly this SESSION last loaded or built for
+    /// the plugin, empty until it has done either. It is a record of what
+    /// happened, not a setting: the path is resolved from the project, the
+    /// configuration and the active worktree at load time, so reading it as "where
+    /// this plugin will load from" is only true once it has loaded.</param>
     public sealed record PluginInfo(
         string Name,
         bool Loaded,

@@ -114,6 +114,31 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
+    // ── GUI thread state ──────────────────────────────────────────────
+    //
+    // Windows reports whether a GUI thread is inside a modal message loop, and
+    // which window is active while it is. That is a direct answer, callable from
+    // any thread, and it replaces inferring "a modal is up" from side effects.
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct GUITHREADINFO
+    {
+        public int cbSize;
+        public uint flags;
+        public IntPtr hwndActive;
+        public IntPtr hwndFocus;
+        public IntPtr hwndCapture;
+        public IntPtr hwndMenuOwner;
+        public IntPtr hwndMoveSize;
+        public IntPtr hwndCaret;
+        public RECT rcCaret;
+    }
+
+    public const uint GUI_INMODALLOOP = 0x00000001;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgui);
+
     [DllImport("kernel32.dll")]
     public static extern uint GetCurrentThreadId();
 

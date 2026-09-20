@@ -49,6 +49,12 @@ namespace DevReload.Oarx
     /// patchable (rename = remove + re-add); the solution is likewise fixed —
     /// it defines what the group IS, not how it behaves.
     /// </summary>
+    /// <param name="ActiveWorktreePath">
+    /// Same convention one step down: null keeps the current worktree, an EMPTY
+    /// STRING clears it back to the main checkout. A nullable string cannot say
+    /// "clear" any other way, and "clear" has to be expressible — otherwise a
+    /// group could be moved into a worktree through this patch and never out.
+    /// </param>
     public sealed record OarxPluginPatch(
         string? CommandPrefix = null,
         bool? LoadOnStartup = null,
@@ -57,7 +63,8 @@ namespace DevReload.Oarx
         IReadOnlyList<string>? MsBuildProperties = null,
         IReadOnlyList<string>? PreloadNativeModules = null,
         IReadOnlyList<string>? PreloadManagedAssemblies = null,
-        IReadOnlyList<string>? PostloadManagedAssemblies = null);
+        IReadOnlyList<string>? PostloadManagedAssemblies = null,
+        string? ActiveWorktreePath = null);
 
     /// <summary>
     /// plugins.json ↔ <see cref="OarxManager"/> bridge. Mirrors
@@ -190,6 +197,13 @@ namespace DevReload.Oarx
                         return new OarxActionResult(name, false, OarxManager.IsLoaded(name),
                             $"project not found: {p}");
             }
+            // A worktree that isn't there resolves to module projects that aren't
+            // there either, and the group would only fail at its next build — one
+            // step too late to say what was wrong.
+            if (patch.ActiveWorktreePath is { Length: > 0 } worktree
+                && !Directory.Exists(worktree))
+                return new OarxActionResult(name, false, OarxManager.IsLoaded(name),
+                    $"worktree directory not found: {worktree}");
 
             var config = PluginConfigLoader.Load();
             var entry = config?.OarxPlugins.FirstOrDefault(
@@ -205,6 +219,13 @@ namespace DevReload.Oarx
                 entry.CommandPrefix = patch.CommandPrefix.Trim().ToUpperInvariant();
             if (patch.LoadOnStartup != null) entry.LoadOnStartup = patch.LoadOnStartup.Value;
             if (patch.BuildConfiguration != null) entry.BuildConfiguration = patch.BuildConfiguration;
+            // Empty string is the "back to the main checkout" sentinel; it is
+            // stored as null, which is what the rest of the code reads as "no
+            // worktree".
+            if (patch.ActiveWorktreePath != null)
+                entry.ActiveWorktreePath = patch.ActiveWorktreePath.Length == 0
+                    ? null
+                    : patch.ActiveWorktreePath;
             if (patch.ProjectFilePaths != null) entry.ProjectFilePaths = patch.ProjectFilePaths.ToList();
             if (patch.MsBuildProperties != null) entry.MsBuildProperties = patch.MsBuildProperties.ToList();
             if (patch.PreloadNativeModules != null) entry.PreloadNativeModules = patch.PreloadNativeModules.ToList();

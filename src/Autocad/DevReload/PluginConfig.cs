@@ -30,7 +30,6 @@ namespace DevReload
     public class PluginEntry
     {
         public string Name { get; set; } = "";
-        public string? DllPath { get; set; }
         public string? CommandPrefix { get; set; }
         public bool LoadOnStartup { get; set; }
         public string? ProductionTarget { get; set; }
@@ -44,6 +43,17 @@ namespace DevReload
         // names stay lowercase-camel so old config files deserialise into
         // these properties. Do not reference outside MigrateIfNeeded — the
         // source of truth is <buildDir>/SharedAssemblies.Config.json.
+
+        /// <summary>Where the plugin's assembly WAS recorded to be. Derived state
+        /// with three inputs (project, configuration, worktree) and no
+        /// invalidation: it was written once at registration from the main
+        /// checkout, so selecting a worktree and then loading ran the other tree's
+        /// build. MSBuild's TargetPath is asked at load time now
+        /// (BuildService.ResolveTargetPath). Read by MigrateIfNeeded to recover a
+        /// missing projectFilePath from old files, then dropped.</summary>
+        [JsonPropertyName("dllPath")]
+        [Obsolete("Derived from project + configuration + worktree at load time. Read only by MigrateIfNeeded.")]
+        public string? LegacyDllPath { get; set; }
         [JsonPropertyName("sharedAssemblies")]
         [Obsolete("Migrated to <buildDir>/SharedAssemblies.Config.json. Read only by MigrateIfNeeded.")]
         public List<string>? LegacySharedAssemblies { get; set; }
@@ -114,9 +124,12 @@ namespace DevReload
                 return new RegisterPluginResult(false, "",
                     $"could not derive plugin name from '{projectFilePath}'");
 
-            string? dllPath = BuildService.QueryMsBuildProperty(
-                projectFilePath, "TargetPath", buildConfiguration, AcadBuild.Platform);
-            if (string.IsNullOrEmpty(dllPath))
+            // Asked, not kept: a project whose TargetPath MSBuild cannot resolve is
+            // a project DevReload could never load, so this is registration's
+            // validation step. The answer is deliberately not stored — it would go
+            // stale the moment a worktree or configuration was selected.
+            if (string.IsNullOrEmpty(BuildService.QueryMsBuildProperty(
+                    projectFilePath, "TargetPath", buildConfiguration, AcadBuild.Platform)))
                 return new RegisterPluginResult(false, name,
                     $"could not resolve TargetPath for '{name}' ({buildConfiguration}). " +
                     "Restore/build the project at least once and try again.");
@@ -135,7 +148,6 @@ namespace DevReload
             {
                 Name = name,
                 ProjectFilePath = projectFilePath,
-                DllPath = dllPath,
                 BuildConfiguration = buildConfiguration,
                 CommandPrefix = string.IsNullOrWhiteSpace(commandPrefix)
                     ? null
@@ -185,6 +197,7 @@ namespace DevReload
             return true;
         }
 
+#pragma warning disable CS0618
         public static void MigrateIfNeeded(PluginConfig config)
         {
             bool changed = false;
@@ -193,7 +206,7 @@ namespace DevReload
             {
                 if (entry.ProjectFilePath != null) return false;
 
-                string? csproj = FindCsprojFromDllPath(entry.DllPath);
+                string? csproj = FindCsprojFromDllPath(entry.LegacyDllPath);
                 if (csproj != null)
                 {
                     entry.ProjectFilePath = csproj;
@@ -230,9 +243,9 @@ namespace DevReload
                     continue;
                 }
 
-                if (!string.IsNullOrEmpty(entry.DllPath))
+                if (!string.IsNullOrEmpty(entry.LegacyDllPath))
                 {
-                    string buildDir = Path.GetDirectoryName(entry.DllPath)!;
+                    string buildDir = Path.GetDirectoryName(entry.LegacyDllPath)!;
                     if (Directory.Exists(buildDir))
                     {
                         // Don't overwrite an existing per-build file — that
@@ -253,11 +266,22 @@ namespace DevReload
                 entry.LegacyMixedModeAssemblies = null;
                 changed = true;
             }
-#pragma warning restore CS0618
+
+            // The recorded dll path has served its two migration purposes by now
+            // (recovering a missing projectFilePath above, and locating the build
+            // dir for the legacy shared-assembly drain). Drop it so it stops being
+            // written — the path is asked of MSBuild at load time.
+            foreach (var entry in config.Plugins)
+            {
+                if (entry.LegacyDllPath == null) continue;
+                entry.LegacyDllPath = null;
+                changed = true;
+            }
 
             if (changed)
                 Save(config);
         }
+#pragma warning restore CS0618
 
         private static string? FindCsprojFromDllPath(string? dllPath)
         {

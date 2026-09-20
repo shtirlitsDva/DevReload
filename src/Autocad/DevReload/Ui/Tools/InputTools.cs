@@ -52,11 +52,11 @@ public static class InputTools
         return new ActionResult(true, $"dragged {fromX},{fromY} -> {toX},{toY} ({path.Count} samples)");
     }
 
-    [AcadRpcTool, RunOnAcadMainThread,
+    [AcadRpcTool, RunOnAcadMainThread, RpcRequires(DevReload.Rpc.AcadStateChecks.Document),
      Description("Capture the live canvas view (center, height, twist + drawing-area screen rect) so WCS gesture tools can map WCS->pixel. Call while AutoCAD is quiescent, BEFORE starting a jig. Caches the result and returns it (note records how the device rect was resolved — calibrate live).")]
     public static CanvasViewDto CanvasCaptureView()
     {
-        var ed = Application.DocumentManager.MdiActiveDocument.Editor;
+        var ed = Application.DocumentManager.MdiActiveDocument!.Editor;
         var (view, note) = ViewCapture.Capture(ed);
         CanvasViewCache.Set(view);
         return CanvasViewCache.ToDto(view, note);
