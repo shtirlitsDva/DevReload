@@ -92,11 +92,13 @@ namespace DevReload.Rpc
             [Description("Replacement 'Name=Value' MSBuild property list")] string[]? msbuildProperties = null,
             [Description("Replacement list of native DLLs pinned by full path before the modules load")] string[]? preloadNativeModules = null,
             [Description("Replacement list of managed assemblies loaded before the modules")] string[]? preloadManagedAssemblies = null,
-            [Description("Replacement list of managed assemblies loaded after the modules (an interop here PINS its dbx — the group stops being reloadable once it has run)")] string[]? postloadManagedAssemblies = null) =>
+            [Description("Replacement list of managed assemblies loaded after the modules (an interop here PINS its dbx — the group stops being reloadable once it has run)")] string[]? postloadManagedAssemblies = null,
+            [Description("Absolute path to a git worktree the group builds from instead of the main checkout. Omit to keep the current one; pass an EMPTY STRING to go back to the main checkout. Applies at the group's next build — a loaded module is keyed by file name, which is the same in every worktree, so the load state survives the switch.")] string? activeWorktreePath = null) =>
             OarxConfigLoader.UpdatePlugin(name, new OarxPluginPatch(
                 commandPrefix, loadOnStartup, buildConfiguration, projectFilePaths,
                 msbuildProperties, preloadNativeModules,
-                preloadManagedAssemblies, postloadManagedAssemblies));
+                preloadManagedAssemblies, postloadManagedAssemblies,
+                activeWorktreePath));
 
         [AcadRpcTool, RunOnAcadMainThread,
          Description("Remove an OARX group from the live registry AND from plugins.json. Does NOT unload it first — call unload_plugin before this if the modules are loaded, otherwise they stay mapped with no registration to manage them.")]

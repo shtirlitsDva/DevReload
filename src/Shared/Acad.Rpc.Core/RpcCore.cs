@@ -36,15 +36,21 @@ public sealed class RpcCore
         new(StringComparer.Ordinal);
     private readonly Action<string>? _log;
     private readonly string _serverName;
+    private readonly IReadOnlyDictionary<string, RpcStateCheck> _stateChecks;
 
     private bool _autoDiscoveryEnabled;
 
-    public RpcCore(IAcadMainThreadDispatcher mainThreadDispatcher, string serverName, Action<string>? log = null)
+    public RpcCore(
+        IAcadMainThreadDispatcher mainThreadDispatcher,
+        string serverName,
+        Action<string>? log = null,
+        IReadOnlyDictionary<string, RpcStateCheck>? stateChecks = null)
     {
         MainThreadDispatcher = mainThreadDispatcher ??
             throw new ArgumentNullException(nameof(mainThreadDispatcher));
         _serverName = serverName ?? throw new ArgumentNullException(nameof(serverName));
         _log = log;
+        _stateChecks = stateChecks ?? new Dictionary<string, RpcStateCheck>(StringComparer.Ordinal);
     }
 
     // ── Auto-discovery ────────────────────────────────────────────────
@@ -267,10 +273,79 @@ public sealed class RpcCore
     private readonly record struct InvocationResult(
         string? Text, JsonObject? Structured, IReadOnlyList<ToolImage>? Images, bool IsError);
 
+    /// <summary>
+    /// Fail a call that passes an argument the tool has no parameter for.
+    /// </summary>
+    /// <remarks>
+    /// The MCP spec does not require this, and a lenient binder is the easy
+    /// choice — but on an agent-facing surface "accepted and ignored" is
+    /// indistinguishable from "applied", so a typo or a parameter that only
+    /// exists on the sibling surface reads as success. The error names both what
+    /// was refused and what the tool does take, because the agent's next move is
+    /// to pick the right parameter.
+    /// Framework-injected parameters are excluded for the same reason
+    /// <see cref="JsonSchemaBuilder"/> leaves them out of the schema: the caller
+    /// never sees them, so they are not valid argument names either.
+    /// </remarks>
+    private static void RejectUnknownArguments(
+        RegisteredTool tool, ParameterInfo[] parameters, JsonObject args)
+    {
+        if (args.Count == 0) return;
+
+        var accepted = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var p in parameters)
+        {
+            if (p.ParameterType == typeof(CancellationToken)) continue;
+            if (p.Name != null) accepted.Add(p.Name);
+        }
+
+        List<string>? unknown = null;
+        foreach (var kv in args)
+            if (!accepted.Contains(kv.Key))
+                (unknown ??= new List<string>()).Add(kv.Key);
+
+        if (unknown == null) return;
+
+        throw new ArgumentException(
+            $"{tool.Name}: unknown argument(s) {string.Join(", ", unknown)} — " +
+            $"nothing was done. This tool takes: " +
+            (accepted.Count == 0
+                ? "(no arguments)"
+                : string.Join(", ", accepted.OrderBy(a => a, StringComparer.Ordinal))));
+    }
+
+    /// <summary>The first unmet precondition's message, or null when the tool may
+    /// run. A declared key this host does not implement throws instead: an
+    /// unimplemented precondition is a wiring bug, and treating it as satisfied
+    /// would silently drop the guard the tool asked for.</summary>
+    private string? CheckRequiredState(RegisteredTool tool)
+    {
+        foreach (var key in tool.RequiredState)
+        {
+            if (!_stateChecks.TryGetValue(key, out var check))
+                throw new InvalidOperationException(
+                    $"{tool.Name} declares state '{key}', which this host does not " +
+                    "implement. The host's AcadRpcHostOptions.StateChecks must carry " +
+                    "an entry for every key its tools declare.");
+
+            string? refusal = check.Check();
+            if (refusal != null) return refusal;
+        }
+        return null;
+    }
+
     private async Task<InvocationResult> InvokeToolAsync(
         RegisteredTool tool, JsonObject args, CancellationToken ct)
     {
         var parameters = tool.Method.GetParameters();
+
+        // An argument no parameter claims used to be dropped on the floor: the
+        // loop below only ever READS from args, so a caller could pass
+        // activeWorktreePath to a tool that has no such parameter and be told
+        // "updated". Refusing here is the only place that can tell the caller
+        // which of its arguments went nowhere.
+        RejectUnknownArguments(tool, parameters, args);
+
         var bound = new object?[parameters.Length];
 
         for (int i = 0; i < parameters.Length; i++)
@@ -290,14 +365,23 @@ public sealed class RpcCore
         // DoNotWrapExceptions surfaces the tool's own exception directly
         // (without TargetInvocationException's wrapper layer), so the
         // catch in DispatchAsync sees the original message and type.
+        // The precondition runs in the same dispatch as the call it guards, not
+        // before it: host state is thread-affine (a document belongs to the main
+        // thread) and it can change between two dispatches, so checking from
+        // anywhere else would be checking something other than what the tool sees.
+        object? Invoke()
+        {
+            string? refusal = CheckRequiredState(tool);
+            if (refusal != null) throw new InvalidOperationException(refusal);
+            return tool.Method.Invoke(null, BindingFlags.DoNotWrapExceptions, null, bound, null);
+        }
+
         object? invokeResult;
         try
         {
             invokeResult = tool.RequiresMainThread
-                ? await MainThreadDispatcher
-                    .InvokeAsync(() => tool.Method.Invoke(null, BindingFlags.DoNotWrapExceptions, null, bound, null), ct)
-                    .ConfigureAwait(false)
-                : tool.Method.Invoke(null, BindingFlags.DoNotWrapExceptions, null, bound, null);
+                ? await MainThreadDispatcher.InvokeAsync(Invoke, ct).ConfigureAwait(false)
+                : Invoke();
         }
         catch (TargetInvocationException tie) when (tie.InnerException != null)
         {
@@ -395,6 +479,24 @@ public sealed class RpcCore
                     .GetCustomAttribute<DescriptionAttribute>()
                     ?.Description;
 
+                // Declared state becomes part of what the agent reads, generated
+                // from the same attribute that enforces it — the two cannot drift
+                // because neither is written by hand.
+                var requiredState = method
+                    .GetCustomAttributes<RpcRequiresAttribute>()
+                    .Select(a => a.StateKey)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+                if (requiredState.Length > 0)
+                {
+                    string clause = "Requires: " + string.Join(", ",
+                        requiredState.Select(k =>
+                            _stateChecks.TryGetValue(k, out var c) ? c.Requirement : k)) + ".";
+                    description = string.IsNullOrEmpty(description)
+                        ? clause
+                        : description + " " + clause;
+                }
+
                 var descriptor = new JsonObject
                 {
                     ["name"] = toolName,
@@ -411,7 +513,8 @@ public sealed class RpcCore
                     Description: description,
                     Method: method,
                     Descriptor: descriptor,
-                    RequiresMainThread: requiresMainThread));
+                    RequiresMainThread: requiresMainThread,
+                    RequiredState: requiredState));
             }
         }
 
@@ -446,5 +549,6 @@ public sealed class RpcCore
         string? Description,
         MethodInfo Method,
         JsonObject Descriptor,
-        bool RequiresMainThread);
+        bool RequiresMainThread,
+        string[] RequiredState);
 }

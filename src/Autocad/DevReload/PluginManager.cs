@@ -104,7 +104,27 @@ namespace DevReload
             BuildResult? build = null;
             try
             {
-                string dllPath = reg.DllPath;
+                // Resolved, never remembered: the output path depends on the
+                // project, the configuration AND the active worktree, and the one
+                // that used to be persisted was recorded at registration time from
+                // the main checkout. Selecting a worktree then loading (rather than
+                // reloading) silently ran the other tree's build.
+                string? resolved = ResolveTargetPath(reg);
+                if (resolved == null)
+                {
+                    string why =
+                        $"could not resolve the output path for {pluginName} " +
+                        $"({reg.BuildConfiguration}" +
+                        (string.IsNullOrEmpty(reg.ActiveWorktreePath)
+                            ? ""
+                            : $", worktree {reg.ActiveWorktreePath}") +
+                        "). Restore/build the project once and try again.";
+                    ui.Finish("output path unresolved", false);
+                    return Result(reg, success: false, why);
+                }
+
+                string dllPath = resolved;
+                reg.DllPath = dllPath;
 
                 if (!File.Exists(dllPath))
                 {
@@ -149,8 +169,11 @@ namespace DevReload
             }
             catch (Exception ex)
             {
-                ed?.WriteMessage($"\n{pluginName} load error: {ex.Message}");
-                ed?.WriteMessage($"\n{ex}");
+                // One diagnostic channel: the durable file always, the command line
+                // when a document is there to carry it. The editor used to be the
+                // ONLY sink for the stack, so a failure with no open document — the
+                // case a plugin's own Initialize is most likely to hit — lost it.
+                DevReloadDiagnostics.Report($"{pluginName}: load", ex);
                 ui.Finish($"{ex.GetType().Name}: {ex.Message}", false);
                 return Result(reg, success: false,
                     $"load error: {ex.GetType().Name}: {ex.Message}", build);
@@ -207,8 +230,9 @@ namespace DevReload
             }
             catch (Exception ex)
             {
-                ed?.WriteMessage($"\n{pluginName} dev-reload error: {ex.Message}");
-                ed?.WriteMessage($"\n{ex}");
+                // See the note in Load: the file sink is the one that survives a
+                // missing editor, and the stack only exists there.
+                DevReloadDiagnostics.Report($"{pluginName}: dev-reload", ex);
                 ui.Finish($"{ex.GetType().Name}: {ex.Message}", false);
                 return Result(reg, success: false,
                     $"dev-reload error: {ex.GetType().Name}: {ex.Message}", build);
@@ -249,8 +273,7 @@ namespace DevReload
             }
             catch (Exception ex)
             {
-                ed?.WriteMessage($"\n{pluginName} build error: {ex.Message}");
-                ed?.WriteMessage($"\n{ex}");
+                DevReloadDiagnostics.Report($"{pluginName}: build", ex);
                 ui.Finish($"{ex.GetType().Name}: {ex.Message}", false);
                 return Result(reg, success: false,
                     $"build error: {ex.GetType().Name}: {ex.Message}");
@@ -284,8 +307,7 @@ namespace DevReload
             }
             catch (Exception ex)
             {
-                ed?.WriteMessage($"\n{pluginName} unload error: {ex.Message}");
-                ed?.WriteMessage($"\n{ex}");
+                DevReloadDiagnostics.Report($"{pluginName}: unload", ex);
                 ui.Finish($"{ex.GetType().Name}: {ex.Message}", false);
                 return Result(reg, success: false,
                     $"unload error: {ex.GetType().Name}: {ex.Message}");
@@ -541,8 +563,25 @@ namespace DevReload
             // registered commands afterwards. Guarded, because when suppression
             // is off the host has already called this and a second call would
             // initialize the plugin twice.
+            // Attributed, because the plugin's Initialize runs arbitrary third-party
+            // code and its failures used to surface as a bare "load error:
+            // NullReferenceException" that read as a DevReload fault. The most
+            // common one is a plugin touching MdiActiveDocument.Editor while no
+            // document is open (the AutoCAD Start tab counts as none).
             if (AutoCadScanSuppressor.IsActive)
-                plugin.Initialize();
+            {
+                try
+                {
+                    plugin.Initialize();
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException(
+                        $"{reg.PluginName}: the plugin's own " +
+                        $"IExtensionApplication.Initialize() threw " +
+                        $"{ex.GetType().Name}: {ex.Message}", ex);
+                }
+            }
 
             if (reg.Registrar != null)
             {
@@ -608,6 +647,13 @@ namespace DevReload
         private static string GetEffectiveCsprojPath(PluginRegistration reg)
             => GitWorktreeService.ResolveActiveCsproj(
                 reg.ProjectFilePath, reg.ActiveWorktreePath);
+
+        /// <summary>Where this plugin's current selection (project + configuration
+        /// + worktree) lands, per MSBuild. Null when MSBuild cannot be asked.</summary>
+        private static string? ResolveTargetPath(PluginRegistration reg)
+            => BuildService.ResolveTargetPath(
+                reg.ProjectFilePath, reg.ActiveWorktreePath,
+                reg.BuildConfiguration, AcadBuild.Platform);
 
         private static PluginRegistration GetRegistration(string pluginName)
         {
@@ -722,7 +768,12 @@ namespace DevReload
     internal class PluginRegistration
     {
         public required string PluginName { get; init; }
-        public required string DllPath { get; set; }
+
+        /// <summary>The assembly this session last resolved/built for the plugin.
+        /// A session-local record of what happened, NOT an input: every load
+        /// resolves the path again from project + configuration + worktree. Empty
+        /// until the plugin has been loaded or built once.</summary>
+        public string DllPath { get; set; } = "";
         public required string ProjectFilePath { get; init; }
         public required string BuildConfiguration { get; set; }
         public string? ActiveWorktreePath { get; set; }
@@ -737,7 +788,6 @@ namespace DevReload
     public class PluginRegistrationBuilder
     {
         private readonly string _pluginName;
-        private string? _dllPath;
         private string? _projectFilePath;
         private string _buildConfiguration = "Debug";
         private string? _activeWorktreePath;
@@ -748,11 +798,9 @@ namespace DevReload
             _pluginName = pluginName;
         }
 
-        public PluginRegistrationBuilder WithDllPath(string dllPath)
-        {
-            _dllPath = dllPath;
-            return this;
-        }
+        // No WithDllPath: the output path is derived from the project, the
+        // configuration and the worktree, and is resolved at load time. A
+        // registration that carried one was carrying a stale copy of it.
 
         public PluginRegistrationBuilder WithProjectFilePath(string path)
         {
@@ -783,7 +831,6 @@ namespace DevReload
             var reg = new PluginRegistration
             {
                 PluginName = _pluginName,
-                DllPath = _dllPath ?? "",
                 ProjectFilePath = _projectFilePath ?? "",
                 BuildConfiguration = _buildConfiguration,
                 ActiveWorktreePath = _activeWorktreePath,

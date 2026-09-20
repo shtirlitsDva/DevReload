@@ -94,7 +94,8 @@ namespace DevReload
                 var host = AcadRpcHost.Initialize(new AcadRpcHostOptions(
                     PipeName: $"acad-rpc-{pid}",
                     MainThreadDispatcher: _dispatcher,
-                    Log: DevReloadDiagnostics.Info));
+                    Log: DevReloadDiagnostics.Info,
+                    StateChecks: Rpc.AcadStateChecks.All));
 
                 // Zero-glue plugin contribution: any assembly in any
                 // non-collectible ALC with an [AcadRpcSurface] gets
@@ -234,7 +235,8 @@ namespace DevReload
         {
             var builder = PluginManager.Register(entry.Name);
 
-            if (entry.DllPath != null) builder.WithDllPath(entry.DllPath);
+            // No dll path: it is resolved from the project + configuration +
+            // worktree at load time, so there is nothing durable to hand over.
             if (entry.ProjectFilePath != null) builder.WithProjectFilePath(entry.ProjectFilePath);
             builder.WithBuildConfiguration(entry.BuildConfiguration);
             builder.WithActiveWorktreePath(entry.ActiveWorktreePath);
