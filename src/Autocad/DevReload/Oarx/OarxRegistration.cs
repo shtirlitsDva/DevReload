@@ -71,17 +71,28 @@ namespace DevReload.Oarx
     {
         public required string Name { get; init; }
 
-        /// <summary>The solution the modules build under. Not optional and not
-        /// inferred: MSBuild resolves a C++ project's output directory through
-        /// $(SolutionDir), and evaluating a .vcxproj standalone silently points
-        /// TargetPath at a directory the solution build never writes (research F7).</summary>
-        public required string SolutionFilePath { get; init; }
+        /// <summary>The active profile this registration was built from.</summary>
+        public required string ProfileName { get; set; }
 
-        /// <summary>Modules in LOAD order.</summary>
+        /// <summary>The folder the active profile builds from. Every path below
+        /// is already resolved inside it.</summary>
+        public required string WorktreePath { get; set; }
+
+        /// <summary>The solution the modules build under, absolute. Not optional
+        /// and not inferred: MSBuild resolves a C++ project's output directory
+        /// through $(SolutionDir), and evaluating a .vcxproj standalone silently
+        /// points TargetPath at a directory the solution build never writes
+        /// (research F7).</summary>
+        public required string SolutionFilePath { get; set; }
+
+        /// <summary>Why this registration cannot be built or loaded (e.g. the
+        /// active profile does not exist). Null when it can.</summary>
+        public string? Problem { get; set; }
+
+        /// <summary>Modules in LOAD order, with absolute project paths.</summary>
         public required List<OarxModule> Modules { get; init; }
 
         public string BuildConfiguration { get; set; } = "Debug";
-        public string? ActiveWorktreePath { get; set; }
 
         /// <summary>Extra "Name=Value" MSBuild properties for this group's builds
         /// and property queries (e.g. a repo's fast-dev-loop switch).</summary>
@@ -118,19 +129,8 @@ namespace DevReload.Oarx
         /// the modules are out anyway.</summary>
         public OarxPluginEntry? PendingEntry { get; set; }
 
-        /// <summary>The solution directory MSBuild must be told about, worktree-aware.</summary>
-        public string SolutionDirectory =>
-            Path.GetDirectoryName(EffectiveSolutionPath)!;
-
-        /// <summary>The solution path for the currently selected worktree.</summary>
-        public string EffectiveSolutionPath =>
-            DevReload.Core.GitWorktreeService.ResolveActiveCsproj(
-                SolutionFilePath, ActiveWorktreePath);
-
-        /// <summary>The project path for a module in the currently selected worktree.</summary>
-        public string EffectiveProjectPath(OarxModule module) =>
-            DevReload.Core.GitWorktreeService.ResolveActiveCsproj(
-                module.ProjectFilePath, ActiveWorktreePath);
+        /// <summary>The solution directory MSBuild must be told about.</summary>
+        public string SolutionDirectory => Path.GetDirectoryName(SolutionFilePath)!;
 
         /// <summary>True when every module that has been resolved is loaded.
         /// A group is "loaded" only as a whole — a half-loaded group is the

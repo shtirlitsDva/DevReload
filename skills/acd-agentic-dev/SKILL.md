@@ -13,6 +13,7 @@ Two MCP surfaces cooperate in this loop. Confusing them is the #1 reason agents 
 The loop is: **DevReload reloads your code → ACD-MCP verifies what the code did.** You need both. If you only know DevReload, you can build and load but cannot *observe* the drawing; if you only know ACD-MCP, you cannot reload the plugin you are editing.
 
 - **UI automation (`ui_*`)** is part of the DevReload host (same bridge), for when the thing under test is a *UI*, not just drawing state: see/drive WPF palettes at the ViewModel level, OK native modal dialogs, synthesize mouse for jigs/grips, and take inline screenshots. See `<ui-group>`.
+- **Native ObjectARX (`oarx_*`)** — C++ `.dbx`/`.arx` groups, same host. Working in a worktree? Publish a profile for it yourself. See `<oarx-group>`.
 
 **Before you do anything, read `<tool-surface-comes-up-in-phases>`.** Your tool catalog at session start is INCOMPLETE on purpose — `devreload_*` tools do not exist until AutoCAD is up. Agents that don't know this conclude "the MCP is broken" or invent throwaway copies. Don't.
 </read-this-first>
@@ -155,6 +156,24 @@ Plugin lifecycle, build, and configuration. `devreload_*` prefix. **Available on
 | `devreload_list_worktrees(repoRoot)` | Enumerate git worktrees + branches. |
 | `devreload_read_shared_assemblies(buildDir)` / `devreload_write_shared_assemblies(...)` | Read or write `SharedAssemblies.Config.json` — controls which DLLs load into the default ALC (required for WPF XAML type resolution and any type that must cross the plugin/host boundary). |
 </devreload-group>
+
+<oarx-group>
+Native ObjectARX groups (C++ `.dbx`/`.arx`). `oarx_*` prefix, **phase 1** like `devreload_*`. A group is an ORDERED set of native modules built under one `.sln`; reload is unload → build → load (a mapped module locks its file, so it cannot build first).
+
+A group has **profiles**. A profile = a name + one **worktree folder** (absolute, machine-local) + what to build there: modules (`.vcxproj` paths, relative to the folder, in LOAD order — `.dbx` before the `.arx` that uses it), MSBuild properties, and companion DLLs. The group's *active* profile is what Load/Reload builds. Profiles are per worktree FOLDER, never per branch.
+
+**Working in your own worktree? Publish a profile for it — don't ask the user to set one up.** Copy the main profile and change only what differs:
+`oarx_publish_profile(name, worktreePath=<your worktree>, copyFrom=<main profile>, projectFilePaths=[...])`. Publishing does NOT activate it — switching what the user's AutoCAD builds is the user's call. Activate only when the user asks.
+
+| Tool | When to call |
+|---|---|
+| `oarx_list_plugins` | Groups, their profiles (which one is active, which folders are missing), live state, modules in load order. `configPending` = a change staged until the next load/reload. |
+| `oarx_publish_profile(name, worktreePath, profile?, copyFrom?, projectFilePaths?, msbuildProperties?, preload*/postload*?, activate=false)` | Create or update a profile (upsert by name; name defaults to the folder name). `copyFrom` applies only when creating — a one-time copy. Modules must lie inside the folder; the solution must exist there. |
+| `oarx_activate_profile(name, profile)` | Make a profile the one Load/Reload builds. On a loaded group the switch is staged until the next reload. |
+| `oarx_delete_profile(name, profile)` | Clean up your profile when your worktree goes away. The active profile can't be deleted. |
+| `oarx_reload / oarx_load_plugin / oarx_unload_plugin(name)` | Lifecycle of the group as a whole, from its active profile. |
+| `oarx_register_new_plugin(...)` / `oarx_update_plugin(name, commandPrefix?, loadOnStartup?, buildConfiguration?)` / `oarx_unregister(name)` | Group-level settings only — per-worktree content lives in profiles. |
+</oarx-group>
 
 <acd-mcp-group>
 The script/verification surface. Separate MCP server; tools present from phase 0 but only **execute** after `devreload_load_plugin("Acd.Mcp")` (phase 2). Load `/acd-mcp:script` or `/acd-mcp:batch` for the full contract before calling.

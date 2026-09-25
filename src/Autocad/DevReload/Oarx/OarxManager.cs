@@ -4,7 +4,6 @@ using System.IO;
 using System.Linq;
 
 using Autodesk.AutoCAD.ApplicationServices;
-using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Internal;
 using Autodesk.AutoCAD.Runtime;
 
@@ -38,19 +37,41 @@ namespace DevReload.Oarx
         string? ModuleFileName,
         bool Loaded);
 
+    /// <summary>One profile of an OARX group, as configured. Paths are as stored:
+    /// module projects relative to <see cref="WorktreePath"/>, companions absolute
+    /// or relative to it.</summary>
+    public sealed record OarxProfileInfo(
+        string Name,
+        string WorktreePath,
+        bool FolderExists,
+        bool Active,
+        IReadOnlyList<string> ProjectFilePaths,
+        IReadOnlyList<string> MsBuildProperties,
+        IReadOnlyList<string> PreloadNativeModules,
+        IReadOnlyList<string> PreloadManagedAssemblies,
+        IReadOnlyList<string> PostloadManagedAssemblies);
+
     /// <summary>One OARX group's registration and live state.</summary>
     /// <remarks><see cref="Loaded"/> is the state of the group AS A WHOLE. A cycle
     /// that died part-way sets <see cref="PartiallyLoaded"/> instead, which is a
-    /// different thing and must not read as loaded.</remarks>
+    /// different thing and must not read as loaded.
+    /// <para><see cref="Modules"/> and <see cref="LiveProfile"/> describe what is
+    /// registered live; <see cref="Profiles"/> and <see cref="ActiveProfile"/> the
+    /// configuration as last saved. They differ exactly while
+    /// <see cref="ConfigPending"/> — a change staged against a loaded group.</para></remarks>
     public sealed record OarxPluginInfo(
         string Name,
         bool Loaded,
         bool PartiallyLoaded,
         string BuildConfiguration,
-        string SolutionFilePath,
-        string? ActiveWorktreePath,
+        string Solution,
+        string ActiveProfile,
+        string LiveProfile,
+        string LiveWorktreePath,
         bool ConfigPending,
-        IReadOnlyList<OarxModuleInfo> Modules);
+        string? Problem,
+        IReadOnlyList<OarxModuleInfo> Modules,
+        IReadOnlyList<OarxProfileInfo> Profiles);
 
     /// <summary>
     /// The OARX plugin lifecycle: registry, build, load, unload, reload.
@@ -101,21 +122,52 @@ namespace DevReload.Oarx
         public static IReadOnlyList<OarxPluginInfo> ListSnapshots() =>
             _plugins.Values.Select(SnapshotOf).ToList();
 
-        private static OarxPluginInfo SnapshotOf(OarxRegistration reg) =>
-            new(
+        private static OarxPluginInfo SnapshotOf(OarxRegistration reg)
+        {
+            var entry = reg.PendingEntry ?? reg.Source;
+            return new(
                 Name: reg.Name,
                 Loaded: reg.IsLoaded,
                 PartiallyLoaded: reg.IsPartiallyLoaded,
                 BuildConfiguration: reg.BuildConfiguration,
-                SolutionFilePath: reg.SolutionFilePath,
-                ActiveWorktreePath: reg.ActiveWorktreePath,
+                Solution: entry.Solution,
+                ActiveProfile: entry.ActiveProfile,
+                LiveProfile: reg.ProfileName,
+                LiveWorktreePath: reg.WorktreePath,
                 ConfigPending: reg.PendingEntry != null,
+                Problem: reg.Problem,
                 Modules: reg.Modules.Select(m => new OarxModuleInfo(
                     ProjectFilePath: m.ProjectFilePath,
                     ProjectName: m.ProjectName,
                     TargetPath: m.TargetPath,
                     ModuleFileName: m.ModuleFileName,
-                    Loaded: m.IsLoaded)).ToList());
+                    Loaded: m.IsLoaded)).ToList(),
+                Profiles: entry.Profiles.Select(p => new OarxProfileInfo(
+                    Name: p.Name,
+                    WorktreePath: p.WorktreePath,
+                    FolderExists: p.FolderExists,
+                    Active: p.Name.Equals(entry.ActiveProfile, StringComparison.OrdinalIgnoreCase),
+                    ProjectFilePaths: p.ProjectFilePaths.ToList(),
+                    MsBuildProperties: p.MsBuildProperties.ToList(),
+                    PreloadNativeModules: p.PreloadNativeModules.ToList(),
+                    PreloadManagedAssemblies: p.PreloadManagedAssemblies.ToList(),
+                    PostloadManagedAssemblies: p.PostloadManagedAssemblies.ToList())).ToList());
+        }
+
+        /// <summary>The group's configuration as last saved — the staged entry
+        /// while one is pending, otherwise the one the registration was built
+        /// from. What the palette card shows.</summary>
+        public static OarxPluginEntry? GetEntry(string name) =>
+            _plugins.TryGetValue(name, out var reg) ? reg.PendingEntry ?? reg.Source : null;
+
+        /// <summary>A short note for a group with a staged change, or null.</summary>
+        public static string? DescribePending(string name)
+        {
+            if (!_plugins.TryGetValue(name, out var reg) || reg.PendingEntry == null) return null;
+            return reg.PendingEntry.ActiveProfile.Equals(reg.ProfileName, StringComparison.OrdinalIgnoreCase)
+                ? "config change staged"
+                : $"switch to '{reg.PendingEntry.ActiveProfile}' staged";
+        }
 
 
         internal static bool TryGet(string name, out OarxRegistration reg) =>
@@ -164,76 +216,87 @@ namespace DevReload.Oarx
         }
 
         /// <summary>
-        /// Take a freshly saved config entry live. Everything except the module
-        /// list applies immediately regardless of load state — properties are
-        /// read at the next build, companions at the next load. A changed module
-        /// list on a group with mapped modules is staged instead.
+        /// Take a freshly saved config entry live.
         /// </summary>
+        /// <remarks>
+        /// The group's own fields (configuration, prefix) always apply now. What
+        /// the active profile resolves to applies now too, UNLESS its module list
+        /// changed on a group with mapped modules — a mapped module can't be
+        /// swapped under itself — in which case the whole entry is staged and the
+        /// next load/reload applies it. Switching profile is exactly such a
+        /// change whenever the other profile builds from another folder.
+        /// </remarks>
         internal static OarxActionResult ApplyEntry(OarxPluginEntry entry, bool prefixChanged)
         {
             if (!_plugins.TryGetValue(entry.Name, out var reg))
                 return new OarxActionResult(entry.Name, true, false,
                     "updated plugins.json (group is not registered live)");
 
+            var fresh = OarxConfigLoader.BuildRegistration(entry);
             bool modulesChanged = !reg.Modules.Select(m => m.ProjectFilePath)
-                .SequenceEqual(entry.ProjectFilePaths, StringComparer.OrdinalIgnoreCase);
+                .SequenceEqual(fresh.Modules.Select(m => m.ProjectFilePath),
+                    StringComparer.OrdinalIgnoreCase);
 
             if (modulesChanged && (reg.IsLoaded || reg.IsPartiallyLoaded))
             {
-                // Safe fields live now, module list at the next cycle.
-                PatchLiveFields(reg, entry, prefixChanged);
+                PatchGroupFields(reg, entry, prefixChanged);
                 reg.PendingEntry = entry;
                 StateChanged?.Invoke(entry.Name);
                 return new OarxActionResult(entry.Name, true, reg.IsLoaded,
-                    "updated — the changed module list applies at the next load/reload " +
-                    "(the current modules stay mapped until then)");
+                    "saved — the group is loaded, so the new module set applies at the next " +
+                    "load/reload (the current modules stay mapped until then)");
             }
 
             if (modulesChanged)
             {
                 SwapRegistration(reg, entry);
-                return new OarxActionResult(entry.Name, true, false, "updated");
+                return new OarxActionResult(entry.Name, true, false, "saved");
             }
 
-            PatchLiveFields(reg, entry, prefixChanged);
+            PatchGroupFields(reg, entry, prefixChanged);
+            PatchProfileFields(reg, fresh);
             reg.Source = entry;
             reg.PendingEntry = null;
             StateChanged?.Invoke(entry.Name);
             return new OarxActionResult(entry.Name, true, reg.IsLoaded,
                 reg.IsLoaded
-                    ? "updated — properties apply at the next build, companions at the next load"
-                    : "updated");
+                    ? "saved — properties apply at the next build, companions at the next load"
+                    : "saved");
         }
 
-        /// <remarks>
-        /// Deliberately does NOT invalidate the modules' resolved TargetPaths when
-        /// the configuration or the worktree changes. The dynamic linker keys a
-        /// loaded module on its FILE NAME (research F6), and that name is the same
-        /// in every configuration and every worktree — so the group's loaded state
-        /// stays readable across the switch, and the next Load/Reload re-resolves
-        /// the paths anyway.
-        /// </remarks>
-        private static void PatchLiveFields(
+        private static void PatchGroupFields(
             OarxRegistration reg, OarxPluginEntry entry, bool prefixChanged)
         {
             reg.BuildConfiguration = entry.BuildConfiguration;
-            reg.ActiveWorktreePath = entry.ActiveWorktreePath;
-            reg.MsBuildProperties.Clear();
-            reg.MsBuildProperties.AddRange(entry.MsBuildProperties);
-            reg.PreloadNativeModules.Clear();
-            reg.PreloadNativeModules.AddRange(entry.PreloadNativeModules);
-            reg.PreloadManagedAssemblies.Clear();
-            reg.PreloadManagedAssemblies.AddRange(entry.PreloadManagedAssemblies);
-            reg.PostloadManagedAssemblies.Clear();
-            reg.PostloadManagedAssemblies.AddRange(entry.PostloadManagedAssemblies);
+            if (!prefixChanged) return;
 
-            if (prefixChanged)
-            {
-                foreach (var (group, cmd, _) in reg.LoaderCommands)
-                    Utils.RemoveCommand(group, cmd);
-                reg.LoaderCommands.Clear();
-                RegisterLoaderCommands(entry.Name, entry.CommandPrefix ?? entry.Name);
-            }
+            foreach (var (group, cmd, _) in reg.LoaderCommands)
+                Utils.RemoveCommand(group, cmd);
+            reg.LoaderCommands.Clear();
+            RegisterLoaderCommands(entry.Name, entry.CommandPrefix ?? entry.Name);
+        }
+
+        /// <remarks>
+        /// Only reached when the module projects are unchanged, and deliberately
+        /// does NOT invalidate the modules' resolved TargetPaths. The dynamic
+        /// linker keys a loaded module on its FILE NAME (research F6), so the
+        /// group's loaded state stays readable, and the next Load/Reload
+        /// re-resolves the paths anyway.
+        /// </remarks>
+        private static void PatchProfileFields(OarxRegistration reg, OarxRegistration fresh)
+        {
+            reg.ProfileName = fresh.ProfileName;
+            reg.WorktreePath = fresh.WorktreePath;
+            reg.SolutionFilePath = fresh.SolutionFilePath;
+            reg.Problem = fresh.Problem;
+            reg.MsBuildProperties.Clear();
+            reg.MsBuildProperties.AddRange(fresh.MsBuildProperties);
+            reg.PreloadNativeModules.Clear();
+            reg.PreloadNativeModules.AddRange(fresh.PreloadNativeModules);
+            reg.PreloadManagedAssemblies.Clear();
+            reg.PreloadManagedAssemblies.AddRange(fresh.PreloadManagedAssemblies);
+            reg.PostloadManagedAssemblies.Clear();
+            reg.PostloadManagedAssemblies.AddRange(fresh.PostloadManagedAssemblies);
         }
 
         /// <summary>Replace a registration wholesale from its entry. Only legal
@@ -508,6 +571,14 @@ namespace DevReload.Oarx
         /// or the reason it could not be resolved — never a guessed path.</summary>
         private static string? ResolveTargets(OarxRegistration reg, IReloadProgress ui)
         {
+            if (reg.Problem != null)
+                return reg.Problem;
+            // Checked on every cycle, not just on save: agents remove worktrees,
+            // and a profile pointing at a vanished folder must say so rather
+            // than build something else.
+            if (!Directory.Exists(reg.WorktreePath))
+                return $"profile '{reg.ProfileName}': worktree folder not found: {reg.WorktreePath}. " +
+                       "Activate another profile, or remove this one in the profiles window.";
             if (reg.Modules.Count == 0)
                 return $"'{reg.Name}' has no modules registered.";
 
@@ -517,7 +588,7 @@ namespace DevReload.Oarx
 
             foreach (var m in reg.Modules)
             {
-                string proj = reg.EffectiveProjectPath(m);
+                string proj = m.ProjectFilePath;
                 if (!File.Exists(proj))
                     return $"project file not found: {proj}";
 
@@ -587,7 +658,7 @@ namespace DevReload.Oarx
             string solutionDir = reg.SolutionDirectory;
             foreach (var m in reg.Modules)
             {
-                string proj = reg.EffectiveProjectPath(m);
+                string proj = m.ProjectFilePath;
                 ui.Line($"building {m.ProjectName} ({reg.BuildConfiguration}|{Platform})");
 
                 // The HUD's own sink already streams every build line, so the

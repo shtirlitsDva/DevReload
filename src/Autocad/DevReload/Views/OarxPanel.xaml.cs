@@ -27,12 +27,12 @@ namespace DevReload.Views
             DataContext = viewModel;
         }
 
-        // The worktree list is enumerated lazily (a git query) the moment the
-        // user opens the combo, so it stays current without polling.
+        // Folder existence is re-checked the moment the user opens the combo,
+        // so a removed worktree shows as missing without polling.
         private void WorktreeComboBox_DropDownOpened(object sender, System.EventArgs e)
         {
             if (sender is ComboBox combo && combo.DataContext is OarxPluginItemViewModel vm)
-                vm.RefreshWorktrees();
+                vm.RefreshProfiles();
         }
     }
 }
