@@ -13,6 +13,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Forms\TGridWindow.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Forms\StringGridFormCaller.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Forms\TGridFormCaller.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Themes\DarkTitleBar.cs" />
   </ItemGroup>
   <ItemGroup>
     <!-- Shared dark theme — compiled into each consuming assembly at the

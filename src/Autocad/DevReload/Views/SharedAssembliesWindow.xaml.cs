@@ -1,5 +1,7 @@
 using System.Windows;
 
+using WpfSHARED;
+
 namespace DevReload.Views
 {
     public partial class SharedAssembliesWindow : Window
@@ -7,6 +9,7 @@ namespace DevReload.Views
         public SharedAssembliesWindow()
         {
             InitializeComponent();
+            DarkTitleBar.ApplyTheme(this);
         }
 
         private void Save_Click(object sender, RoutedEventArgs e)

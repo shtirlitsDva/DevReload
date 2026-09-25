@@ -278,6 +278,10 @@ namespace DevReload
                 changed = true;
             }
 
+            // OARX groups: one absolute module list per group → profiles.
+            if (DevReload.Oarx.OarxConfigLoader.MigrateIfNeeded(config))
+                changed = true;
+
             if (changed)
                 Save(config);
         }

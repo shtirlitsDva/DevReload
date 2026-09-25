@@ -60,6 +60,7 @@
 			<Link>Themes\Theme.xaml</Link>
 			<Generator>MSBuild:Compile</Generator>
 		</Page>
+		<Compile Include="..\..\Shared\WpfSHARED\Themes\DarkTitleBar.cs" Link="Themes\DarkTitleBar.cs" />
 	</ItemGroup>
   <Import Project="..\..\Shared\DevReload.Diagnostics\DevReload.Diagnostics.projitems" Label="Shared" />
 </Project>

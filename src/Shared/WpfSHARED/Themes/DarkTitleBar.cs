@@ -4,7 +4,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 
-namespace RevitDevReload.Ui
+namespace WpfSHARED
 {
     /// <summary>
     /// Paints a WPF window's OS-drawn title bar — the non-client area that DWM
@@ -27,6 +27,22 @@ namespace RevitDevReload.Ui
         [DllImport("dwmapi.dll", PreserveSig = true)]
         private static extern int DwmSetWindowAttribute(
             IntPtr hwnd, int attribute, ref int value, int size);
+
+        /// <summary>
+        /// Themes the title bar of a window that merges <c>Theme.xaml</c>, with
+        /// the caption, text and border colours taken from that theme. Call it
+        /// after <c>InitializeComponent</c> so the window's resources exist —
+        /// <see cref="FrameworkElement.FindResource"/> throws on a missing key,
+        /// which is the point: a renamed colour must fail loudly, not default.
+        /// </summary>
+        public static void ApplyTheme(Window window)
+        {
+            if (window == null) throw new ArgumentNullException(nameof(window));
+            Apply(window,
+                (Color)window.FindResource("BgColor"),
+                (Color)window.FindResource("FgColor"),
+                (Color)window.FindResource("InputBorderColor"));
+        }
 
         /// <summary>
         /// Applies the themed title bar to <paramref name="window"/>. If the

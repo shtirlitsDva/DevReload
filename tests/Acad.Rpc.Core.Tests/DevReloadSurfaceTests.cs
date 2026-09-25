@@ -60,6 +60,39 @@ public class DevReloadSurfaceTests
         "acad_close_active_drawing",
         "acad_list_open_documents",
         "acad_activate_document",
+        // ObjectARX groups (OarxTools): lifecycle, group, profiles.
+        "oarx_list_plugins",
+        "oarx_reload",
+        "oarx_load_plugin",
+        "oarx_unload_plugin",
+        "oarx_register_new_plugin",
+        "oarx_update_plugin",
+        "oarx_unregister",
+        "oarx_publish_profile",
+        "oarx_activate_profile",
+        "oarx_delete_profile",
+        // In-process UI automation (Ui/Tools) — also ships in DevReload.
+        "ui_list_windows",
+        "ui_list_surfaces",
+        "ui_snapshot",
+        "ui_invoke",
+        "ui_set_value",
+        "ui_toggle",
+        "ui_select",
+        "ui_click",
+        "ui_drag",
+        "ui_mouse_move",
+        "ui_press_key",
+        "ui_dialog_buttons",
+        "ui_dialog_click",
+        "ui_screenshot_window",
+        "ui_screenshot_region",
+        "ui_screenshot_element",
+        "ui_screenshot_wcs_box",
+        "ui_canvas_capture_view",
+        "ui_canvas_click",
+        "ui_canvas_drag",
+        "ui_canvas_drag_capture",
     };
 
     [Fact]
@@ -117,6 +150,12 @@ public class DevReloadSurfaceTests
     [InlineData("acad_new_drawing", "templatePath")]
     [InlineData("acad_close_active_drawing", "saveChanges")]
     [InlineData("acad_activate_document", "documentName")]
+    // OARX: group fields vs profile fields are separate tools.
+    [InlineData("oarx_update_plugin", "name", "commandPrefix", "loadOnStartup", "buildConfiguration")]
+    [InlineData("oarx_publish_profile", "name", "worktreePath", "profile", "copyFrom", "projectFilePaths",
+        "msbuildProperties", "preloadNativeModules", "preloadManagedAssemblies", "postloadManagedAssemblies", "activate")]
+    [InlineData("oarx_activate_profile", "name", "profile")]
+    [InlineData("oarx_delete_profile", "name", "profile")]
     public async System.Threading.Tasks.Task DevReloadTool_HasExpectedInputSchemaProperties(string toolName, params string[] expectedProps)
     {
         var host = NewHost();

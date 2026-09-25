@@ -649,6 +649,7 @@
                                       Cursor="Hand"
                                       Focusable="False"
                                       Template="{StaticResource ExpanderHeaderToggle}"
+                                      Foreground="{TemplateBinding Foreground}"
                                       Content="{TemplateBinding Header}"
                                       ContentTemplate="{TemplateBinding HeaderTemplate}"
                                       IsChecked="{Binding IsExpanded, Mode=TwoWay,
