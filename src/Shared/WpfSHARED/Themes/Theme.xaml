@@ -490,6 +490,15 @@
 
     <!-- ── Worktree ComboBox (hidden when no worktrees) ────────────── -->
     <Style x:Key="WorktreeCombo" TargetType="ComboBox" BasedOn="{StaticResource DarkComboBox}">
+        <Setter Property="ItemContainerStyle">
+            <Setter.Value>
+                <!-- Full path on hover. A plain-string item (Revit, which already
+                     shows the path) has no Path, so it gets no tooltip. -->
+                <Style TargetType="ComboBoxItem" BasedOn="{StaticResource {x:Type ComboBoxItem}}">
+                    <Setter Property="ToolTip" Value="{Binding Path, FallbackValue={x:Null}}"/>
+                </Style>
+            </Setter.Value>
+        </Setter>
         <Style.Triggers>
             <DataTrigger Binding="{Binding Worktrees.Count}" Value="0">
                 <Setter Property="Visibility" Value="Collapsed"/>

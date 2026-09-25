@@ -26,7 +26,10 @@ namespace DevReload
         public string Path { get; set; } = "";
         public string Branch { get; set; } = "";
         public bool IsMain { get; set; }
-        public override string ToString() => Branch;
+        // Branch alone is ambiguous: several worktrees can sit on look-alike
+        // branches (or the same commit), and people know them by folder.
+        public override string ToString() =>
+            $"{Branch} · {System.IO.Path.GetFileName(Path.TrimEnd('\\', '/'))}";
     }
 }
 
