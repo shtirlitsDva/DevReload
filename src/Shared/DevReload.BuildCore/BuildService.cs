@@ -148,7 +148,7 @@ namespace DevReload.Core
             if (exitCode != 0)
             {
                 progress?.Invoke($"Build FAILED — {summary.Errors} error(s), {summary.Warnings} warning(s).");
-                foreach (var line in log.Split('\n').Where(l => l.Contains(": error ")).Take(10))
+                foreach (var line in log.Split('\n').Where(IsErrorLine).Take(10))
                     progress?.Invoke($"  {line.Trim()}");
                 return new BuildResult(false, null, summary.Warnings, summary.Errors, log);
             }
@@ -167,6 +167,200 @@ namespace DevReload.Core
             progress?.Invoke($"Output: {targetPath}");
             return new BuildResult(true, targetPath, summary.Warnings, summary.Errors, log);
         }
+
+        /// <summary>
+        /// Build several MSBuild.exe projects (the modules of an OARX group) in ONE
+        /// msbuild run with <c>-m</c>, so projects that do not depend on each other
+        /// compile side by side instead of one after the other.
+        /// </summary>
+        /// <remarks>
+        /// One <see cref="BuildProject"/> per module is strictly serial: the second
+        /// module cannot start compiling until the first has linked, although
+        /// neither needs the other (a .dbx and the .arx that binds it by name at
+        /// run time). Measured on NorsynDrawingTools' NdhPipeline group, a Core
+        /// header edit went from ~50 s to ~40 s with the two modules in one run.
+        /// The run goes through a generated traversal project over the modules;
+        /// every global property (Configuration, Platform, SolutionDir, the
+        /// registration's extras) reaches each module exactly as a single-project
+        /// build would pass it, and MSBuild builds a shared reference (a Core
+        /// static lib) once. A group of one is just <see cref="BuildProject"/>.
+        /// </remarks>
+        public static GroupBuildResult BuildProjects(
+            IReadOnlyList<string> projectPaths,
+            string buildConfiguration,
+            string? platform,
+            Action<string>? progress,
+            string? solutionDir = null,
+            IBuildProcessRunner? runner = null,
+            IReadOnlyList<string>? extraProperties = null)
+        {
+            if (projectPaths.Count == 0)
+                throw new ArgumentException("A group build needs at least one project.", nameof(projectPaths));
+
+            if (projectPaths.Count == 1)
+            {
+                var single = BuildProject(projectPaths[0], buildConfiguration, platform, progress,
+                    solutionDir, runner, extraProperties);
+                return new GroupBuildResult(single.Success, new[] { single.OutputPath },
+                    single.Success ? Array.Empty<string>() : new[] { Path.GetFileName(projectPaths[0]) },
+                    single.Warnings, single.Errors, single.Log);
+            }
+
+            GroupBuildResult Refused(string msg)
+            {
+                progress?.Invoke(msg);
+                return new GroupBuildResult(false, new string?[projectPaths.Count],
+                    Array.Empty<string>(), 0, 1, msg);
+            }
+
+            // dotnet build takes one project; the traversal is an MSBuild.exe run.
+            var sdkStyle = projectPaths.Where(IsSdkStyle).Select(Path.GetFileName).ToList();
+            if (sdkStyle.Count > 0)
+                return Refused("A group build takes MSBuild.exe projects only; SDK-style: " +
+                               string.Join(", ", sdkStyle) + ".");
+
+            var targets = new List<string>(projectPaths.Count);
+            foreach (string proj in projectPaths)
+            {
+                string? target = QueryMsBuildProperty(
+                    proj, "TargetPath", buildConfiguration, platform, solutionDir, extraProperties);
+                if (string.IsNullOrEmpty(target))
+                    return Refused($"Failed to resolve output path for '{Path.GetFileNameWithoutExtension(proj)}'.");
+                targets.Add(target!);
+            }
+
+            string? msbuild = LocateFrameworkMsBuild();
+            if (msbuild == null)
+                return Refused("No MSBuild.exe was found via vswhere. Install VS Build Tools.");
+
+            string traversal = WriteTraversalProject(projectPaths);
+            string names = string.Join(", ", projectPaths.Select(Path.GetFileNameWithoutExtension));
+            progress?.Invoke($"Building {names} ({buildConfiguration}) in one parallel run...");
+
+            string platformArg = string.IsNullOrEmpty(platform) ? "" : $" -p:Platform={platform}";
+            // -nr:false: this runs inside AutoCAD; worker nodes left behind by a
+            // reload would outlive it as orphan MSBuild.exe processes.
+            var psi = new ProcessStartInfo
+            {
+                FileName = msbuild,
+                Arguments = $"\"{traversal}\" -m -nr:false -p:Configuration={buildConfiguration}{platformArg}" +
+                            $"{SolutionDirArg(solutionDir)}{ExtraPropsArg(extraProperties)} -v:m -nologo",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = !string.IsNullOrEmpty(solutionDir)
+                    ? solutionDir!
+                    : Path.GetDirectoryName(projectPaths[0])!,
+            };
+
+            var buildLog = new StringBuilder();
+            int exitCode;
+            try
+            {
+                exitCode = (runner ?? DefaultBuildProcessRunner.Instance)
+                    .Run(psi, line => buildLog.AppendLine(line));
+            }
+            catch (Exception ex)
+            {
+                return Refused($"Failed to start build: {ex.Message}");
+            }
+
+            string log = buildLog.ToString();
+            var summary = ParseBuildSummary(log);
+            var outputs = targets.Select(t => File.Exists(t) ? t : null).ToList();
+
+            if (exitCode != 0)
+            {
+                var failed = ProjectsWithErrors(log);
+                progress?.Invoke($"Build FAILED — {summary.Errors} error(s), {summary.Warnings} warning(s)" +
+                                 (failed.Count > 0 ? $" in {string.Join(", ", failed)}." : "."));
+                foreach (var line in log.Split('\n').Where(IsErrorLine).Take(10))
+                    progress?.Invoke($"  {line.Trim()}");
+                return new GroupBuildResult(false, outputs, failed, summary.Warnings, summary.Errors, log);
+            }
+
+            var absent = projectPaths.Where((_, i) => outputs[i] == null).Select(Path.GetFileName).ToList();
+            if (absent.Count > 0)
+            {
+                string msg = "Build output not found for: " + string.Join(", ", absent);
+                progress?.Invoke(msg);
+                return new GroupBuildResult(false, outputs, absent!, summary.Warnings, summary.Errors + 1, log);
+            }
+
+            progress?.Invoke(summary.Warnings > 0
+                ? $"Build succeeded — {summary.Warnings} warning(s)."
+                : "Build succeeded.");
+            return new GroupBuildResult(true, outputs, Array.Empty<string>(), summary.Warnings, summary.Errors, log);
+        }
+
+        // The traversal a group build runs: the modules, built in parallel with the
+        // caller's global properties. A bare <Project> imports nothing, so no
+        // Directory.Build.* next to the temp file can leak into it; each module
+        // still imports its own.
+        internal static string TraversalProjectXml(IEnumerable<string> projectPaths)
+        {
+            var sb = new StringBuilder();
+            sb.Append("<Project>\r\n");
+            sb.Append("  <!-- Generated by DevReload (BuildService.BuildProjects). Do not edit. -->\r\n");
+            sb.Append("  <ItemGroup>\r\n");
+            foreach (string p in projectPaths)
+                sb.Append("    <DevReloadModule Include=\"")
+                  .Append(System.Security.SecurityElement.Escape(Path.GetFullPath(p)))
+                  .Append("\" />\r\n");
+            sb.Append("  </ItemGroup>\r\n");
+            sb.Append("  <Target Name=\"Build\">\r\n");
+            sb.Append("    <MSBuild Projects=\"@(DevReloadModule)\" BuildInParallel=\"true\" />\r\n");
+            sb.Append("  </Target>\r\n");
+            sb.Append("</Project>\r\n");
+            return sb.ToString();
+        }
+
+        // Content-addressed, so one group always runs the same file and two groups
+        // (or two AutoCAD sessions building different groups) never share one.
+        private static string WriteTraversalProject(IReadOnlyList<string> projectPaths)
+        {
+            string xml = TraversalProjectXml(projectPaths);
+            string dir = Path.Combine(Path.GetTempPath(), "DevReload");
+            Directory.CreateDirectory(dir);
+
+            string hash;
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+                hash = string.Concat(sha.ComputeHash(Encoding.UTF8.GetBytes(xml))
+                                        .Take(8).Select(b => b.ToString("x2")));
+            string path = Path.Combine(dir, $"group-{hash}.proj");
+            if (!File.Exists(path) || File.ReadAllText(path) != xml)
+                File.WriteAllText(path, xml);
+            return path;
+        }
+
+        // The projects MSBuild attributed an error to. MSBuild ends every error
+        // line with " [<full project path>]", naming the project that failed -
+        // which is often a referenced static lib, not a module.
+        internal static IReadOnlyList<string> ProjectsWithErrors(string log)
+        {
+            var found = new List<string>();
+            foreach (string raw in log.Split('\n'))
+            {
+                string line = raw.TrimEnd();
+                if (!IsErrorLine(line) || !line.EndsWith("]"))
+                    continue;
+                int open = line.LastIndexOf('[');
+                if (open < 0) continue;
+                string name = Path.GetFileName(line.Substring(open + 1, line.Length - open - 2));
+                if (name.Length > 0 && !found.Contains(name, StringComparer.OrdinalIgnoreCase))
+                    found.Add(name);
+            }
+            return found;
+        }
+
+        // An MSBuild error line. "fatal error" counts: LNK1104 on a module a running
+        // AutoCAD holds open is the commonest native build failure there is.
+        internal static bool IsErrorLine(string line) =>
+            line.IndexOf(": error ", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            line.IndexOf(": fatal error ", StringComparison.OrdinalIgnoreCase) >= 0;
 
         // Build output directory for a plugin selection (worktree + configuration),
         // or null when MSBuild can't resolve it yet (e.g. the worktree has never

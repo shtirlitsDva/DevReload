@@ -655,25 +655,31 @@ namespace DevReload.Oarx
         private static (string Message, string? Log)? BuildModules(
             OarxRegistration reg, IReloadProgress ui)
         {
-            string solutionDir = reg.SolutionDirectory;
-            foreach (var m in reg.Modules)
+            // ONE msbuild run over every module, with -m: modules that do not
+            // reference each other (a dbx and the arx that binds it by name)
+            // compile side by side, and a shared static lib builds once. A
+            // per-module loop would make each module wait for the previous link.
+            ui.Line($"building {string.Join(", ", reg.Modules.Select(m => m.ProjectName))} " +
+                    $"({reg.BuildConfiguration}|{Platform})");
+
+            // The HUD's own sink already streams every build line, so the
+            // BuildService progress callback is left null here — routing it
+            // through ui.Line as well would report each line twice.
+            var result = BuildService.BuildProjects(
+                reg.Modules.Select(m => m.ProjectFilePath).ToList(),
+                reg.BuildConfiguration, Platform, null, reg.SolutionDirectory,
+                new PumpedBuildRunner(ui), reg.MsBuildProperties);
+
+            if (!result.Success)
             {
-                string proj = m.ProjectFilePath;
-                ui.Line($"building {m.ProjectName} ({reg.BuildConfiguration}|{Platform})");
-
-                // The HUD's own sink already streams every build line, so the
-                // BuildService progress callback is left null here — routing it
-                // through ui.Line as well would report each line twice.
-                var result = BuildService.BuildProject(
-                    proj, reg.BuildConfiguration, Platform, null, solutionDir,
-                    new PumpedBuildRunner(ui), reg.MsBuildProperties);
-
-                if (!result.Success)
-                    return ($"build FAILED for '{m.ProjectName}' " +
-                            $"({result.Errors} error(s)).", result.Log);
-
-                m.TargetPath = result.OutputPath;
+                string where = result.FailedProjects.Count > 0
+                    ? string.Join(", ", result.FailedProjects.Select(p => $"'{p}'"))
+                    : $"group '{reg.Name}'";
+                return ($"build FAILED in {where} ({result.Errors} error(s)).", result.Log);
             }
+
+            for (int i = 0; i < reg.Modules.Count; i++)
+                reg.Modules[i].TargetPath = result.OutputPaths[i];
             return null;
         }
 

@@ -456,6 +456,16 @@ command rebuilt and reloaded both. This asymmetry is inherent to the platform, n
 is why the failure verdict has to be loud (D3): the user is left with nothing loaded and must be
 told why.
 
+**F15 — a group builds in ONE msbuild run, not one run per module (2.4.0).** The modules of a
+group rarely reference each other (a `.dbx` and the `.arx` that binds it by name at run time), but
+one `BuildProject` per module made the second wait for the first to link. `BuildService.BuildProjects`
+writes a traversal project (`%TEMP%\DevReload\group-<hash>.proj`, an `<MSBuild BuildInParallel>`
+over the modules, importing nothing) and runs it once with `-m -nr:false`; every global property
+reaches each module as a single-project build would pass it, and a shared static lib builds once.
+Measured on NorsynDrawingTools' NdhPipeline group after a touch of a header every TU reads: ~60 s
+serial -> 45 s in one run. A group of one is still a plain `BuildProject`. A failure names the
+projects MSBuild attributed errors to, which may be a referenced lib rather than a module.
+
 </live-findings>
 
 <code-smells-noticed>

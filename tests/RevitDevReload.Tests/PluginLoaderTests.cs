@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
 
+using DevReload.Core;
 using RevitDevReload.Core;
 
 using Xunit;
@@ -93,7 +94,7 @@ namespace RevitDevReload.Tests
         public void LegacyLoader_LoadsPlugin_AndResolvesDependencyFromBuildDir()
         {
             var loader = new LegacyPluginLoader();
-            var handle = loader.Load(_fixture.PluginDll, Array.Empty<string>());
+            var handle = loader.Load(_fixture.PluginDll, new SharedAssembliesFile.Config());
             try
             {
                 Assert.Equal("hello-from-dep", InvokeEntry(handle.Assembly));
@@ -108,7 +109,7 @@ namespace RevitDevReload.Tests
         public void LegacyLoader_DoesNotLockTheDllFile()
         {
             var loader = new LegacyPluginLoader();
-            var handle = loader.Load(_fixture.PluginDll, Array.Empty<string>());
+            var handle = loader.Load(_fixture.PluginDll, new SharedAssembliesFile.Config());
             try
             {
                 // Overwrite-in-place must succeed while loaded.
@@ -125,8 +126,8 @@ namespace RevitDevReload.Tests
         public void LegacyLoader_ReloadGivesFreshAssemblyInstance()
         {
             var loader = new LegacyPluginLoader();
-            var first = loader.Load(_fixture.PluginDll, Array.Empty<string>());
-            var second = loader.Load(_fixture.PluginDll, Array.Empty<string>());
+            var first = loader.Load(_fixture.PluginDll, new SharedAssembliesFile.Config());
+            var second = loader.Load(_fixture.PluginDll, new SharedAssembliesFile.Config());
             try
             {
                 Assert.NotSame(first.Assembly, second.Assembly);
@@ -143,7 +144,7 @@ namespace RevitDevReload.Tests
         public void AlcLoader_LoadsPlugin_AndResolvesDependencyFromBuildDir()
         {
             var loader = new AlcPluginLoader();
-            var handle = loader.Load(_fixture.PluginDll, Array.Empty<string>());
+            var handle = loader.Load(_fixture.PluginDll, new SharedAssembliesFile.Config());
             try
             {
                 Assert.Equal("hello-from-dep", InvokeEntry(handle.Assembly));
@@ -158,7 +159,7 @@ namespace RevitDevReload.Tests
         public void AlcLoader_DoesNotLockTheDllFile()
         {
             var loader = new AlcPluginLoader();
-            var handle = loader.Load(_fixture.PluginDll, Array.Empty<string>());
+            var handle = loader.Load(_fixture.PluginDll, new SharedAssembliesFile.Config());
             try
             {
                 byte[] bytes = File.ReadAllBytes(_fixture.PluginDll);
@@ -191,7 +192,7 @@ namespace RevitDevReload.Tests
         [MethodImpl(MethodImplOptions.NoInlining)]
         private WeakReference LoadAndUnload(AlcPluginLoader loader)
         {
-            var handle = loader.Load(_fixture.PluginDll, Array.Empty<string>());
+            var handle = loader.Load(_fixture.PluginDll, new SharedAssembliesFile.Config());
             Assert.Equal("hello-from-dep", InvokeEntry(handle.Assembly));
             var weak = new WeakReference(handle.Context);
             loader.Unload(handle);
