@@ -27,13 +27,16 @@ namespace DevReload.Oarx.Payload
     /// was never built on this machine. The lists mean what the same lists mean
     /// in an OARX profile: native pins and managed companions are loaded once and
     /// never unloaded; the modules (.dbx before .arx) are the reloadable part.
+    /// <see cref="Files"/> ship beside them (a web UI, data, deps.json) and are
+    /// verified but never loaded.
     /// </summary>
     public sealed record PayloadManifest(
         string Directory,
         IReadOnlyList<PayloadFile> PreloadNative,
         IReadOnlyList<PayloadFile> PreloadManaged,
         IReadOnlyList<PayloadFile> Modules,
-        IReadOnlyList<PayloadFile> PostloadManaged)
+        IReadOnlyList<PayloadFile> PostloadManaged,
+        IReadOnlyList<PayloadFile> Files)
     {
         /// <summary>Every file in load order.</summary>
         public IEnumerable<PayloadFile> LoadOrder =>
@@ -44,9 +47,10 @@ namespace DevReload.Oarx.Payload
     /// Reads and verifies <c>payload.json</c>. The schema is the one NSLOAD's
     /// native groups already use (<c>preloadNative</c>, <c>preloadManaged</c>,
     /// <c>modules</c>; comments and trailing commas allowed), plus
-    /// <c>postloadManaged</c> and a <c>sha256</c> map keyed by each entry exactly
+    /// <c>postloadManaged</c>, <c>files</c> (shipped, not loaded) and a <c>sha256</c> map keyed by each entry exactly
     /// as written. An entry is relative to the payload folder and may not leave
-    /// it, or absolute (a pin shared with the stable stack).
+    /// it, or absolute (a pin shared with the stable stack). Other top-level
+    /// keys are the packer's own and are ignored.
     /// </summary>
     /// <remarks>Everything is checked before anything is mapped: a payload that
     /// fails any check is refused whole, never half-loaded.</remarks>
@@ -87,7 +91,8 @@ namespace DevReload.Oarx.Payload
                     PreloadNative: ReadList(root, "preloadNative", dir, hashes),
                     PreloadManaged: ReadList(root, "preloadManaged", dir, hashes),
                     Modules: ReadList(root, "modules", dir, hashes),
-                    PostloadManaged: ReadList(root, "postloadManaged", dir, hashes));
+                    PostloadManaged: ReadList(root, "postloadManaged", dir, hashes),
+                    Files: ReadList(root, "files", dir, hashes));
 
                 if (manifest.Modules.Count == 0)
                     throw new PayloadException($"{manifestPath} lists no modules.");
@@ -101,7 +106,7 @@ namespace DevReload.Oarx.Payload
                             "belong in preloadManaged or postloadManaged.");
                 }
 
-                foreach (var f in manifest.LoadOrder)
+                foreach (var f in manifest.LoadOrder.Concat(manifest.Files))
                     Verify(f);
 
                 return manifest;

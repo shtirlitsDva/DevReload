@@ -18,7 +18,8 @@ public class PayloadPlannerTests
             PreloadNative: new[] { F(dir, "NorsynLogging.dll", logSha) },
             PreloadManaged: new[] { F(dir, "TraceUi.dll", uiSha) },
             Modules: new[] { F(dir, "A.dbx", dbxSha), F(dir, "A.arx", arxSha) },
-            PostloadManaged: Array.Empty<PayloadFile>());
+            PostloadManaged: Array.Empty<PayloadFile>(),
+            Files: Array.Empty<PayloadFile>());
 
     private static ProcessImages Images(IEnumerable<string>? native = null, IEnumerable<string>? managed = null) =>
         ProcessImages.FromPaths(native ?? Array.Empty<string>(), managed ?? Array.Empty<string>());

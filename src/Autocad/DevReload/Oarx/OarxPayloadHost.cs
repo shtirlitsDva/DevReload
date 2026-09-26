@@ -186,7 +186,8 @@ namespace DevReload.Oarx
                 next.PreloadNative.Select(c => companions[c]).ToList(),
                 next.PreloadManaged.Select(c => companions[c]).ToList(),
                 modules.ToList(),
-                next.PostloadManaged.Select(c => companions[c]).ToList());
+                next.PostloadManaged.Select(c => companions[c]).ToList(),
+                next.Files);
 
         /// <summary>The first file not mapped at its own path. The companion hosts
         /// warn instead of throwing, so this is where a failed pin or load shows.</summary>

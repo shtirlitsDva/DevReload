@@ -164,4 +164,36 @@ public class PayloadManifestTests
 
         Assert.Equal(abs, Assert.Single(manifest.PreloadNative).Path);
     }
+
+    [Fact]
+    public void Verifies_shipped_files_that_are_not_loaded_and_ignores_unknown_keys()
+    {
+        using var dir = new PayloadDir();
+        string m = dir.Write("A.dbx", "dbx");
+        string web = dir.Write(@"web\index.html", "<html>");
+        dir.Manifest($$"""
+            { "modules": ["A.dbx"], "files": ["web/index.html"], "packedBy": "fasthands",
+              "sha256": { "A.dbx": "{{m}}", "web/index.html": "{{web}}" } }
+            """);
+
+        var manifest = PayloadManifestReader.Read(dir.Path);
+
+        Assert.Equal(dir.Full(@"web\index.html"), Assert.Single(manifest.Files).Path);
+        Assert.DoesNotContain(manifest.LoadOrder, f => f.Path == dir.Full(@"web\index.html"));
+    }
+
+    [Fact]
+    public void Refuses_a_shipped_file_whose_hash_does_not_match()
+    {
+        using var dir = new PayloadDir();
+        string m = dir.Write("A.dbx", "dbx");
+        dir.Write("proj.db", "data");
+        dir.Manifest($$"""
+            { "modules": ["A.dbx"], "files": ["proj.db"],
+              "sha256": { "A.dbx": "{{m}}", "proj.db": "{{PayloadDir.Hash("other")}}" } }
+            """);
+
+        var ex = Assert.Throws<PayloadException>(() => PayloadManifestReader.Read(dir.Path));
+        Assert.Contains("proj.db", ex.Message);
+    }
 }
