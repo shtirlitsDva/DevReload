@@ -158,7 +158,7 @@ Plugin lifecycle, build, and configuration. `devreload_*` prefix. **Available on
 </devreload-group>
 
 <oarx-group>
-Native ObjectARX groups (C++ `.dbx`/`.arx`). `oarx_*` prefix, **phase 1** like `devreload_*`. A group is an ORDERED set of native modules built under one `.sln`; reload is unload → build → load (a mapped module locks its file, so it cannot build first).
+Native ObjectARX groups (C++ `.dbx`/`.arx`). `oarx_*` prefix, **phase 1** like `devreload_*`. A group is an ORDERED set of native modules built under one `.sln`; reload is unload → build → load (a mapped module locks its file, so it cannot build first). All of a group's modules build in ONE msbuild `-m` run, so independent modules compile in parallel.
 
 A group has **profiles**. A profile = a name + one **worktree folder** (absolute, machine-local) + what to build there: modules (`.vcxproj` paths, relative to the folder, in LOAD order — `.dbx` before the `.arx` that uses it), MSBuild properties, and companion DLLs. The group's *active* profile is what Load/Reload builds. Profiles are per worktree FOLDER, never per branch.
 
