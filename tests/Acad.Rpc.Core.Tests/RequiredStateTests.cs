@@ -15,13 +15,13 @@ namespace Acad.Rpc.Core.Tests;
 [AcadRpcSurface(Group = "statefixture")]
 public static class StateFixture
 {
-    [AcadRpcTool, RpcRequires("document"), System.ComponentModel.Description("Do a thing")]
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly), RpcRequires("document"), System.ComponentModel.Description("Do a thing")]
     public static string NeedsDocument() => "did it";
 
-    [AcadRpcTool, RpcRequires("nosuchkey")]
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly), RpcRequires("nosuchkey")]
     public static string NeedsUnimplemented() => "did it";
 
-    [AcadRpcTool]
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly)]
     public static string NeedsNothing() => "did it";
 }
 

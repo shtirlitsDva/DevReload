@@ -124,7 +124,19 @@ public sealed class RpcCore
                 $"RpcCore: surface probe on {asm.GetName().Name}", ex);
             return;
         }
-        if (hasSurface) RegisterAssembly(asm);
+        if (!hasSurface) return;
+        try
+        {
+            RegisterAssembly(asm);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Category B, as above: this runs inside the AssemblyLoad event, so a
+            // throw would fail whoever loaded the assembly. The refusal (e.g. a
+            // tool with no declared Effect) is reported, not swallowed.
+            DevReloadDiagnostics.Report(
+                $"RpcCore: auto-register {asm.GetName().Name} refused", ex);
+        }
     }
 
     // ── Registry surface ──────────────────────────────────────────────
@@ -245,15 +257,6 @@ public sealed class RpcCore
                 try
                 {
                     var r = await InvokeToolAsync(tool, args, ct).ConfigureAwait(false);
-                    // Fast path keeps the exact pre-image-support shape for the
-                    // common text / text+structured returns; only image-bearing
-                    // results take the general assembler.
-                    if (r.Images == null || r.Images.Count == 0)
-                    {
-                        return r.Structured != null
-                            ? McpProtocol.CallToolResultStructured(r.Text ?? "", r.Structured)
-                            : McpProtocol.CallToolResultText(r.Text ?? "", isError: r.IsError);
-                    }
                     return McpProtocol.CallToolResult(r.Text, r.Structured, r.Images, r.IsError);
                 }
                 catch (Exception ex)
@@ -314,6 +317,32 @@ public sealed class RpcCore
                 : string.Join(", ", accepted.OrderBy(a => a, StringComparer.Ordinal))));
     }
 
+    /// <summary>
+    /// Deserialize one argument, or fail naming the argument and what it may be.
+    /// </summary>
+    /// <remarks>
+    /// The serializer's own message names a CLR type and a JSON path ("$"),
+    /// neither of which the agent sent or can act on. For an enum the valid
+    /// names are the whole fix, so they are listed.
+    /// </remarks>
+    private static object? BindArgument(RegisteredTool tool, ParameterInfo p, JsonNode node)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize(node, p.ParameterType, McpProtocol.JsonOptions);
+        }
+        catch (JsonException ex)
+        {
+            Type t = Nullable.GetUnderlyingType(p.ParameterType) ?? p.ParameterType;
+            string expected = t.IsEnum
+                ? "one of " + string.Join(", ", Enum.GetNames(t))
+                : $"a {t.Name} value ({ex.Message})";
+            throw new ArgumentException(
+                $"{tool.Name}: argument '{p.Name}' is {node.ToJsonString()} — nothing was done. " +
+                $"Expected {expected}.", ex);
+        }
+    }
+
     /// <summary>The first unmet precondition's message, or null when the tool may
     /// run. A declared key this host does not implement throws instead: an
     /// unimplemented precondition is a wiring bug, and treating it as satisfied
@@ -355,7 +384,7 @@ public sealed class RpcCore
 
             if (args.TryGetPropertyValue(p.Name!, out var node) && node != null)
             {
-                bound[i] = JsonSerializer.Deserialize(node, p.ParameterType, McpProtocol.JsonOptions);
+                bound[i] = BindArgument(tool, p, node);
             }
             else if (p.HasDefaultValue) bound[i] = p.DefaultValue;
             else if (p.ParameterType.IsValueType) bound[i] = Activator.CreateInstance(p.ParameterType);
@@ -399,9 +428,11 @@ public sealed class RpcCore
             else invokeResult = null;
         }
 
-        // Spec: structuredContent must be a JSON *object*, so arrays and
-        // primitives travel as text only. ToolImage / ToolResult are the
-        // opt-in shapes that attach image content blocks.
+        // Spec: structuredContent must be a JSON *object*, so arrays travel
+        // wrapped (McpProtocol.ToStructuredContent) and primitives as text only.
+        // The text block is always the structuredContent's own JSON when there
+        // is one. ToolImage / ToolResult are the opt-in shapes that attach
+        // image content blocks.
         return invokeResult switch
         {
             null => new InvocationResult("", null, null, false),
@@ -416,16 +447,17 @@ public sealed class RpcCore
         static InvocationResult Materialize(object value)
         {
             JsonNode? node = JsonSerializer.SerializeToNode(value, McpProtocol.JsonOptions);
-            string text = node?.ToJsonString(McpProtocol.JsonOptions) ?? "";
-            return new InvocationResult(text, node as JsonObject, null, false);
+            JsonObject? structured = McpProtocol.ToStructuredContent(node);
+            string text = (structured ?? node)?.ToJsonString(McpProtocol.JsonOptions) ?? "";
+            return new InvocationResult(text, structured, null, false);
         }
 
         static InvocationResult MaterializeToolResult(ToolResult tr)
         {
             JsonObject? structured = null;
             if (tr.Structured != null)
-                structured = JsonSerializer.SerializeToNode(
-                    tr.Structured, McpProtocol.JsonOptions) as JsonObject;
+                structured = McpProtocol.ToStructuredContent(JsonSerializer.SerializeToNode(
+                    tr.Structured, McpProtocol.JsonOptions));
 
             // Match the bare-object convention: when no explicit Text is given
             // but a structured object is, the text block is that object's JSON.
@@ -456,6 +488,7 @@ public sealed class RpcCore
         var asmName = asm.GetName().Name ?? "unknown";
         var defaultPrefix = asmName.ToLowerInvariant().Replace('.', '_');
         var result = new List<RegisteredTool>();
+        List<string>? undeclaredEffect = null;
 
         foreach (var type in SafeGetTypes(asm))
         {
@@ -497,12 +530,21 @@ public sealed class RpcCore
                         : description + " " + clause;
                 }
 
+                if (toolAttr.Effect == ToolEffect.Unspecified)
+                {
+                    (undeclaredEffect ??= new List<string>()).Add(toolName);
+                    continue;
+                }
+
                 var descriptor = new JsonObject
                 {
                     ["name"] = toolName,
-                    ["inputSchema"] = JsonSchemaBuilder.Build(method),
+                    ["inputSchema"] = JsonSchemaBuilder.BuildInput(method),
+                    ["annotations"] = Annotations(toolAttr),
                 };
                 if (!string.IsNullOrEmpty(description)) descriptor["description"] = description;
+                if (JsonSchemaBuilder.BuildOutput(method) is JsonObject outputSchema)
+                    descriptor["outputSchema"] = outputSchema;
 
                 bool requiresMainThread =
                     method.GetCustomAttribute<RunOnAcadMainThreadAttribute>() != null;
@@ -518,7 +560,30 @@ public sealed class RpcCore
             }
         }
 
+        // The whole assembly is refused, not only the bad tools: registering the
+        // rest would hide the missing declaration behind a surface that mostly
+        // works.
+        if (undeclaredEffect != null)
+            throw new InvalidOperationException(
+                $"{asmName}: tool(s) {string.Join(", ", undeclaredEffect)} declare no Effect — " +
+                "no tool of this assembly was registered. Set [AcadRpcTool(Effect = ToolEffect.ReadOnly | " +
+                "Additive | Destructive)] on each; it becomes the tool's MCP annotations.");
+
         return result;
+    }
+
+    /// <summary>MCP tool annotations. destructiveHint and idempotentHint have no
+    /// meaning for a read-only tool (spec), so they are left out there.</summary>
+    private static JsonObject Annotations(AcadRpcToolAttribute attr)
+    {
+        var a = new JsonObject { ["readOnlyHint"] = attr.Effect == ToolEffect.ReadOnly };
+        if (attr.Effect != ToolEffect.ReadOnly)
+        {
+            a["destructiveHint"] = attr.Effect == ToolEffect.Destructive;
+            a["idempotentHint"] = attr.Idempotent;
+        }
+        a["openWorldHint"] = false;
+        return a;
     }
 
     private static Type[] SafeGetTypes(Assembly asm)

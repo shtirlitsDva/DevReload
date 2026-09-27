@@ -10,14 +10,14 @@ namespace Acad.Rpc.Core.Tests;
 [AcadRpcSurface(Group = "duptest_a")]
 public static class DupFixtureA
 {
-    [AcadRpcTool(Name = "shared_name")]
+    [AcadRpcTool(Name = "shared_name", Effect = ToolEffect.ReadOnly)]
     public static string Hello() => "from A";
 }
 
 [AcadRpcSurface(Group = "duptest_b")]
 public static class DupFixtureB
 {
-    [AcadRpcTool(Name = "shared_name")]
+    [AcadRpcTool(Name = "shared_name", Effect = ToolEffect.ReadOnly)]
     public static string Hello() => "from B";
 }
 

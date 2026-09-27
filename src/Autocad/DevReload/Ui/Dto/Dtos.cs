@@ -31,7 +31,9 @@ public sealed record SurfaceSnapshot(
     ElementNode Root,
     Dictionary<string, string?> ViewModel);
 
-public sealed record ActionResult(bool Ok, string Message);
+/// <summary>What an action did. A refused action throws, so it comes back as an
+/// MCP error result; there is no success flag.</summary>
+public sealed record ActionResult(string Message);
 
 /// <summary>Structured metadata for a screenshot tool. The PNG itself travels
 /// as an inline MCP image content block (see <see cref="Acad.Rpc.Core.ToolResult"/>),

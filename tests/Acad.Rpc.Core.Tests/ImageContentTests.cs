@@ -21,14 +21,14 @@ public static class ImageFixture
     public const string OnePxPng =
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
 
-    [AcadRpcTool, System.ComponentModel.Description("Return a single image")]
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly), System.ComponentModel.Description("Return a single image")]
     public static ToolImage Shot() => new(OnePxPng, "image/png");
 
-    [AcadRpcTool, System.ComponentModel.Description("Return several image frames")]
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly), System.ComponentModel.Description("Return several image frames")]
     public static ToolImage[] Burst() =>
         new[] { new ToolImage(OnePxPng), new ToolImage(OnePxPng) };
 
-    [AcadRpcTool, System.ComponentModel.Description("Return text + structured + image together")]
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly), System.ComponentModel.Description("Return text + structured + image together")]
     public static ToolResult Combined() => new()
     {
         Text = "captured",
