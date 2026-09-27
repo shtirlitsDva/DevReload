@@ -72,6 +72,7 @@ public class DevReloadSurfaceTests
         "oarx_publish_profile",
         "oarx_activate_profile",
         "oarx_delete_profile",
+        "oarx_reload_payload",
         // In-process UI automation (Ui/Tools) — also ships in DevReload.
         "ui_list_windows",
         "ui_list_surfaces",
@@ -157,6 +158,7 @@ public class DevReloadSurfaceTests
         "msbuildProperties", "preloadNativeModules", "preloadManagedAssemblies", "postloadManagedAssemblies", "activate")]
     [InlineData("oarx_activate_profile", "name", "profile")]
     [InlineData("oarx_delete_profile", "name", "profile")]
+    [InlineData("oarx_reload_payload", "name", "payloadDir")]
     public async System.Threading.Tasks.Task DevReloadTool_HasExpectedInputSchemaProperties(string toolName, params string[] expectedProps)
     {
         var host = NewHost();

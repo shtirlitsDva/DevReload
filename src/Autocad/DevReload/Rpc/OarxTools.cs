@@ -135,5 +135,14 @@ namespace DevReload.Rpc
             [Description("Registered OARX group name")] string name,
             [Description("Profile name")] string profile) =>
             OarxConfigLoader.DeleteProfile(name, profile);
+
+        // ── Prebuilt payloads ────────────────────────────────────────
+
+        [AcadRpcTool(Effect = ToolEffect.Destructive), RunOnAcadMainThread,
+         Description("Reload a PREBUILT payload in place, with no build and no profile: for a tester machine that receives compiled modules. payloadDir holds payload.json (preloadNative, preloadManaged, modules, postloadManaged, files = shipped beside the modules and verified but never loaded, and a sha256 map keyed by each entry as written; other keys are ignored; relative entries stay in the folder, absolute entries are allowed). The previous payload of the same name is unloaded first, modules in REVERSE order; companions are never unloaded, and one already mapped with the same sha256 is kept. Nothing is saved to plugins.json or shown in the palette; the state lives in memory and dies with AutoCAD. Always returns a result: success=false with restartRequired=true means only a new AutoCAD can take this payload (a changed companion, or an image that would not unmap); restartRequired=false means a restart would not help (a bad manifest, a file-name clash, a module AutoCAD refused). 'loaded' lists what this name has mapped now, with file version and sha256.")]
+        public static PayloadReloadResult ReloadPayload(
+            [Description("Payload name. A second call with the same name replaces the first payload.")] string name,
+            [Description("Absolute path of the folder that holds payload.json")] string payloadDir) =>
+            OarxPayloadHost.Reload(name, payloadDir);
     }
 }
