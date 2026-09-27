@@ -317,6 +317,32 @@ public sealed class RpcCore
                 : string.Join(", ", accepted.OrderBy(a => a, StringComparer.Ordinal))));
     }
 
+    /// <summary>
+    /// Deserialize one argument, or fail naming the argument and what it may be.
+    /// </summary>
+    /// <remarks>
+    /// The serializer's own message names a CLR type and a JSON path ("$"),
+    /// neither of which the agent sent or can act on. For an enum the valid
+    /// names are the whole fix, so they are listed.
+    /// </remarks>
+    private static object? BindArgument(RegisteredTool tool, ParameterInfo p, JsonNode node)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize(node, p.ParameterType, McpProtocol.JsonOptions);
+        }
+        catch (JsonException ex)
+        {
+            Type t = Nullable.GetUnderlyingType(p.ParameterType) ?? p.ParameterType;
+            string expected = t.IsEnum
+                ? "one of " + string.Join(", ", Enum.GetNames(t))
+                : $"a {t.Name} value ({ex.Message})";
+            throw new ArgumentException(
+                $"{tool.Name}: argument '{p.Name}' is {node.ToJsonString()} — nothing was done. " +
+                $"Expected {expected}.", ex);
+        }
+    }
+
     /// <summary>The first unmet precondition's message, or null when the tool may
     /// run. A declared key this host does not implement throws instead: an
     /// unimplemented precondition is a wiring bug, and treating it as satisfied
@@ -358,7 +384,7 @@ public sealed class RpcCore
 
             if (args.TryGetPropertyValue(p.Name!, out var node) && node != null)
             {
-                bound[i] = JsonSerializer.Deserialize(node, p.ParameterType, McpProtocol.JsonOptions);
+                bound[i] = BindArgument(tool, p, node);
             }
             else if (p.HasDefaultValue) bound[i] = p.DefaultValue;
             else if (p.ParameterType.IsValueType) bound[i] = Activator.CreateInstance(p.ParameterType);

@@ -97,10 +97,17 @@ public class ToolResultShapeTests
     }
 
     [Fact]
-    public void Enum_UnknownName_IsRefused()
+    public void Enum_UnknownName_IsRefused_NamingTheArgumentAndTheValidNames()
     {
         var r = Call("shapefixture_round_trip", new JsonObject { ["mode"] = "Sleeping" });
         Assert.True(r["isError"]!.GetValue<bool>());
+
+        // The agent's next move is to fix the argument, so the message must say
+        // which one and what it may be — not a serializer path like "$".
+        var text = r["content"]!.AsArray().Single()!["text"]!.GetValue<string>();
+        Assert.Contains("'mode'", text);
+        Assert.Contains("\"Sleeping\"", text);
+        Assert.Contains("Idle, Busy", text);
     }
 
     [Fact]
