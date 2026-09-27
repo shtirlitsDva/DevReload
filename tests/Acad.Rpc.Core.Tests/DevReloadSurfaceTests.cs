@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json.Nodes;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace Acad.Rpc.Core.Tests;
@@ -193,6 +194,70 @@ public class DevReloadSurfaceTests
 
         Assert.True(missing.Count == 0,
             $"tools missing description: {string.Join(", ", missing)}");
+    }
+
+    [Theory]
+    // The document tools used to answer with a bare word ("created"), which
+    // left the caller unable to learn e.g. the new drawing's name.
+    [InlineData("acad_open_drawing", "name")]
+    [InlineData("acad_new_drawing", "name")]
+    [InlineData("acad_activate_document", "name")]
+    [InlineData("acad_close_active_drawing", "documentCount")]
+    [InlineData("acad_send_command", "isQuiescent")]
+    [InlineData("acad_post_command", "documentName")]
+    [InlineData("acad_list_open_documents", "items")]
+    [InlineData("devreload_list_plugins", "items")]
+    public async Task DevReloadTool_DeclaresStructuredOutput(string toolName, string expectedProperty)
+    {
+        var host = NewHost();
+        host.RegisterAssembly(LoadDevReloadAssembly());
+        var tools = (await host.Core.DispatchAsync("tools/list", null, default))!["tools"]!.AsArray();
+
+        var schema = tools.OfType<JsonObject>()
+            .Single(t => t["name"]!.GetValue<string>() == toolName)["outputSchema"]?.AsObject();
+        Assert.NotNull(schema);
+        Assert.True(schema!["properties"]!.AsObject().ContainsKey(expectedProperty),
+            $"{toolName} outputSchema has no '{expectedProperty}'");
+    }
+
+    [Theory]
+    [InlineData("ui_click")]
+    [InlineData("ui_drag")]
+    [InlineData("ui_canvas_click")]
+    [InlineData("ui_canvas_drag")]
+    [InlineData("ui_canvas_drag_capture")]
+    public async Task MouseTools_Button_IsAnEnum(string toolName)
+    {
+        var host = NewHost();
+        host.RegisterAssembly(LoadDevReloadAssembly());
+        var tools = (await host.Core.DispatchAsync("tools/list", null, default))!["tools"]!.AsArray();
+
+        var button = tools.OfType<JsonObject>()
+            .Single(t => t["name"]!.GetValue<string>() == toolName)["inputSchema"]!["properties"]!["button"]!;
+        Assert.Equal(new[] { "Left", "Right", "Middle" }, button["enum"]!.AsArray().Select(n => n!.GetValue<string>()));
+    }
+
+    [Fact]
+    public async Task DevReloadTools_ReadOnlyAnnotation_MatchesTheReadTools()
+    {
+        var host = NewHost();
+        host.RegisterAssembly(LoadDevReloadAssembly());
+        var tools = (await host.Core.DispatchAsync("tools/list", null, default))!["tools"]!.AsArray();
+
+        var readOnly = tools.OfType<JsonObject>()
+            .Where(t => t["annotations"]!["readOnlyHint"]!.GetValue<bool>())
+            .Select(t => t["name"]!.GetValue<string>())
+            .ToHashSet();
+
+        // Spot checks both ways: a read tool that is not marked read-only
+        // would be refused under a read-only permission mode, and a mutating
+        // tool marked read-only would be let through.
+        Assert.Contains("acad_get_state", readOnly);
+        Assert.Contains("devreload_list_plugins", readOnly);
+        Assert.Contains("ui_screenshot_window", readOnly);
+        Assert.DoesNotContain("acad_send_command", readOnly);
+        Assert.DoesNotContain("devreload_reload", readOnly);
+        Assert.DoesNotContain("ui_click", readOnly);
     }
 
     // ── helpers ────────────────────────────────────────────────────

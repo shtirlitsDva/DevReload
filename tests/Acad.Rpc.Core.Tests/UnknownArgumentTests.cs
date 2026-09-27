@@ -15,11 +15,11 @@ namespace Acad.Rpc.Core.Tests;
 [AcadRpcSurface(Group = "argfixture")]
 public static class ArgFixture
 {
-    [AcadRpcTool, System.ComponentModel.Description("Patch a thing")]
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly), System.ComponentModel.Description("Patch a thing")]
     public static string Patch(string name, string? prefix = null) =>
         $"patched {name} ({prefix ?? "-"})";
 
-    [AcadRpcTool, System.ComponentModel.Description("Takes nothing")]
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly), System.ComponentModel.Description("Takes nothing")]
     public static string Ping() => "pong";
 }
 

@@ -26,16 +26,17 @@ namespace DevReload.Rpc
     {
         // ── Commands ──────────────────────────────────────────────────────
 
-        [AcadRpcTool, RunOnAcadMainThread, RpcRequires(AcadStateChecks.Document),
-         Description("Run an AutoCAD command and block until it finishes. Tokens are split on whitespace/newlines (e.g. \"TWCIRCLE\" or \"._CIRCLE 0,0 5\").")]
-        public static async Task<string> SendCommand(
+        [AcadRpcTool(Effect = ToolEffect.Destructive), RunOnAcadMainThread, RpcRequires(AcadStateChecks.Document),
+         Description("Run an AutoCAD command and block until it finishes, then return the state snapshot. Tokens are split on whitespace/newlines (e.g. \"TWCIRCLE\" or \"._CIRCLE 0,0 5\").")]
+        public static async Task<AcadLiveState> SendCommand(
             [Description("Command + arguments, whitespace/newline separated.")] string commandString)
         {
             object[] tokens = (commandString ?? string.Empty)
                 .Split(new[] { '\n', '\r', ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries)
                 .Cast<object>()
                 .ToArray();
-            if (tokens.Length == 0) return "no command";
+            if (tokens.Length == 0)
+                throw new ArgumentException("empty command string — nothing was run.", nameof(commandString));
 
             // Editor.Command dispatches the first token straight into AutoCAD's
             // native command engine. An UNREGISTERED command name faults in
@@ -69,22 +70,26 @@ namespace DevReload.Rpc
                 doc.Editor.Command(tokens);
                 return Task.CompletedTask;
             }, null);
-            return "ok";
+
+            // Where this continuation runs is AutoCAD's choice, and the snapshot
+            // is only about AutoCAD when read from application context on the
+            // main thread. The idle pump is the one path that guarantees both.
+            return await AcadRpcHost.Current.Dispatcher.InvokeAsync(Snapshot, CancellationToken.None);
         }
 
-        [AcadRpcTool, RunOnAcadMainThread, RpcRequires(AcadStateChecks.Document),
-         Description("Queue an AutoCAD command and return immediately. Use the raw command string with terminators (e.g. \"._LINE\\n0,0\\n10,10\\n\\n\"). Runs in application context and queues into the current drawing's command queue; \"queued\" means accepted, not executed.")]
-        public static string PostCommand(
+        [AcadRpcTool(Effect = ToolEffect.Destructive), RunOnAcadMainThread, RpcRequires(AcadStateChecks.Document),
+         Description("Queue an AutoCAD command and return immediately. Use the raw command string with terminators (e.g. \"._LINE\\n0,0\\n10,10\\n\\n\"). Runs in application context and queues into the current drawing's command queue. A result means accepted, not executed. Returns the drawing it was queued into.")]
+        public static PostCommandResult PostCommand(
             [Description("Raw command string including terminators.")] string commandString)
         {
             var doc = Application.DocumentManager.MdiActiveDocument!;
             doc.SendStringToExecute(commandString ?? string.Empty, true, false, false);
-            return "queued";
+            return new PostCommandResult(DocumentName: doc.Name);
         }
 
         // ── State ─────────────────────────────────────────────────────────
 
-        [AcadRpcTool, RunOnAcadMainThread,
+        [AcadRpcTool(Effect = ToolEffect.ReadOnly), RunOnAcadMainThread,
          Description("State snapshot: quiescence, command in progress, execution context, documents. Read from application context, where isQuiescent false means AutoCAD is busy with something else.")]
         public static AcadLiveState GetState() => Snapshot();
 
@@ -117,7 +122,7 @@ namespace DevReload.Rpc
         // NOT RunOnAcadMainThread, unlike every other tool here: waiting for the
         // main thread to go idle while holding it is a deadlock. This runs off it
         // and probes across, so AutoCAD is free to finish whatever it is doing.
-        [AcadRpcTool,
+        [AcadRpcTool(Effect = ToolEffect.ReadOnly),
          Description("Wait until AutoCAD is quiescent, then return the state snapshot. Throws on timeout. For cold-start readiness use acad_wait_pipe.")]
         public static async Task<AcadLiveState> WaitQuiescent(
             [Description("Milliseconds to wait. Default 30000.")] int timeoutMs = 30000)
@@ -157,51 +162,47 @@ namespace DevReload.Rpc
 
         // ── Documents ─────────────────────────────────────────────────────
 
-        [AcadRpcTool, RunOnAcadMainThread,
-         Description("Open a drawing in this instance.")]
-        public static string OpenDrawing(
+        [AcadRpcTool(Effect = ToolEffect.Additive), RunOnAcadMainThread,
+         Description("Open a drawing in this instance. Returns the opened document.")]
+        public static AcadDocumentEntry OpenDrawing(
             [Description("Absolute path to a .dwg/.dwt/.dws file.")] string path,
             [Description("Open read-only? Default false.")] bool readOnly = false)
         {
-            Application.DocumentManager.Open(path, readOnly);
-            return "opened";
+            return Entry(Application.DocumentManager.Open(path, readOnly));
         }
 
-        [AcadRpcTool, RunOnAcadMainThread,
-         Description("Create a new empty drawing in this instance. Optional template path; empty uses the default template.")]
-        public static string NewDrawing(
+        [AcadRpcTool(Effect = ToolEffect.Additive), RunOnAcadMainThread,
+         Description("Create a new empty drawing in this instance. Optional template path; empty uses the default template. Returns the new document; its name is what acad_activate_document takes.")]
+        public static AcadDocumentEntry NewDrawing(
             [Description("Optional template path (.dwt). Empty uses the default.")] string? templatePath = null)
         {
-            Application.DocumentManager.Add(templatePath ?? string.Empty);
-            return "created";
+            return Entry(Application.DocumentManager.Add(templatePath ?? string.Empty));
         }
 
-        [AcadRpcTool, RunOnAcadMainThread, RpcRequires(AcadStateChecks.Document),
-         Description("Close the active drawing. saveChanges=false (default) discards unsaved changes.")]
-        public static string CloseActiveDrawing(
+        [AcadRpcTool(Effect = ToolEffect.Destructive), RunOnAcadMainThread, RpcRequires(AcadStateChecks.Document),
+         Description("Close the active drawing. saveChanges=false (default) discards unsaved changes. Returns the state snapshot after closing.")]
+        public static AcadLiveState CloseActiveDrawing(
             [Description("Save unsaved changes before closing? Default false.")] bool saveChanges = false)
         {
             var doc = Application.DocumentManager.MdiActiveDocument!;
             if (saveChanges) doc.CloseAndSave(doc.Name);
             else doc.CloseAndDiscard();
-            return "closed";
+            return Snapshot();
         }
 
-        [AcadRpcTool, RunOnAcadMainThread,
+        [AcadRpcTool(Effect = ToolEffect.ReadOnly), RunOnAcadMainThread,
          Description("List every open drawing in this instance, with name and active/read-only flags.")]
         public static IReadOnlyList<AcadDocumentEntry> ListOpenDocuments()
         {
-            var docs = Application.DocumentManager;
-            var active = docs.MdiActiveDocument;
             var result = new List<AcadDocumentEntry>();
-            foreach (Document d in docs)
-                result.Add(new AcadDocumentEntry(d.Name, d == active, d.IsReadOnly));
+            foreach (Document d in Application.DocumentManager)
+                result.Add(Entry(d));
             return result;
         }
 
-        [AcadRpcTool, RunOnAcadMainThread,
-         Description("Switch the active document by its name (as reported by acad_list_open_documents). Errors if no open document matches.")]
-        public static string ActivateDocument(
+        [AcadRpcTool(Effect = ToolEffect.Additive, Idempotent = true), RunOnAcadMainThread,
+         Description("Switch the active document by its name (as reported by acad_list_open_documents). Errors if no open document matches. Returns the document.")]
+        public static AcadDocumentEntry ActivateDocument(
             [Description("The drawing's name (full path, or the short name for an unsaved drawing).")] string documentName)
         {
             var docs = Application.DocumentManager;
@@ -210,11 +211,16 @@ namespace DevReload.Rpc
                 if (string.Equals(d.Name, documentName, StringComparison.OrdinalIgnoreCase))
                 {
                     docs.MdiActiveDocument = d;
-                    return "activated";
+                    return Entry(d);
                 }
             }
             throw new InvalidOperationException($"no open document named '{documentName}'");
         }
+
+        /// <summary>IsActive is read back, not assumed: it reports what AutoCAD
+        /// made current, which is the fact the caller acts on.</summary>
+        private static AcadDocumentEntry Entry(Document d) =>
+            new(d.Name, d == Application.DocumentManager.MdiActiveDocument, d.IsReadOnly);
     }
 
     /// <param name="IsQuiescent">AutoCAD is idle — not running a command, not
@@ -236,4 +242,9 @@ namespace DevReload.Rpc
         string Name,
         bool IsActive,
         bool IsReadOnly);
+
+    /// <summary>A command accepted into a drawing's queue — not executed yet.
+    /// Refusal is an error result, so there is no success flag.</summary>
+    /// <param name="DocumentName">The drawing whose queue it went into.</param>
+    public sealed record PostCommandResult(string DocumentName);
 }

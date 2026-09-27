@@ -1,4 +1,5 @@
 using System;
+using Acad.Process;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -89,6 +90,18 @@ public class AcadProcessSurfaceTests
                 $"{toolName} input schema missing property '{expected}'. " +
                 $"Got: {string.Join(", ", props.Select(p => p.Key))}");
         }
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task AcadStart_Flavor_IsAnEnumOfTheFlavorNames()
+    {
+        var host = NewHost();
+        host.RegisterAssembly(LoadBridgeAssembly());
+        var tools = (await host.Core.DispatchAsync("tools/list", null, default))!["tools"]!.AsArray();
+
+        var flavor = tools.OfType<JsonObject>()
+            .Single(t => t["name"]!.GetValue<string>() == "acad_start")["inputSchema"]!["properties"]!["flavor"]!;
+        Assert.Equal(Enum.GetNames<AcadFlavor>(), flavor["enum"]!.AsArray().Select(n => n!.GetValue<string>()));
     }
 
     [Fact]

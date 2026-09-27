@@ -45,12 +45,12 @@ public static class VisionTools
         Images = new[] { new ToolImage(Convert.ToBase64String(shot.Png)) },
     };
 
-    [AcadRpcTool, Description("Screenshot a window by hwnd via PrintWindow (renders even when occluded). Returns the PNG inline + its size.")]
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly), Description("Screenshot a window by hwnd via PrintWindow (renders even when occluded). Returns the PNG inline + its size.")]
     public static ToolResult ScreenshotWindow(
         [Description("Window hwnd from ui_list_windows / ui_list_surfaces.")] long hwnd)
         => Shot(WindowCapture.CaptureWindow(new IntPtr(hwnd)), "PrintWindow");
 
-    [AcadRpcTool, Description("Screenshot an arbitrary physical-pixel screen region. Returns the PNG inline.")]
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly), Description("Screenshot an arbitrary physical-pixel screen region. Returns the PNG inline.")]
     public static ToolResult ScreenshotRegion(
         [Description("Region X (px).")] int x, [Description("Region Y (px).")] int y,
         [Description("Width (px).")] int width, [Description("Height (px).")] int height)
@@ -59,7 +59,7 @@ public static class VisionTools
         return Shot(WindowCapture.CaptureRegion(region), "region");
     }
 
-    [AcadRpcTool, RunOnAcadMainThread,
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly), RunOnAcadMainThread,
      Description("Screenshot a WPF element (by tree-path id / x:Name / AutomationId) plus optional padding — for inspecting one control's rendering. Bounds read on the UI thread; capture follows. Returns the PNG inline.")]
     public static ToolResult ScreenshotElement(
         [Description("Element reference: tree-path id, x:Name, or AutomationId.")] string elementRef,
@@ -71,7 +71,7 @@ public static class VisionTools
         return Shot(WindowCapture.CaptureRegion(region), $"element '{elementRef}'");
     }
 
-    [AcadRpcTool, Description("Screenshot the canvas region covering a WCS bounding box (+ padding px), using the captured view transform. Requires a prior ui_canvas_capture_view. Great for focusing on specific entities. Returns the PNG inline.")]
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly), Description("Screenshot the canvas region covering a WCS bounding box (+ padding px), using the captured view transform. Requires a prior ui_canvas_capture_view. Great for focusing on specific entities. Returns the PNG inline.")]
     public static ToolResult ScreenshotWcsBox(
         [Description("Min WCS X.")] double minX, [Description("Min WCS Y.")] double minY,
         [Description("Max WCS X.")] double maxX, [Description("Max WCS Y.")] double maxY,
@@ -82,14 +82,14 @@ public static class VisionTools
         return Shot(WindowCapture.CaptureWindowRegion(FrameHwnd(), region), "wcs box (PrintWindow+crop)");
     }
 
-    [AcadRpcTool, Description("Drive a canvas drag (WCS) while capturing the drawing area every 'captureStride' move samples — so the agent can see how a jig / grip animates frame by frame. Requires a prior ui_canvas_capture_view. Returns the ordered frames inline.")]
+    [AcadRpcTool(Effect = ToolEffect.Destructive), Description("Drive a canvas drag (WCS) while capturing the drawing area every 'captureStride' move samples — so the agent can see how a jig / grip animates frame by frame. Requires a prior ui_canvas_capture_view. Returns the ordered frames inline.")]
     public static ToolResult CanvasDragCapture(
         [Description("Start WCS X.")] double fromWcsX, [Description("Start WCS Y.")] double fromWcsY,
         [Description("End WCS X.")] double toWcsX, [Description("End WCS Y.")] double toWcsY,
         [Description("Intermediate move samples (default 24).")] int steps = 24,
         [Description("Delay between moves in ms (default 30).")] int stepDelayMs = 30,
         [Description("Capture a frame every Nth sample (default 4).")] int captureStride = 4,
-        [Description("left | right | middle (default left).")] string button = "left")
+        [Description("Mouse button (default Left).")] MouseButton button = MouseButton.Left)
     {
         var view = CanvasViewCache.Require();
         var t = new ViewTransform(view);
@@ -103,16 +103,9 @@ public static class VisionTools
         if (captureStride < 1) captureStride = 1;
         int w = region.Width, h = region.Height;
 
-        var mb = button.Trim().ToLowerInvariant() switch
-        {
-            "right" => MouseButton.Right,
-            "middle" => MouseButton.Middle,
-            _ => MouseButton.Left,
-        };
-
         Foreground.Ensure(Autodesk.AutoCAD.ApplicationServices.Core.Application.MainWindow?.Handle ?? IntPtr.Zero);
 
-        SynthInput.DragPathPx(path, mb, stepDelayMs, onSample: i =>
+        SynthInput.DragPathPx(path, button, stepDelayMs, onSample: i =>
         {
             if (i % captureStride != 0 && i != path.Count - 1) return;
             try

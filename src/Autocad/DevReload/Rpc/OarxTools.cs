@@ -40,26 +40,26 @@ namespace DevReload.Rpc
     {
         // ── Query ────────────────────────────────────────────────────
 
-        [AcadRpcTool, RunOnAcadMainThread,
+        [AcadRpcTool(Effect = ToolEffect.ReadOnly), RunOnAcadMainThread,
          Description("List every registered OARX group with its live state, its modules in LOAD order, and its profiles. 'loaded' is the state of the group as a WHOLE; 'partiallyLoaded' means a previous cycle died part-way. 'modules' and 'liveProfile' are what is registered live; 'profiles' and 'activeProfile' are the saved configuration — they differ while 'configPending' is true (a change staged against a loaded group, applied at its next load/reload). A profile's projectFilePaths are relative to its worktreePath; folderExists=false means the worktree was removed. A module's targetPath/moduleFileName are null until MSBuild has been asked where it lands.")]
         public static IReadOnlyList<OarxPluginInfo> ListPlugins() =>
             OarxManager.ListSnapshots();
 
         // ── Lifecycle ────────────────────────────────────────────────
 
-        [AcadRpcTool, RunOnAcadMainThread,
+        [AcadRpcTool(Effect = ToolEffect.Destructive), RunOnAcadMainThread,
          Description("The OARX dev loop: unload the whole group, prove every module output is writable, rebuild from the ACTIVE profile's folder, load again in order. Equivalent to the generated {PREFIX}DEV command. BLOCKS for the length of the compile. If the build fails the group is left UNLOADED (a loaded module locks its file, so it must come out before the linker can write it) and the response carries the build log.")]
         public static OarxActionResult Reload(
             [Description("Registered OARX group name as in plugins.json (e.g. \"NdhPipeline\")")] string name) =>
             OarxManager.Reload(name);
 
-        [AcadRpcTool, RunOnAcadMainThread,
+        [AcadRpcTool(Effect = ToolEffect.Additive, Idempotent = true), RunOnAcadMainThread,
          Description("Load the group from its ACTIVE profile as it currently sits on disk, in registration order, building only the modules whose output is missing. Equivalent to the generated {PREFIX}LOAD command. No-op if the group is already fully loaded.")]
         public static OarxActionResult LoadPlugin(
             [Description("Registered OARX group name")] string name) =>
             OarxManager.Load(name);
 
-        [AcadRpcTool, RunOnAcadMainThread,
+        [AcadRpcTool(Effect = ToolEffect.Destructive, Idempotent = true), RunOnAcadMainThread,
          Description("Unload every module in the group, walking the registration order BACKWARDS (the .arx comes out before the .dbx whose classes it uses). Equivalent to the generated {PREFIX}UNLOAD command. No-op if nothing is loaded.")]
         public static OarxActionResult UnloadPlugin(
             [Description("Registered OARX group name")] string name) =>
@@ -67,7 +67,7 @@ namespace DevReload.Rpc
 
         // ── Group ────────────────────────────────────────────────────
 
-        [AcadRpcTool, RunOnAcadMainThread,
+        [AcadRpcTool(Effect = ToolEffect.Additive), RunOnAcadMainThread,
          Description("Register a new OARX group and persist it to plugins.json, with ONE profile for the worktree (or clone) folder the solution sits in — git's top level for the solution's directory; the profile is named after that folder and is active. projectFilePaths is ORDERED and the order is load order: a .dbx owning custom classes must come before the .arx that uses them; every project must be inside that folder. solutionFilePath is required and is not inferred — MSBuild resolves a C++ project's output through $(SolutionDir). After this call the group is available via load_plugin/reload and the generated {PREFIX}LOAD/DEV/UNLOAD commands. To add another worktree later, use publish_profile — do NOT register a second group for it.")]
         public static RegisterOarxResult RegisterNewPlugin(
             [Description("Absolute path to the .sln the modules build under")] string solutionFilePath,
@@ -86,7 +86,7 @@ namespace DevReload.Rpc
                 msbuildProperties, preloadNativeModules,
                 preloadManagedAssemblies, postloadManagedAssemblies);
 
-        [AcadRpcTool, RunOnAcadMainThread,
+        [AcadRpcTool(Effect = ToolEffect.Destructive, Idempotent = true), RunOnAcadMainThread,
          Description("Patch an OARX group's OWN fields in plugins.json AND live. Every parameter except name is optional (omitted = keep). The group's name and solution are its identity and cannot be patched. Modules, MSBuild properties and companions belong to PROFILES — change those with publish_profile. No unload is needed: the configuration applies at the next build, a new prefix replaces the commands immediately.")]
         public static OarxActionResult UpdatePlugin(
             [Description("Registered OARX group name as in plugins.json")] string name,
@@ -96,7 +96,7 @@ namespace DevReload.Rpc
             OarxConfigLoader.UpdatePlugin(name, new OarxGroupPatch(
                 commandPrefix, loadOnStartup, buildConfiguration));
 
-        [AcadRpcTool, RunOnAcadMainThread,
+        [AcadRpcTool(Effect = ToolEffect.Destructive, Idempotent = true), RunOnAcadMainThread,
          Description("Remove an OARX group (all its profiles) from the live registry AND from plugins.json, unloading its modules first.")]
         public static OarxActionResult Unregister(
             [Description("Registered OARX group name")] string name) =>
@@ -104,7 +104,7 @@ namespace DevReload.Rpc
 
         // ── Profiles ─────────────────────────────────────────────────
 
-        [AcadRpcTool, RunOnAcadMainThread,
+        [AcadRpcTool(Effect = ToolEffect.Destructive, Idempotent = true), RunOnAcadMainThread,
          Description("Create or update a PROFILE of an OARX group: which folder the group builds from and what it builds and loads there. The usual agent call: after adding or changing module projects in your own git worktree, publish a profile for that worktree, copied from an existing profile, so the user can pick it in the palette's dropdown. A profile names a FOLDER, never a branch. Upsert by profile name (default: the folder's name): creating one takes copyFrom (or starts empty and then needs projectFilePaths); on an existing one copyFrom is refused, and each list you pass REPLACES that list (omitted = keep, [] = clear). Validated before saving: the group's solution and every module must exist in the folder. Does NOT activate unless activate=true — activation changes what the USER's AutoCAD builds next, so only activate when the user asked you to test in AutoCAD.")]
         public static OarxActionResult PublishProfile(
             [Description("Registered OARX group name")] string name,
@@ -122,14 +122,14 @@ namespace DevReload.Rpc
                 msbuildProperties, preloadNativeModules,
                 preloadManagedAssemblies, postloadManagedAssemblies, activate));
 
-        [AcadRpcTool, RunOnAcadMainThread,
+        [AcadRpcTool(Effect = ToolEffect.Destructive, Idempotent = true), RunOnAcadMainThread,
          Description("Make a profile the group's active one — what Load/Reload and the {PREFIX} commands build and load from. Refused if the profile's folder is gone. If the group is loaded and the profile's modules differ, the switch is STAGED and applied at the next load/reload (list_plugins shows configPending until then). Only do this when the user asked for it.")]
         public static OarxActionResult ActivateProfile(
             [Description("Registered OARX group name")] string name,
             [Description("Profile name")] string profile) =>
             OarxConfigLoader.ActivateProfile(name, profile);
 
-        [AcadRpcTool, RunOnAcadMainThread,
+        [AcadRpcTool(Effect = ToolEffect.Destructive, Idempotent = true), RunOnAcadMainThread,
          Description("Delete a profile from an OARX group. The active profile cannot be deleted — activate another one first. Use this to clean up after removing your worktree.")]
         public static OarxActionResult DeleteProfile(
             [Description("Registered OARX group name")] string name,

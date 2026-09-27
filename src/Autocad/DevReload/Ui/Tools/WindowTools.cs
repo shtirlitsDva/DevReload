@@ -18,17 +18,17 @@ namespace UiMcp.Tools;
 [AcadRpcSurface(Group = "ui")]
 public static class WindowTools
 {
-    [AcadRpcTool,
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly),
      Description("List this AutoCAD process's top-level windows (main frame + any open modal dialog): hwnd, title, class, screen bounds, visible, enabled.")]
     public static List<WindowInfo> ListWindows() => WindowEnum.TopLevelWindows();
 
-    [AcadRpcTool,
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly),
      Description("List the push-buttons of a classic dialog (by its hwnd): hwnd, text, screen bounds. Use to discover OK/Cancel/Apply before clicking.")]
     public static List<DialogButton> DialogButtons(
         [Description("Dialog window hwnd from list_windows.")] long hwnd)
         => DialogDriver.Buttons(new IntPtr(hwnd));
 
-    [AcadRpcTool,
+    [AcadRpcTool(Effect = ToolEffect.Destructive),
      Description("Click a dialog button by its label (case-insensitive, ignores & mnemonic), e.g. \"OK\". HEADLESS: posts a BM_CLICK message to the button, so the dialog's handler fires as for a user WITHOUT moving the cursor or bringing the dialog foreground — works on a background instance and is safe to run against multiple instances at once.")]
     public static ActionResult DialogClick(
         [Description("Dialog window hwnd from list_windows.")] long hwnd,
@@ -37,7 +37,7 @@ public static class WindowTools
             ? new ActionResult(true, $"clicked '{label}'")
             : new ActionResult(false, $"no button matching '{label}' found");
 
-    [AcadRpcTool,
+    [AcadRpcTool(Effect = ToolEffect.Destructive),
      Description("Press a global key for a dialog: one of enter, escape, tab, space, yes, no. Pass the dialog's hwnd (from ui_list_windows) so it is brought foreground/focused first — escape then reliably cancels a modal (incl. native file dialogs). Useful to accept a default button (enter) or dismiss (escape).")]
     public static ActionResult PressKey(
         [Description("Key name: enter | escape | tab | space | yes | no.")] string key,
