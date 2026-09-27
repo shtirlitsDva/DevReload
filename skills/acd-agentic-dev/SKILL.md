@@ -40,7 +40,7 @@ If the brief's cause hypothesis is wrong, go back to step 3 with the new evidenc
 DevReload tools return a JSON object in `structuredContent`; the text block carries the same JSON. Lists are wrapped: `{"items":[...]}`.
 
 - A refused call is `isError: true`. Its text names the defect; a bad argument names the argument and the valid values. Nothing was done.
-- A failed build is a normal result: `success:false` and the full `build.log`. `devreload_reload` keeps the previous build loaded; `oarx_reload` leaves the group unloaded. Read `success` on every build and load result.
+- A failed build is a normal result: `success:false` and the full `build.log`. `devreload_reload` keeps the previous build loaded; `oarx_reload` leaves the group unloaded. Read `success` on every build and load result, including `oarx_reload_payload`.
 </result-contracts>
 
 <references>
@@ -52,7 +52,7 @@ Read the file when the task needs it:
 | [references/plugin-shape.md](references/plugin-shape.md) | New plugin project, or the first reload of an existing plugin: audit its entry class, because a `Terminate()` defect corrupts every later reload and hides the real bug. |
 | [references/authoring-mcp-tools.md](references/authoring-mcp-tools.md) | The plugin publishes `[AcadRpcTool]` methods. |
 | [references/ui-automation.md](references/ui-automation.md) | Testing a WPF palette, a native dialog, a jig, or taking screenshots (`ui_*`). |
-| [references/oarx.md](references/oarx.md) | Native `.dbx`/`.arx` work (`oarx_*`). |
+| [references/oarx.md](references/oarx.md) | Native `.dbx`/`.arx` work (`oarx_*`), or loading a prebuilt payload (`oarx_reload_payload`). |
 | [references/instances-and-recovery.md](references/instances-and-recovery.md) | `acad_wait_pipe` does not succeed, tools fail after a restart or crash, or more than one AutoCAD runs. |
 </references>
 
@@ -62,5 +62,6 @@ Read the file when the task needs it:
 3. **`Assembly.Location` is `""` under stream-load.** `Path.GetDirectoryName(typeof(X).Assembly.Location)` → NRE. Use `AppDomain.BaseDirectory`, or store the path at load time.
 4. **XAML resolves types in the default ALC.** Custom controls, converters, and template targets used from XAML go into shared assemblies (`devreload_write_shared_assemblies`). Symptom: `XamlParseException` on a type that compiles.
 5. **`[CommandMethod]` needs a public type.** `commandPrefix` names only the generated `{prefix}LOAD/DEV/UNLOAD` commands.
-6. **Clean up:** `devreload_unregister` throwaway plugins, `acad_quit` at the end.
+6. **A reload seems to miss an edit:** `devreload_get_assembly_info` gives the file the loaded bytes came from and its last-write time at load.
+7. **Clean up:** `devreload_unregister` throwaway plugins, `acad_quit` at the end.
 </gotchas>
