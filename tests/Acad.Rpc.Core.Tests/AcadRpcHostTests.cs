@@ -12,17 +12,17 @@ namespace Acad.Rpc.Core.Tests;
 [AcadRpcSurface]
 public static class FixtureTools
 {
-    [AcadRpcTool]
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly)]
     public static string Echo(string s) => s;
 
-    [AcadRpcTool, System.ComponentModel.Description("Add two ints")]
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly), System.ComponentModel.Description("Add two ints")]
     public static int Add(int a, int b) => a + b;
 
-    [AcadRpcTool]
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly)]
     [RunOnAcadMainThread]
     public static string OnMainThreadOnly() => "main";
 
-    [AcadRpcTool]
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly)]
     [RunOnAcadMainThread]
     public static int OnMainThreadAdd(int a, int b) => a + b;
 }

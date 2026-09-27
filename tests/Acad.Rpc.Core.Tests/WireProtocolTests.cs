@@ -12,15 +12,15 @@ namespace Acad.Rpc.Core.Tests;
 [AcadRpcSurface(Group = "wirefixture")]
 public static class WireFixture
 {
-    [AcadRpcTool, System.ComponentModel.Description("Echo a string with a prefix")]
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly), System.ComponentModel.Description("Echo a string with a prefix")]
     public static string Greet(string s) => $"got: {s}";
 
-    [AcadRpcTool, System.ComponentModel.Description("Add two ints")]
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly), System.ComponentModel.Description("Add two ints")]
     public static int Sum(int a, int b) => a + b;
 
     public record WireInfo(string Name, int Count);
 
-    [AcadRpcTool, System.ComponentModel.Description("Return a structured object")]
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly), System.ComponentModel.Description("Return a structured object")]
     public static WireInfo Info() => new("widget", 7);
 }
 

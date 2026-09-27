@@ -203,7 +203,7 @@ UI-automation surface for testing plugin UIs and driving native dialogs. `ui_*` 
 | `ui_list_windows` | Top-level windows (main frame + any modal): hwnd, title, class, bounds, visible, enabled. A modal disables the main frame — `enabled:false` on it is how you spot one. |
 | `ui_dialog_buttons(hwnd)` | Enumerate a dialog's buttons recursively (finds nested file-dialog Open/Cancel too) with labels + bounds. |
 | `ui_dialog_click(hwnd, label)` | **Headless** click — posts `BM_CLICK` to the button: no cursor, no foreground, works on a background instance, multi-instance safe. Prefer this to dismiss any dialog. |
-| `ui_press_key(key, hwnd?)` | enter/escape/tab/space/yes/no. Pass the dialog `hwnd` to foreground+focus it first (a real keystroke needs focus). |
+| `ui_press_key(key, hwnd?)` | Enter / Escape / Tab / Space / Yes / No (the schema lists them). Pass the dialog `hwnd` to foreground+focus it first (a real keystroke needs focus). |
 
 **Capability 3 — synthesize mouse input** for jigs / grips / OSNAP / real-time drag. SendInput-based.
 | Tool | When to call |

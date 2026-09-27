@@ -228,35 +228,44 @@ public static class WpfInspector
     public static ActionResult Invoke(long hwnd, string elementRef)
     {
         var peer = Peer(Resolve(hwnd, elementRef));
-        if (peer.GetPattern(PatternInterface.Invoke) is IInvokeProvider inv) { inv.Invoke(); return new(true, "invoked"); }
-        if (peer.GetPattern(PatternInterface.Toggle) is IToggleProvider tog) { tog.Toggle(); return new(true, "toggled (no Invoke pattern)"); }
-        if (peer.GetPattern(PatternInterface.SelectionItem) is ISelectionItemProvider sel) { sel.Select(); return new(true, "selected (no Invoke pattern)"); }
-        return new(false, "element exposes no Invoke/Toggle/SelectionItem pattern");
+        if (peer.GetPattern(PatternInterface.Invoke) is IInvokeProvider inv) { inv.Invoke(); return new("invoked"); }
+
+        // No stand-in action: toggling or selecting is a different operation
+        // with a different effect, so the caller picks it, not this method.
+        string hint =
+            peer.GetPattern(PatternInterface.Toggle) is IToggleProvider ? " It supports Toggle: use ui_toggle." :
+            peer.GetPattern(PatternInterface.SelectionItem) is ISelectionItemProvider ? " It supports SelectionItem: use ui_select." :
+            "";
+        throw new InvalidOperationException(
+            $"element '{elementRef}' exposes no Invoke pattern — nothing was done.{hint}");
     }
 
     public static ActionResult SetValue(long hwnd, string elementRef, string value)
     {
         var peer = Peer(Resolve(hwnd, elementRef));
-        if (peer.GetPattern(PatternInterface.Value) is IValueProvider vp)
-        {
-            if (vp.IsReadOnly) return new(false, "value is read-only");
-            vp.SetValue(value);
-            return new(true, $"value set to '{value}'");
-        }
-        return new(false, "element exposes no Value pattern");
+        if (peer.GetPattern(PatternInterface.Value) is not IValueProvider vp)
+            throw new InvalidOperationException(
+                $"element '{elementRef}' exposes no Value pattern — nothing was set.");
+        if (vp.IsReadOnly)
+            throw new InvalidOperationException(
+                $"element '{elementRef}' is read-only — nothing was set.");
+        vp.SetValue(value);
+        return new($"value set to '{value}'");
     }
 
     public static ActionResult Toggle(long hwnd, string elementRef)
     {
         var peer = Peer(Resolve(hwnd, elementRef));
-        if (peer.GetPattern(PatternInterface.Toggle) is IToggleProvider tog) { tog.Toggle(); return new(true, "toggled"); }
-        return new(false, "element exposes no Toggle pattern");
+        if (peer.GetPattern(PatternInterface.Toggle) is IToggleProvider tog) { tog.Toggle(); return new("toggled"); }
+        throw new InvalidOperationException(
+            $"element '{elementRef}' exposes no Toggle pattern — nothing was done.");
     }
 
     public static ActionResult Select(long hwnd, string elementRef)
     {
         var peer = Peer(Resolve(hwnd, elementRef));
-        if (peer.GetPattern(PatternInterface.SelectionItem) is ISelectionItemProvider sel) { sel.Select(); return new(true, "selected"); }
-        return new(false, "element exposes no SelectionItem pattern");
+        if (peer.GetPattern(PatternInterface.SelectionItem) is ISelectionItemProvider sel) { sel.Select(); return new("selected"); }
+        throw new InvalidOperationException(
+            $"element '{elementRef}' exposes no SelectionItem pattern — nothing was done.");
     }
 }

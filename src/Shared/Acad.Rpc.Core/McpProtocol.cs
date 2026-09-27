@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 
 namespace Acad.Rpc.Core;
 
@@ -45,6 +46,12 @@ public static class McpProtocol
         // Output goes over a pipe to an MCP client, never into HTML — relaxed
         // escaping keeps '>' and non-ASCII readable instead of \uXXXX.
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        // Enums travel as their member name ("Civil3D"), the form the agent can
+        // read and the one that survives reordering the enum. Names are kept as
+        // declared, so an enum value reads the same as the strings tools already
+        // take. Integers are refused on input: a number is not the contract, and
+        // an undefined one (99) would otherwise bind as a value no member has.
+        Converters = { new JsonStringEnumConverter(namingPolicy: null, allowIntegerValues: false) },
     };
 
     public static JsonObject InitializeResult(
@@ -84,17 +91,26 @@ public static class McpProtocol
         };
     }
 
+    /// <summary>The property a list result is wrapped under, because
+    /// <c>structuredContent</c> must be a JSON object. The outputSchema of a
+    /// list-returning tool describes the same wrapper.</summary>
+    public const string ListItemsProperty = "items";
+
     /// <summary>
-    /// Tool result carrying both the structured object (spec ≥ 2025-06-18)
-    /// and its text serialization (required for backward compatibility).
-    /// Older clients ignore the unknown structuredContent field.
+    /// The <c>structuredContent</c> for a serialized tool result: an object as
+    /// is, an array wrapped as <c>{ "items": [...] }</c>, anything else none.
     /// </summary>
-    public static JsonObject CallToolResultStructured(string text, JsonObject structuredContent)
+    /// <remarks>
+    /// Every structured result must reach structuredContent, not only the text
+    /// block: when both are present Claude Code shows the model only
+    /// structuredContent (anthropics/claude-code#45575).
+    /// </remarks>
+    public static JsonObject? ToStructuredContent(JsonNode? node) => node switch
     {
-        var result = CallToolResultText(text, isError: false);
-        result["structuredContent"] = structuredContent;
-        return result;
-    }
+        JsonObject obj => obj,
+        JsonArray arr => new JsonObject { [ListItemsProperty] = arr },
+        _ => null,
+    };
 
     /// <summary>An <c>image</c> content block: base64 bytes + MIME type.</summary>
     public static JsonObject ImageContentBlock(string base64Data, string mimeType) =>
@@ -110,9 +126,8 @@ public static class McpProtocol
     /// <paramref name="text"/> is non-empty, OR when there are no images — the
     /// content array must never be empty), followed by one image block per
     /// entry in <paramref name="images"/>, plus optional
-    /// <c>structuredContent</c>. Backward compatible: with no images and
-    /// non-null text it matches <see cref="CallToolResultText"/> /
-    /// <see cref="CallToolResultStructured"/>.
+    /// <c>structuredContent</c>. With no images and no structured object it
+    /// matches <see cref="CallToolResultText"/>.
     /// </summary>
     public static JsonObject CallToolResult(
         string? text,
