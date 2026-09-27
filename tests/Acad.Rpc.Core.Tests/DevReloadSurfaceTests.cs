@@ -209,6 +209,9 @@ public class DevReloadSurfaceTests
     [InlineData("acad_post_command", "documentName")]
     [InlineData("acad_list_open_documents", "items")]
     [InlineData("devreload_list_plugins", "items")]
+    // A payload refusal is a normal result the caller branches on.
+    [InlineData("oarx_reload_payload", "restartRequired")]
+    [InlineData("oarx_reload_payload", "loaded")]
     public async Task DevReloadTool_DeclaresStructuredOutput(string toolName, string expectedProperty)
     {
         var host = NewHost();
