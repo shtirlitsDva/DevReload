@@ -229,10 +229,15 @@ public static class WpfInspector
     {
         var peer = Peer(Resolve(hwnd, elementRef));
         if (peer.GetPattern(PatternInterface.Invoke) is IInvokeProvider inv) { inv.Invoke(); return new("invoked"); }
-        if (peer.GetPattern(PatternInterface.Toggle) is IToggleProvider tog) { tog.Toggle(); return new("toggled (no Invoke pattern)"); }
-        if (peer.GetPattern(PatternInterface.SelectionItem) is ISelectionItemProvider sel) { sel.Select(); return new("selected (no Invoke pattern)"); }
+
+        // No stand-in action: toggling or selecting is a different operation
+        // with a different effect, so the caller picks it, not this method.
+        string hint =
+            peer.GetPattern(PatternInterface.Toggle) is IToggleProvider ? " It supports Toggle: use ui_toggle." :
+            peer.GetPattern(PatternInterface.SelectionItem) is ISelectionItemProvider ? " It supports SelectionItem: use ui_select." :
+            "";
         throw new InvalidOperationException(
-            $"element '{elementRef}' exposes no Invoke/Toggle/SelectionItem pattern — nothing was done.");
+            $"element '{elementRef}' exposes no Invoke pattern — nothing was done.{hint}");
     }
 
     public static ActionResult SetValue(long hwnd, string elementRef, string value)
