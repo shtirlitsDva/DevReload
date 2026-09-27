@@ -99,6 +99,21 @@ namespace DevReload.Oarx
         /// <summary>Extra "Name=Value" MSBuild properties for builds and property queries.</summary>
         public List<string> MsBuildProperties { get; set; } = new();
 
+        /// <summary>The folder DevReload builds this profile INTO and loads the
+        /// modules FROM. Absolute, or relative to <see cref="WorktreePath"/>.
+        /// Empty = the projects' own output folders.</summary>
+        /// <remarks>
+        /// Passed to MSBuild as <see cref="OarxBuildFolder.Property"/>;
+        /// the repo's MSBuild files must route OutDir/IntDir from it (skill
+        /// reference oarx.md &lt;build-folder&gt;). Why a folder of its own: a
+        /// dev loop that builds with different properties (a fast-dev switch,
+        /// analysis off) from the repo's other builds would otherwise share their
+        /// intermediates, and every switch between the two would recompile
+        /// everything. A project that ignores the property is caught: a module
+        /// that resolves or lands outside this folder is refused.
+        /// </remarks>
+        public string BuildFolder { get; set; } = "";
+
         /// <summary>Native DLLs pinned by full path before the modules load.
         /// Absolute, or relative to <see cref="WorktreePath"/>.</summary>
         public List<string> PreloadNativeModules { get; set; } = new();
@@ -127,6 +142,7 @@ namespace DevReload.Oarx
             WorktreePath = worktreePath,
             ProjectFilePaths = ProjectFilePaths.ToList(),
             MsBuildProperties = MsBuildProperties.ToList(),
+            BuildFolder = BuildFolder,
             PreloadNativeModules = PreloadNativeModules.ToList(),
             PreloadManagedAssemblies = PreloadManagedAssemblies.ToList(),
             PostloadManagedAssemblies = PostloadManagedAssemblies.ToList(),
@@ -156,6 +172,9 @@ namespace DevReload.Oarx
     /// <param name="CopyFrom">Profile to copy the lists from. Only when creating.</param>
     /// <param name="ProjectFilePaths">Module projects in load order: relative to
     /// the folder, or absolute paths inside it (stored relative).</param>
+    /// <param name="BuildFolder">The folder to build into and load from:
+    /// absolute, or relative to the worktree. Null = keep, "" = clear (build
+    /// into the projects' own output folders).</param>
     /// <param name="Activate">Also make this the group's active profile.</param>
     public sealed record OarxProfilePublish(
         string Group,
@@ -167,6 +186,7 @@ namespace DevReload.Oarx
         IReadOnlyList<string>? PreloadNativeModules = null,
         IReadOnlyList<string>? PreloadManagedAssemblies = null,
         IReadOnlyList<string>? PostloadManagedAssemblies = null,
+        string? BuildFolder = null,
         bool Activate = false);
 
     /// <summary>
@@ -224,6 +244,8 @@ namespace DevReload.Oarx
                     .ToList(),
                 BuildConfiguration = entry.BuildConfiguration,
                 MsBuildProperties = profile.MsBuildProperties.ToList(),
+                BuildFolder = profile.BuildFolder.Length == 0
+                    ? null : NormalizeFolder(profile.Resolve(profile.BuildFolder)),
                 PreloadNativeModules = profile.PreloadNativeModules.Select(profile.Resolve).ToList(),
                 PreloadManagedAssemblies = profile.PreloadManagedAssemblies.Select(profile.Resolve).ToList(),
                 PostloadManagedAssemblies = profile.PostloadManagedAssemblies.Select(profile.Resolve).ToList(),
@@ -388,6 +410,7 @@ namespace DevReload.Oarx
                 if (p.PreloadNativeModules != null) profile.PreloadNativeModules = Paths(p.PreloadNativeModules);
                 if (p.PreloadManagedAssemblies != null) profile.PreloadManagedAssemblies = Paths(p.PreloadManagedAssemblies);
                 if (p.PostloadManagedAssemblies != null) profile.PostloadManagedAssemblies = Paths(p.PostloadManagedAssemblies);
+                if (p.BuildFolder != null) profile.BuildFolder = p.BuildFolder.Trim();
 
                 error = ValidateProfile(entry, profile);
                 if (error != null) return error;
@@ -609,6 +632,13 @@ namespace DevReload.Oarx
             foreach (var m in profile.ProjectFilePaths)
                 if (!File.Exists(profile.Resolve(m)))
                     return $"project not found in this folder: {profile.Resolve(m)}";
+            if (profile.BuildFolder.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
+                return $"buildFolder '{profile.BuildFolder}' is not a valid path";
+            // The folder is passed through this property; a hand-written copy in
+            // the list would fight it, and which one won would be MSBuild's order.
+            if (OarxBuildFolder.IsSetByHand(profile.MsBuildProperties))
+                return $"do not set {OarxBuildFolder.Property} as an MSBuild property - " +
+                       "use the profile's buildFolder";
             return null;
         }
 

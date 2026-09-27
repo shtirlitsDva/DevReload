@@ -10,6 +10,15 @@ A group has profiles. Profile = name + one absolute worktree folder + modules (`
 - The active profile cannot be deleted. On a loaded group, `oarx_activate_profile` applies at the next reload.
 </profiles>
 
+<build-folder>
+A profile can have a `buildFolder` (relative to the worktree, or absolute). DevReload builds into it and loads the modules from it. Use one when the profile's MSBuild properties differ from the repo's other builds: with a shared output folder, each switch between the two builds recompiles everything.
+
+- DevReload passes the folder to MSBuild as `DevReloadBuildFolder=<absolute folder>`, on both the TargetPath query and the build.
+- The repo must route `OutDir` and `IntDir` from that property. It must do so before TargetPath is derived, so for C++ use `ForceImportBeforeCppTargets`, not `Directory.Build.targets`.
+- DevReload refuses a module that resolves or lands outside the folder. The error names the project.
+- Set it with `oarx_publish_profile(..., buildFolder="x64\\DevReload")`. `""` clears it. Do not set `DevReloadBuildFolder` as an MSBuild property.
+</build-folder>
+
 <your-worktree>
 In your own worktree, publish a profile yourself: `oarx_publish_profile(name, worktreePath=<worktree>, copyFrom=<main profile>, projectFilePaths=[...])`. `copyFrom` applies on create; change only what differs. Modules and the solution must be inside the folder.
 
