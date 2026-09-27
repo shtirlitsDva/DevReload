@@ -23,14 +23,14 @@ public static class InputTools
     public static ActionResult MouseMove(
         [Description("Physical screen X (px).")] int x,
         [Description("Physical screen Y (px).")] int y)
-    { SynthInput.MoveTo(x, y); return new ActionResult(true, $"moved to {x},{y}"); }
+    { SynthInput.MoveTo(x, y); return new ActionResult($"moved to {x},{y}"); }
 
     [AcadRpcTool(Effect = ToolEffect.Destructive), Description("Click at a physical screen pixel.")]
     public static ActionResult Click(
         [Description("Physical screen X (px).")] int x,
         [Description("Physical screen Y (px).")] int y,
         [Description("Mouse button (default Left).")] MouseButton button = MouseButton.Left)
-    { SynthInput.Click(x, y, button); return new ActionResult(true, $"clicked {button} at {x},{y}"); }
+    { SynthInput.Click(x, y, button); return new ActionResult($"clicked {button} at {x},{y}"); }
 
     [AcadRpcTool(Effect = ToolEffect.Destructive), Description("Drag from one physical pixel to another as button-down, N paced moves, button-up. Paces moves so AutoCAD's input loop samples them (drives grips/window-select/jigs).")]
     public static ActionResult Drag(
@@ -42,7 +42,7 @@ public static class InputTools
     {
         var path = UiMcp.Core.Input.DragPath.Interpolate(new Pt2(fromX, fromY), new Pt2(toX, toY), steps);
         SynthInput.DragPathPx(path, button, stepDelayMs);
-        return new ActionResult(true, $"dragged {fromX},{fromY} -> {toX},{toY} ({path.Count} samples)");
+        return new ActionResult($"dragged {fromX},{fromY} -> {toX},{toY} ({path.Count} samples)");
     }
 
     [AcadRpcTool(Effect = ToolEffect.ReadOnly), RunOnAcadMainThread, RpcRequires(DevReload.Rpc.AcadStateChecks.Document),
@@ -64,7 +64,7 @@ public static class InputTools
         var p = t.WcsToDevice(new Pt3(wcsX, wcsY, 0));
         bool fg = Foreground();
         SynthInput.Click((int)Math.Round(p.X), (int)Math.Round(p.Y), button);
-        return new ActionResult(true, $"canvas click WCS({wcsX},{wcsY}) -> px({p.X:F0},{p.Y:F0}); foreground={fg}");
+        return new ActionResult($"canvas click WCS({wcsX},{wcsY}) -> px({p.X:F0},{p.Y:F0}); foreground={fg}");
     }
 
     [AcadRpcTool(Effect = ToolEffect.Destructive), Description("Drag between two WCS points on the canvas (button-down/paced-moves/button-up) using the captured view transform — for grips, real-time jigs, window-select. Requires a prior ui_canvas_capture_view.")]
@@ -81,7 +81,7 @@ public static class InputTools
         var path = UiMcp.Core.Input.DragPath.Interpolate(a, b, steps);
         bool fg = Foreground();
         SynthInput.DragPathPx(path, button, stepDelayMs);
-        return new ActionResult(true, $"canvas drag WCS({fromWcsX},{fromWcsY})->({toWcsX},{toWcsY}), {path.Count} samples; foreground={fg}");
+        return new ActionResult($"canvas drag WCS({fromWcsX},{fromWcsY})->({toWcsX},{toWcsY}), {path.Count} samples; foreground={fg}");
     }
 
     private static bool Foreground()

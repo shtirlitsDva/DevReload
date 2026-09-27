@@ -238,6 +238,33 @@ public class DevReloadSurfaceTests
     }
 
     [Fact]
+    public async Task PressKey_Key_IsAnEnum()
+    {
+        var host = NewHost();
+        host.RegisterAssembly(LoadDevReloadAssembly());
+        var tools = (await host.Core.DispatchAsync("tools/list", null, default))!["tools"]!.AsArray();
+
+        var key = tools.OfType<JsonObject>()
+            .Single(t => t["name"]!.GetValue<string>() == "ui_press_key")["inputSchema"]!["properties"]!["key"]!;
+        Assert.Equal(new[] { "Enter", "Escape", "Tab", "Space", "Yes", "No" },
+            key["enum"]!.AsArray().Select(n => n!.GetValue<string>()));
+    }
+
+    [Fact]
+    public async Task ActionTools_HaveNoSuccessFlag()
+    {
+        // A refused action is an error result (isError), so a success flag in
+        // the payload could only ever say true.
+        var host = NewHost();
+        host.RegisterAssembly(LoadDevReloadAssembly());
+        var tools = (await host.Core.DispatchAsync("tools/list", null, default))!["tools"]!.AsArray();
+
+        var props = tools.OfType<JsonObject>()
+            .Single(t => t["name"]!.GetValue<string>() == "ui_dialog_click")["outputSchema"]!["properties"]!.AsObject();
+        Assert.Equal(new[] { "message" }, props.Select(p => p.Key));
+    }
+
+    [Fact]
     public async Task DevReloadTools_ReadOnlyAnnotation_MatchesTheReadTools()
     {
         var host = NewHost();
