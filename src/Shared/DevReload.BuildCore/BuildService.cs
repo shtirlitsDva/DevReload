@@ -53,6 +53,9 @@ namespace DevReload.Core
                 if (eq <= 0) continue; // no name — nothing sane to pass
                 string name = pair[..eq].Trim();
                 string value = pair[(eq + 1)..].Trim();
+                // Same trap as SolutionDirArg: a trailing backslash would escape
+                // the closing quote and swallow the rest of the command line.
+                if (value.EndsWith('\\')) value += "\\";
                 sb.Append($" -p:{name}=\"{value}\"");
             }
             return sb.ToString();

@@ -38,8 +38,9 @@ namespace DevReload.Oarx
         bool Loaded);
 
     /// <summary>One profile of an OARX group, as configured. Paths are as stored:
-    /// module projects relative to <see cref="WorktreePath"/>, companions absolute
-    /// or relative to it.</summary>
+    /// module projects relative to <see cref="WorktreePath"/>, companions and the
+    /// build folder absolute or relative to it (an empty build folder = the
+    /// projects' own output folders).</summary>
     public sealed record OarxProfileInfo(
         string Name,
         string WorktreePath,
@@ -47,6 +48,7 @@ namespace DevReload.Oarx
         bool Active,
         IReadOnlyList<string> ProjectFilePaths,
         IReadOnlyList<string> MsBuildProperties,
+        string BuildFolder,
         IReadOnlyList<string> PreloadNativeModules,
         IReadOnlyList<string> PreloadManagedAssemblies,
         IReadOnlyList<string> PostloadManagedAssemblies);
@@ -149,6 +151,7 @@ namespace DevReload.Oarx
                     Active: p.Name.Equals(entry.ActiveProfile, StringComparison.OrdinalIgnoreCase),
                     ProjectFilePaths: p.ProjectFilePaths.ToList(),
                     MsBuildProperties: p.MsBuildProperties.ToList(),
+                    BuildFolder: p.BuildFolder,
                     PreloadNativeModules: p.PreloadNativeModules.ToList(),
                     PreloadManagedAssemblies: p.PreloadManagedAssemblies.ToList(),
                     PostloadManagedAssemblies: p.PostloadManagedAssemblies.ToList())).ToList());
@@ -291,6 +294,7 @@ namespace DevReload.Oarx
             reg.Problem = fresh.Problem;
             reg.MsBuildProperties.Clear();
             reg.MsBuildProperties.AddRange(fresh.MsBuildProperties);
+            reg.BuildFolder = fresh.BuildFolder;
             reg.PreloadNativeModules.Clear();
             reg.PreloadNativeModules.AddRange(fresh.PreloadNativeModules);
             reg.PreloadManagedAssemblies.Clear();
@@ -594,12 +598,15 @@ namespace DevReload.Oarx
 
                 string? target = BuildService.QueryMsBuildProperty(
                     proj, "TargetPath", reg.BuildConfiguration, Platform, solutionDir,
-                    reg.MsBuildProperties);
+                    reg.EffectiveMsBuildProperties);
 
                 if (string.IsNullOrEmpty(target))
                     return $"MSBuild could not resolve TargetPath for '{m.ProjectName}' " +
                            $"({reg.BuildConfiguration}|{Platform}). " +
                            "Check the configuration exists and the project evaluates.";
+
+                string? outside = OarxBuildFolder.CheckInside(reg.BuildFolder, m.ProjectName, target);
+                if (outside != null) return outside;
 
                 m.TargetPath = target;
                 _ = m.Kind; // throws OarxModuleException if the extension is not ObjectARX
@@ -668,7 +675,7 @@ namespace DevReload.Oarx
             var result = BuildService.BuildProjects(
                 reg.Modules.Select(m => m.ProjectFilePath).ToList(),
                 reg.BuildConfiguration, Platform, null, reg.SolutionDirectory,
-                new PumpedBuildRunner(ui), reg.MsBuildProperties);
+                new PumpedBuildRunner(ui), reg.EffectiveMsBuildProperties);
 
             if (!result.Success)
             {
@@ -679,7 +686,16 @@ namespace DevReload.Oarx
             }
 
             for (int i = 0; i < reg.Modules.Count; i++)
-                reg.Modules[i].TargetPath = result.OutputPaths[i];
+            {
+                var m = reg.Modules[i];
+                string? output = result.OutputPaths[i];
+                if (output == null)
+                    return ($"the build succeeded but MSBuild reported no output for '{m.ProjectName}'.",
+                            result.Log);
+                string? outside = OarxBuildFolder.CheckInside(reg.BuildFolder, m.ProjectName, output);
+                if (outside != null) return (outside, result.Log);
+                m.TargetPath = output;
+            }
             return null;
         }
 

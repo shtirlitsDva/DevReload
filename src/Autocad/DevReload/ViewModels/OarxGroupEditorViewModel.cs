@@ -391,6 +391,19 @@ namespace DevReload.ViewModels
                     preloadManagedAssemblies: preManaged,
                     postloadManagedAssemblies: postManaged);
                 if (!result.Success) { Warn(result.Message); return; }
+                // A new group's first profile has no build folder yet; set it on
+                // the profile the registration just created.
+                if (Draft.BuildFolder.Trim().Length > 0)
+                {
+                    var entry = OarxManager.GetEntry(result.Name);
+                    var first = entry?.FindProfile(entry.ActiveProfile);
+                    if (first != null)
+                    {
+                        var r = OarxConfigLoader.PublishProfile(new OarxProfilePublish(
+                            result.Name, first.WorktreePath, first.Name, BuildFolder: Draft.BuildFolder));
+                        if (!r.Success) { Warn(r.Message); return; }
+                    }
+                }
                 ReloadFromDisk(result.Name, select: null);
                 StatusMessage = result.Message;
                 return;
@@ -416,7 +429,8 @@ namespace DevReload.ViewModels
                     MsBuildProperties: props,
                     PreloadNativeModules: preNative,
                     PreloadManagedAssemblies: preManaged,
-                    PostloadManagedAssemblies: postManaged));
+                    PostloadManagedAssemblies: postManaged,
+                    BuildFolder: Draft.BuildFolder));
                 if (!r.Success) { Warn(r.Message); return; }
                 messages.Add(r.Message);
             }
@@ -549,6 +563,12 @@ namespace DevReload.ViewModels
 
         [ObservableProperty] private string _propDraft = "";
 
+        /// <summary>Folder to build into and load from; empty = the projects'
+        /// own output folders. See <see cref="OarxProfile.BuildFolder"/>.</summary>
+        [ObservableProperty] private string _buildFolder = "";
+
+        partial void OnBuildFolderChanged(string value) => Touch();
+
         public bool FolderMissing => !Directory.Exists(WorktreePath);
 
         partial void OnWorktreePathChanged(string value)
@@ -574,6 +594,7 @@ namespace DevReload.ViewModels
             foreach (var x in p.PreloadNativeModules) d.PreloadNative.Add(new OarxPathRow(d.PreloadNative, x));
             foreach (var x in p.PreloadManagedAssemblies) d.PreloadManaged.Add(new OarxPathRow(d.PreloadManaged, x));
             foreach (var x in p.PostloadManagedAssemblies) d.PostloadManaged.Add(new OarxPathRow(d.PostloadManaged, x));
+            d.BuildFolder = p.BuildFolder;
             d.IsChanged = isNew;
             return d;
         }

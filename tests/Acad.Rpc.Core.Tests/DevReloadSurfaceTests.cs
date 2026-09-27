@@ -155,7 +155,7 @@ public class DevReloadSurfaceTests
     // OARX: group fields vs profile fields are separate tools.
     [InlineData("oarx_update_plugin", "name", "commandPrefix", "loadOnStartup", "buildConfiguration")]
     [InlineData("oarx_publish_profile", "name", "worktreePath", "profile", "copyFrom", "projectFilePaths",
-        "msbuildProperties", "preloadNativeModules", "preloadManagedAssemblies", "postloadManagedAssemblies", "activate")]
+        "msbuildProperties", "preloadNativeModules", "preloadManagedAssemblies", "postloadManagedAssemblies", "buildFolder", "activate")]
     [InlineData("oarx_activate_profile", "name", "profile")]
     [InlineData("oarx_delete_profile", "name", "profile")]
     [InlineData("oarx_reload_payload", "name", "payloadDir")]

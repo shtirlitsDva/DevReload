@@ -116,11 +116,12 @@ namespace DevReload.Rpc
             [Description("Native DLLs pinned by full path before the modules load: absolute, or relative to the folder. Replaces the list.")] string[]? preloadNativeModules = null,
             [Description("Managed assemblies loaded before the modules: absolute, or relative to the folder. Replaces the list.")] string[]? preloadManagedAssemblies = null,
             [Description("Managed assemblies loaded after the modules: absolute, or relative to the folder (an interop here PINS its dbx). Replaces the list.")] string[]? postloadManagedAssemblies = null,
+            [Description("Folder DevReload builds INTO and loads the modules FROM: absolute, or relative to the folder (e.g. 'x64\\DevReload'). Passed to MSBuild as DevReloadBuildFolder, which the repo's MSBuild files must route OutDir/IntDir from; a module that resolves or lands outside it is refused. Gives the dev loop its own incremental state, so switching between it and the repo's other builds does not recompile everything. Omitted = keep, \"\" = clear (the projects' own output folders).")] string? buildFolder = null,
             [Description("Also make this the group's active profile. Default false. If the group is loaded, the switch applies at its next load/reload.")] bool activate = false) =>
             OarxConfigLoader.PublishProfile(new OarxProfilePublish(
                 name, worktreePath, profile, copyFrom, projectFilePaths,
                 msbuildProperties, preloadNativeModules,
-                preloadManagedAssemblies, postloadManagedAssemblies, activate));
+                preloadManagedAssemblies, postloadManagedAssemblies, buildFolder, activate));
 
         [AcadRpcTool(Effect = ToolEffect.Destructive, Idempotent = true), RunOnAcadMainThread,
          Description("Make a profile the group's active one — what Load/Reload and the {PREFIX} commands build and load from. Refused if the profile's folder is gone. If the group is loaded and the profile's modules differ, the switch is STAGED and applied at the next load/reload (list_plugins shows configPending until then). Only do this when the user asked for it.")]

@@ -98,6 +98,15 @@ namespace DevReload.Oarx
         /// and property queries (e.g. a repo's fast-dev-loop switch).</summary>
         public List<string> MsBuildProperties { get; init; } = new();
 
+        /// <summary>The active profile's build folder (<see cref="OarxBuildFolder"/>),
+        /// absolute, without a trailing separator. Null = the projects' own
+        /// output folders.</summary>
+        public string? BuildFolder { get; set; }
+
+        /// <summary>What every build and TargetPath query of this group passes.</summary>
+        public IReadOnlyList<string> EffectiveMsBuildProperties =>
+            OarxBuildFolder.EffectiveProperties(MsBuildProperties, BuildFolder);
+
         /// <summary>Native DLLs mapped by FULL PATH before the modules load, so
         /// later base-name references bind to these copies. Never unloaded.</summary>
         public List<string> PreloadNativeModules { get; init; } = new();

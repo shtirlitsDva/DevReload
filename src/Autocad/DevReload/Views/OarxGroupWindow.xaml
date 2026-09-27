@@ -210,6 +210,13 @@
                                    Visibility="{Binding FolderMissing, Converter={StaticResource BoolToVis}}"
                                    Text="⚠ This folder does not exist (the worktree was removed?). The profile can't load."/>
 
+                        <TextBlock Text="Build folder — built into and loaded from (relative to the worktree, or absolute; empty = the projects' own)"
+                                   Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,6,0,2"/>
+                        <TextBox Text="{Binding BuildFolder, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,2"
+                                 ToolTip="e.g. x64\DevReload. Passed to MSBuild as DevReloadBuildFolder; the repo must route OutDir/IntDir from it, and a module that lands elsewhere is refused."/>
+                        <TextBlock Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,0,0,6"
+                                   Text="Its own folder keeps the dev loop's incremental state apart from the repo's other builds, so switching between them does not recompile everything."/>
+
                         <TextBlock Text="Modules — in LOAD order (.dbx before the .arx that uses it), relative to the folder"
                                    Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,6,0,2"/>
                         <Border Style="{StaticResource ListPanel}" Margin="0,0,0,4">
