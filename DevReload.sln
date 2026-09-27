@@ -235,16 +235,25 @@ Global
 		src\Revit\RevitDevReload.Shared\RevitDevReload.Shared.projitems*{029e7630-ad86-4276-a7a4-ea1e6485e178}*SharedItemsImports = 13
 		src\Revit\RevitDevReload.Shared\RevitDevReload.Shared.projitems*{199db96c-9ca1-4489-a2b9-e6ccd300e5a1}*SharedItemsImports = 5
 		src\Shared\DevReload.BuildCore\DevReload.BuildCore.projitems*{199db96c-9ca1-4489-a2b9-e6ccd300e5a1}*SharedItemsImports = 5
+		src\Shared\DevReload.Diagnostics\DevReload.Diagnostics.projitems*{199db96c-9ca1-4489-a2b9-e6ccd300e5a1}*SharedItemsImports = 5
+		src\Shared\DevReload.Diagnostics\DevReload.Diagnostics.projitems*{392f1b3e-8068-42bc-9b8d-aaf65dd76f87}*SharedItemsImports = 5
 		src\Revit\RevitDevReload.Shared\RevitDevReload.Shared.projitems*{4e2c5839-b827-490e-a043-5f454e2df97c}*SharedItemsImports = 5
 		src\Shared\DevReload.BuildCore\DevReload.BuildCore.projitems*{4e2c5839-b827-490e-a043-5f454e2df97c}*SharedItemsImports = 5
+		src\Shared\DevReload.Diagnostics\DevReload.Diagnostics.projitems*{4e2c5839-b827-490e-a043-5f454e2df97c}*SharedItemsImports = 5
 		src\Revit\RevitDevReload.Shared\RevitDevReload.Shared.projitems*{55dd0624-1805-4808-827e-8e55b1dc3050}*SharedItemsImports = 5
 		src\Shared\DevReload.BuildCore\DevReload.BuildCore.projitems*{55dd0624-1805-4808-827e-8e55b1dc3050}*SharedItemsImports = 5
+		src\Shared\DevReload.Diagnostics\DevReload.Diagnostics.projitems*{55dd0624-1805-4808-827e-8e55b1dc3050}*SharedItemsImports = 5
 		src\Revit\RevitDevReload.Shared\RevitDevReload.Shared.projitems*{73abb17e-9213-4cc8-9642-c604300d321c}*SharedItemsImports = 5
 		src\Shared\DevReload.BuildCore\DevReload.BuildCore.projitems*{73abb17e-9213-4cc8-9642-c604300d321c}*SharedItemsImports = 5
+		src\Shared\DevReload.Diagnostics\DevReload.Diagnostics.projitems*{73abb17e-9213-4cc8-9642-c604300d321c}*SharedItemsImports = 5
 		src\Shared\DevReload.BuildCore\DevReload.BuildCore.projitems*{780b2a93-28cd-435a-8aaf-3d7cdac044ca}*SharedItemsImports = 13
 		src\Shared\DevReload.BuildCore\DevReload.BuildCore.projitems*{87bcbdd9-13a8-4a0b-b525-3b34662c1447}*SharedItemsImports = 5
+		src\Shared\DevReload.Diagnostics\DevReload.Diagnostics.projitems*{87bcbdd9-13a8-4a0b-b525-3b34662c1447}*SharedItemsImports = 5
+		src\Shared\DevReload.Diagnostics\DevReload.Diagnostics.projitems*{8ab9fae3-ee04-46b0-b664-177802dff7a0}*SharedItemsImports = 5
 		src\Shared\WpfSHARED\WpfSHARED.projitems*{a1b2c3d4-e5f6-7890-abcd-ef1234567890}*SharedItemsImports = 13
+		src\Shared\DevReload.Diagnostics\DevReload.Diagnostics.projitems*{bc4b33ef-ed84-44ff-bdad-719aea03a85a}*SharedItemsImports = 5
 		src\Shared\DevReload.BuildCore\DevReload.BuildCore.projitems*{f20d38a6-0aa5-13a5-7aa3-d587d97dbffb}*SharedItemsImports = 5
+		src\Shared\DevReload.Diagnostics\DevReload.Diagnostics.projitems*{f20d38a6-0aa5-13a5-7aa3-d587d97dbffb}*SharedItemsImports = 5
 		src\Shared\WpfSHARED\WpfSHARED.projitems*{f20d38a6-0aa5-13a5-7aa3-d587d97dbffb}*SharedItemsImports = 5
 	EndGlobalSection
 EndGlobal
