@@ -20,6 +20,12 @@ namespace DevReload
         public TPlugin? Plugin { get; private set; }
         public Assembly? LoadedAssembly { get; private set; }
 
+        // A stream-loaded assembly has no Location, so the host records where
+        // its bytes came from. The write time is taken at load: the file on disk
+        // can be rebuilt afterwards, and then it no longer says what is running.
+        public string? LoadedFromPath { get; private set; }
+        public DateTime? LoadedFileWriteUtc { get; private set; }
+
         public TPlugin Load(string assemblyPath, params string[] sharedAssemblyNames)
         {
             if (_context != null)
@@ -27,6 +33,7 @@ namespace DevReload
 
             _context = new IsolatedPluginContext(assemblyPath, sharedAssemblyNames);
 
+            DateTime writeUtc = File.GetLastWriteTimeUtc(assemblyPath);
             byte[] asmBytes = File.ReadAllBytes(assemblyPath);
             Assembly pluginAssembly;
 
@@ -46,6 +53,8 @@ namespace DevReload
             }
 
             LoadedAssembly = pluginAssembly;
+            LoadedFromPath = assemblyPath;
+            LoadedFileWriteUtc = writeUtc;
 
             Type? pluginType = null;
             Type[] exportedTypes;
@@ -105,6 +114,8 @@ namespace DevReload
         {
             Plugin = null;
             LoadedAssembly = null;
+            LoadedFromPath = null;
+            LoadedFileWriteUtc = null;
 
             _context?.Unload();
             _context = null;

@@ -57,7 +57,7 @@ namespace DevReload.Rpc
             PluginManager.ListPluginSnapshots();
 
         [AcadRpcTool(Effect = ToolEffect.ReadOnly), RunOnAcadMainThread,
-         Description("Inspect the loaded assembly behind a plugin: name, version, file location, last-write timestamp.")]
+         Description("Inspect the loaded assembly behind a plugin: name, version, the file its bytes were read from, and that file's last-write time when it was read. A later rebuild of the file does not change these values.")]
         public static PluginAssemblyInfo GetAssemblyInfo(
             [Description("Registered plugin name")] string name) =>
             PluginManager.GetAssemblyInfo(name);

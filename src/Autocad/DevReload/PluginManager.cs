@@ -142,9 +142,10 @@ namespace DevReload
                     dllPath = build.OutputPath;
                 }
 
+                string? toolRefusal;
                 try
                 {
-                    LoadCore(reg, dllPath, ui);
+                    toolRefusal = LoadCore(reg, dllPath, ui);
                 }
                 catch (StalePluginException)
                 {
@@ -160,12 +161,10 @@ namespace DevReload
                     }
                     reg.DllPath = build.OutputPath;
                     dllPath = build.OutputPath;
-                    LoadCore(reg, dllPath, ui);
+                    toolRefusal = LoadCore(reg, dllPath, ui);
                 }
 
-                ed?.WriteMessage($"\n{pluginName} loaded.{CommandSuffix(reg)}");
-                ui.Finish("loaded", true);
-                return Result(reg, success: true, "loaded", build);
+                return Loaded(reg, toolRefusal, "loaded", build, ui, ed);
             }
             catch (Exception ex)
             {
@@ -212,9 +211,10 @@ namespace DevReload
                 reg.DllPath = build.OutputPath;
                 string dllPath = build.OutputPath;
 
+                string? toolRefusal;
                 try
                 {
-                    LoadCore(reg, dllPath, ui);
+                    toolRefusal = LoadCore(reg, dllPath, ui);
                 }
                 catch (StalePluginException)
                 {
@@ -224,9 +224,7 @@ namespace DevReload
                     return Result(reg, success: false, msg, build);
                 }
 
-                ed?.WriteMessage($"\n{pluginName} dev-reloaded.{CommandSuffix(reg)}");
-                ui.Finish("reloaded", true);
-                return Result(reg, success: true, "dev-reloaded", build);
+                return Loaded(reg, toolRefusal, "dev-reloaded", build, ui, ed);
             }
             catch (Exception ex)
             {
@@ -428,19 +426,14 @@ namespace DevReload
                     Location: null,
                     LastWriteUtc: null);
             }
-            var asm = reg.Host.LoadedAssembly;
-            var name = asm.GetName();
-            string? loc = string.IsNullOrEmpty(asm.Location) ? null : asm.Location;
-            string? when = loc != null && File.Exists(loc)
-                ? File.GetLastWriteTimeUtc(loc).ToString("O")
-                : null;
+            var name = reg.Host.LoadedAssembly.GetName();
             return new PluginAssemblyInfo(
                 PluginName: pluginName,
                 Loaded: true,
                 AssemblyName: name.Name,
                 Version: name.Version?.ToString(),
-                Location: loc,
-                LastWriteUtc: when);
+                Location: reg.Host.LoadedFromPath,
+                LastWriteUtc: reg.Host.LoadedFileWriteUtc?.ToString("O"));
         }
 
         public static PluginActionResult Unregister(string pluginName)
@@ -510,8 +503,12 @@ namespace DevReload
 
         /// <summary>
         /// Core load sequence: tear down old → load new from stream →
-        /// initialize → register commands.
+        /// initialize → register commands → register MCP tools.
         /// </summary>
+        /// <returns>Null when the plugin's MCP tools registered; otherwise why
+        /// they were refused. The plugin and its commands are loaded either way,
+        /// so a refusal is not an exception: the caller reports it in the result,
+        /// where the agent reads it.</returns>
         /// <remarks>
         /// DevReload owns the whole lifecycle now. It used to be split: AutoCAD's
         /// assembly scan built its own instance of the plugin and called
@@ -520,7 +517,7 @@ namespace DevReload
         /// invisible to Terminate. AutoCadScanSuppressor removes AutoCAD from the
         /// picture, leaving one instance that gets both halves.
         /// </remarks>
-        private static void LoadCore(
+        private static string? LoadCore(
             PluginRegistration reg, string dllPath, IReloadProgress ui)
         {
             ui.Step(ReloadStep.Unload);
@@ -598,12 +595,32 @@ namespace DevReload
                 {
                     AcadRpcHost.Current.RegisterAssembly(reg.Host.LoadedAssembly);
                 }
+                return null;
             }
             catch (Exception ex)
             {
-                GetEditor()?.WriteMessage(
-                    $"\n[DevReload] RPC RegisterAssembly failed: {ex.Message}");
+                DevReloadDiagnostics.Report($"{reg.PluginName}: MCP tool registration", ex);
+                return $"its MCP tools were refused: {ex.Message}";
             }
+        }
+
+        /// <summary>The result of a load that got as far as LoadCore: success
+        /// only when the MCP tools registered too.</summary>
+        private static PluginActionResult Loaded(
+            PluginRegistration reg, string? toolRefusal, string verb,
+            BuildResult? build, IReloadProgress ui, Editor? ed)
+        {
+            if (toolRefusal == null)
+            {
+                ed?.WriteMessage($"\n{reg.PluginName} {verb}.{CommandSuffix(reg)}");
+                ui.Finish(verb, true);
+                return Result(reg, success: true, verb, build);
+            }
+
+            string message = $"{verb}, but {toolRefusal}";
+            ed?.WriteMessage($"\n{reg.PluginName} {message}");
+            ui.Finish(message, false);
+            return Result(reg, success: false, message, build);
         }
 
         private static void TearDown(PluginRegistration reg)
