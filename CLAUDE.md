@@ -31,6 +31,10 @@ dotnet build src/Autocad/DevReload/DevReload.csproj -c Release -p:Platform=x64
 ```bash
 # BricsCAD V26 host head (same sources as src/Autocad/DevReload, compiled with BRICSCAD)
 dotnet build src/Bricscad/BcadDevReload/BcadDevReload.csproj -c Debug -p:Platform=x64
+
+# Release build also creates Deploy/BcadDevReload.bundle; install it to
+# %APPDATA%\Bricsys\ApplicationPlugins\DevReload.bundle (SeriesMin/Max="26")
+dotnet build src/Bricscad/BcadDevReload/BcadDevReload.csproj -c Release -p:Platform=x64
 ```
 
 Host differences are `#if BRICSCAD` blocks in `src/Autocad/DevReload` sources — never forked

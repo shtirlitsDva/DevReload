@@ -1,8 +1,10 @@
 <bricscad-port>
 
 <summary>
-DevReload on BricsCAD V26 (.NET 8). Phase 1: the .NET plugin loop (register, LOAD / DEV /
-UNLOAD, DEVRELOAD palette) works, and it has been checked live in BricsCAD V26.2.08.
+DevReload on BricsCAD V26 (.NET 8). The .NET plugin loop (register, LOAD / DEV / UNLOAD,
+DEVRELOAD palette), the in-process MCP tools and the out-of-process `acad_*` process tools work,
+checked live in BricsCAD V26.2.08. ACD-MCP runs in BricsCAD too (its own BricsCAD head), and
+DevReload loads it on dev machines like any other plugin.
 </summary>
 
 <structure>
@@ -12,7 +14,7 @@ UNLOAD, DEVRELOAD palette) works, and it has been checked live in BricsCAD V26.2
 - Host differences live in `#if BRICSCAD` blocks inside those sources. Never fork a file.
 - `BricsCADPath` in `Directory.Build.props` (default `C:\Program Files\Bricsys\BricsCAD V26 en_US`);
   you can override it the same ways as `AutoCADPath`.
-- Output: `BcadDevReload.dll`.
+- Output: `BcadDevReload.dll`. A Release build also writes `Deploy\BcadDevReload.bundle`.
 </structure>
 
 <api-mapping>
@@ -25,6 +27,7 @@ UNLOAD, DEVRELOAD palette) works, and it has been checked live in BricsCAD V26.2
 | `Utils.IsCommandDefined` | `Utils.IsCommandNameInUse(name) != CommandTypeFlags.NoneCmd` |
 | `DrawableAttributes` enum | raw ARX/ODA flag values (256, 2048, 16384) |
 | `Utils.AddCommand` / `RemoveCommand` / `CommandCallback` | identical signatures in `Bricscad.Internal` |
+| `PaletteSet` default style (auto-hide button shown) | default style has no auto-hide button; set `Style` explicitly |
 </api-mapping>
 
 <auto-scan>
@@ -45,25 +48,31 @@ built against one host's API.
 </config>
 
 <autoload>
-Dev loop: `HKCU\Software\Bricsys\BricsCAD\V26x64\en_US\Applications\BcadDevReload` with
-`LOADER`=<path to BcadDevReload.dll>, `LOADCTRLS`=2, `MANAGED`=1.
+BricsCAD reads Autodesk-format bundles from `%APPDATA%\Bricsys\ApplicationPlugins`. Install
+`Deploy\BcadDevReload.bundle` there as `DevReload.bundle`.
+
+`RuntimeRequirements` takes the bare major: `SeriesMin="26" SeriesMax="26"`. `"V26"` and
+`"R25.0"` never match, so the bundle is silently skipped. No registry key is needed.
 </autoload>
+
+<process-tools>
+`Acad.Process` discovers BricsCAD from `HKLM\SOFTWARE\Bricsys\BricsCAD\V<n>x64\<locale>`
+(`InstallDir`, `FullVersion`) as flavor `BricsCAD`, and enumerates `bricscad.exe` alongside
+`acad.exe`. The MCP tools are shared; they route to a host by pid.
+</process-tools>
 
 <plugins>
 A plugin must reference `BrxMgd`/`TD_Mgd` and use the `Bricscad.*`/`Teigha.*` namespaces. A
-plugin that targets both hosts can use the same `#if` pattern with two csproj heads.
+plugin that targets both hosts can use the same `#if` pattern with two csproj heads (ACD-MCP's
+`Bcad.Mcp` is the worked example).
 </plugins>
 
 <deferred>
-- Reload HUD: the DrawableOverrule transient is never drawn in BricsCAD. Each reload logs
-  "HUD registered but never drawn". It does no harm.
-- OARX: ObjectARX-only. The companion load is a no-op with a warning. The OARX tab still shows.
-- Out-of-process bridge / MCP tools: `Acad.Process` only discovers `acad.exe`. The in-process
-  pipe (`acad-rpc-<pid>`) does open in BricsCAD.
-- Release bundle / installer for BricsCAD (`PackageContents.xml` RuntimeRequirements for
-  BricsCAD not researched).
-- The palette opens with its .NET/OARX tabs. Nobody has looked at the WPF content by eye yet,
-  because PrintWindow could not capture it.
+- Reload HUD: the DrawableOverrule transient is never drawn in BricsCAD mid-command
+  (`SetAttributes` is called; `WorldDraw` only on an idle regen). Each reload logs "HUD
+  registered but never drawn". It does no harm.
+- OARX: ObjectARX-only, so the OARX tab and `oarx_*` tools are left out on BricsCAD. The
+  BricsCAD equivalent is a BRX module, which waits for the BRX SDK.
 </deferred>
 
 </bricscad-port>
