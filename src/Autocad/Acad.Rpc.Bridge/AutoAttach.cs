@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 using Acad.Process;
 
@@ -58,17 +59,17 @@ public static class AutoAttach
             if (running != null)
                 foreach (var p in running) if (p.PipeAvailable) bindable++;
             string reason = total == 0
-                ? "no acad.exe processes running"
+                ? "no acad.exe / bricscad.exe processes running"
                 : bindable == 0
-                    ? $"{total} acad process(es) but no DevReload pipe is up"
-                    : $"{bindable} bindable acad process(es) — ambiguous, agent must pick";
+                    ? $"{total} host process(es) but no DevReload pipe is up"
+                    : $"{bindable} bindable host process(es) — ambiguous, agent must pick";
             log?.Invoke("AutoAttach: skipped — " + reason);
             return new AutoAttachOutcome(Bound: false, Pid: null, Reason: reason);
         }
 
         binding.TryBind(
             pid: pid.Value,
-            productName: "AutoCAD",
+            productName: running!.First(p => p.Pid == pid.Value).ProcessName,
             pipeName: "acad-rpc-" + pid.Value,
             out _);
         string ok = "bound to pid " + pid.Value;

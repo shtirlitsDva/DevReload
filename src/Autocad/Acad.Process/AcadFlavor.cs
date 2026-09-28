@@ -1,9 +1,11 @@
 namespace Acad.Process;
 
 /// <summary>
-/// Identifies an AutoCAD vertical. Used by install discovery and
-/// process launch — the launcher passes the right <c>/product</c>
-/// argument to <c>acad.exe</c> based on the chosen flavor.
+/// Identifies an AutoCAD vertical, or BricsCAD. Used by install discovery
+/// and process launch — the launcher passes the right <c>/product</c>
+/// argument to <c>acad.exe</c> based on the chosen flavor. BricsCAD is a
+/// separate host (<c>bricscad.exe</c>) running the BricsCAD build of
+/// DevReload; it serves the same pipe and tools.
 /// </summary>
 public enum AcadFlavor
 {
@@ -15,4 +17,5 @@ public enum AcadFlavor
     Electrical = 5,
     Map3D = 6,
     Architecture = 7,
+    BricsCAD = 8,
 }

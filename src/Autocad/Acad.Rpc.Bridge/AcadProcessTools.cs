@@ -22,7 +22,7 @@ public static class AcadProcessTools
 {
     // ── Discovery ─────────────────────────────────────────────────────
 
-    [AcadRpcTool(Effect = ToolEffect.ReadOnly), Description("List AutoCAD/Civil 3D processes with pipe availability and which one the bridge is bound to.")]
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly), Description("List AutoCAD/Civil 3D and BricsCAD processes with pipe availability and which one the bridge is bound to.")]
     public static IReadOnlyList<AcadInstanceListing> ListInstances()
     {
         var bound = BridgeServices.Binding.Current?.Pid;
@@ -37,15 +37,15 @@ public static class AcadProcessTools
             .ToList();
     }
 
-    [AcadRpcTool(Effect = ToolEffect.ReadOnly), Description("List installed AutoCAD/Civil 3D releases discovered via the registry. Pick a flavor to launch with acad_start.")]
+    [AcadRpcTool(Effect = ToolEffect.ReadOnly), Description("List installed AutoCAD/Civil 3D and BricsCAD releases discovered via the registry. Pick a flavor to launch with acad_start.")]
     public static IReadOnlyList<AcadInstall> LocateInstall() => BridgeServices.Controller.Installs;
 
     // ── Lifecycle ─────────────────────────────────────────────────────
 
-    [AcadRpcTool(Effect = ToolEffect.Additive), Description("Launch a new AutoCAD/Civil 3D instance and bind the bridge to it. Auto-binds on success — pid-less acad_*/devreload_* calls default to this instance. Follow with acad_wait_pipe before driving it.")]
+    [AcadRpcTool(Effect = ToolEffect.Additive), Description("Launch a new AutoCAD/Civil 3D or BricsCAD instance and bind the bridge to it. Auto-binds on success — pid-less acad_*/devreload_* calls default to this instance. Follow with acad_wait_pipe before driving it.")]
     public static AcadStartResult Start(
-        [Description("Flavor to launch. Default Civil3D. Unknown is refused.")] AcadFlavor flavor = AcadFlavor.Civil3D,
-        [Description("Optional override of acad.exe location. If omitted, the newest registry-discovered install of the chosen flavor is used.")] string? installPath = null,
+        [Description("Flavor to launch. Default Civil3D; BricsCAD launches bricscad.exe (needs the BricsCAD DevReload bundle). Unknown is refused.")] AcadFlavor flavor = AcadFlavor.Civil3D,
+        [Description("Optional override of the acad.exe / bricscad.exe location. If omitted, the newest registry-discovered install of the chosen flavor is used.")] string? installPath = null,
         [Description("Optional AutoCAD profile name (the /p switch).")] string? profile = null,
         [Description("Optional drawing path to open at startup.")] string? drawingPath = null,
         [Description("Optional multi-line AutoCAD-script text executed at startup. Newlines separate commands.")] string? startupCommands = null,
@@ -106,12 +106,12 @@ public static class AcadProcessTools
         return await BridgeServices.Controller.WaitForPipeAsync(pipeName, timeout, ct).ConfigureAwait(false);
     }
 
-    [AcadRpcTool(Effect = ToolEffect.Additive, Idempotent = true), Description("Bind the bridge to an already-running AutoCAD process. Sets the default instance for pid-less calls.")]
+    [AcadRpcTool(Effect = ToolEffect.Additive, Idempotent = true), Description("Bind the bridge to an already-running AutoCAD or BricsCAD process. Sets the default instance for pid-less calls.")]
     public static BoundInstance Attach(
         [Description("Process ID of the AutoCAD instance to bind.")] int pid)
     {
         if (!BridgeServices.Controller.IsRunning(pid))
-            throw new InvalidOperationException($"no acad.exe with pid {pid}");
+            throw new InvalidOperationException($"no acad.exe / bricscad.exe with pid {pid}");
 
         var match = BridgeServices.Controller.EnumerateProcesses().FirstOrDefault(p => p.Pid == pid);
         string productName = match?.ProcessName ?? "AutoCAD";
@@ -129,7 +129,7 @@ public static class AcadProcessTools
         return new DetachResult(WasBound: released, PreviousPid: prev?.Pid ?? 0);
     }
 
-    [AcadRpcTool(Effect = ToolEffect.Destructive, Idempotent = true), Description("Quit an AutoCAD instance by ending its process. Targets the given pid, or the bound instance. Detaches the bridge if the bound instance was quit.")]
+    [AcadRpcTool(Effect = ToolEffect.Destructive, Idempotent = true), Description("Quit an AutoCAD or BricsCAD instance by ending its process. Targets the given pid, or the bound instance. Detaches the bridge if the bound instance was quit.")]
     public static AcadQuitResult Quit(
         [Description("Pid of the target instance. Omit to use the bound pid.")] int pid = 0)
     {

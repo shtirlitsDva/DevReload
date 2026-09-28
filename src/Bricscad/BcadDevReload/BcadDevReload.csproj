@@ -48,7 +48,29 @@
 		<ProjectReference Include="..\..\Shared\Acad.Rpc.Core\Acad.Rpc.Core.csproj" />
 		<ProjectReference Include="..\..\Shared\UiMcp.Core\UiMcp.Core.csproj" />
 	</ItemGroup>
+	<PropertyGroup>
+		<BundleDir>$(MSBuildProjectDirectory)\..\..\..\Deploy\BcadDevReload.bundle</BundleDir>
+		<BundleContentsDir>$(BundleDir)\Contents\Win64</BundleContentsDir>
+	</PropertyGroup>
+	<ItemGroup>
+		<None Include="PackageContents.xml" CopyToOutputDirectory="Never" />
+	</ItemGroup>
 	<Import Project="..\..\Shared\WpfSHARED\WpfSHARED.projitems" Label="Shared" />
 	<Import Project="..\..\Shared\DevReload.BuildCore\DevReload.BuildCore.projitems" Label="Shared" />
 	<Import Project="..\..\Shared\DevReload.Diagnostics\DevReload.Diagnostics.projitems" Label="Shared" />
+
+	<!-- Release: emit <repo>\Deploy\BcadDevReload.bundle; install it as
+	     %APPDATA%\Bricsys\ApplicationPlugins\DevReload.bundle (BricsCAD V26
+	     APPAUTOLOADER). BrxMgd/TD_Mgd are Private=False, so never in TargetDir. -->
+	<Target Name="CreateBundle" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+		<MakeDir Directories="$(BundleContentsDir)" />
+		<ItemGroup>
+			<BundleDlls Include="$(TargetDir)*.dll" />
+		</ItemGroup>
+		<Copy SourceFiles="@(BundleDlls)" DestinationFolder="$(BundleContentsDir)"
+		      SkipUnchangedFiles="true" />
+		<Copy SourceFiles="$(MSBuildProjectDirectory)\PackageContents.xml"
+		      DestinationFolder="$(BundleDir)" SkipUnchangedFiles="true" />
+		<Message Importance="high" Text="Bundle created at $(BundleDir)" />
+	</Target>
 </Project>

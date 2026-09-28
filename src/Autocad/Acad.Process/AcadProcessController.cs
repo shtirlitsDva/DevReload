@@ -13,12 +13,16 @@ using DevReload.Diagnostics;
 namespace Acad.Process;
 
 /// <summary>
-/// OS-level operations on AutoCAD processes: discover installs, launch,
+/// OS-level operations on AutoCAD and BricsCAD processes (the hosts DevReload
+/// runs in): discover installs, launch,
 /// enumerate running instances, probe pipe readiness, and terminate. Stays
 /// useful at every stage of an instance's life, from cold start onward.
 /// </summary>
 public sealed class AcadProcessController
 {
+    /// <summary>Process names (no .exe) of every host DevReload runs in.</summary>
+    private static readonly string[] HostProcessNames = { "acad", "bricscad" };
+
     private readonly IReadOnlyList<AcadInstall> _installs;
 
     public AcadProcessController()
@@ -50,7 +54,7 @@ public sealed class AcadProcessController
 
         if (!File.Exists(install.ExePath))
             throw new FileNotFoundException(
-                $"acad.exe not found at the discovered location: {install.ExePath}");
+                $"host executable not found at the discovered location: {install.ExePath}");
 
         var psi = new SysProcessStartInfo
         {
@@ -75,7 +79,9 @@ public sealed class AcadProcessController
 
         if (!string.IsNullOrEmpty(install.ProductCmdLineArg))
             AppendArg(psi, install.ProductCmdLineArg);
-        AppendArg(psi, "/nologo");
+        // AutoCAD only: BricsCAD has no /nologo switch.
+        if (install.Flavor != AcadFlavor.BricsCAD)
+            AppendArg(psi, "/nologo");
         if (!string.IsNullOrEmpty(options.Profile))
             AppendArg(psi, $"/p \"{options.Profile}\"");
 
@@ -173,15 +179,15 @@ public sealed class AcadProcessController
             Reason: $"timeout waiting for pipe '{pipeName}' to appear");
     }
 
-    /// <summary>Enumerate AutoCAD-family processes by exe name (no COM
-    /// dependency). Use this when COM isn't yet up.</summary>
+    /// <summary>Enumerate AutoCAD-family and BricsCAD processes by exe name
+    /// (no COM dependency). Use this when COM isn't yet up.</summary>
     public IReadOnlyList<AcadProcessInfo> EnumerateProcesses()
     {
         var result = new List<AcadProcessInfo>();
         SysProcess[] procs;
         try
         {
-            procs = SysProcess.GetProcessesByName("acad");
+            procs = HostProcessNames.SelectMany(SysProcess.GetProcessesByName).ToArray();
         }
         catch (Exception ex)
         {
@@ -208,15 +214,17 @@ public sealed class AcadProcessController
         return result;
     }
 
-    /// <summary>True iff a process with the given pid exists AND is an
-    /// acad.exe. We don't trust raw pid existence because pids recycle.</summary>
+    /// <summary>True iff a process with the given pid exists AND is a host
+    /// (acad.exe or bricscad.exe). We don't trust raw pid existence because
+    /// pids recycle.</summary>
     public bool IsRunning(int pid)
     {
         try
         {
             using var p = SysProcess.GetProcessById(pid);
-            return string.Equals(
-                SafeProcessName(p), "acad", StringComparison.OrdinalIgnoreCase);
+            string name = SafeProcessName(p);
+            return HostProcessNames.Any(h =>
+                string.Equals(name, h, StringComparison.OrdinalIgnoreCase));
         }
         catch (Exception ex)
         {
@@ -261,7 +269,7 @@ public sealed class AcadProcessController
     {
         try
         {
-            return p.MainModule?.ModuleName ?? "acad.exe";
+            return p.MainModule?.ModuleName ?? p.ProcessName + ".exe";
         }
         catch (Exception ex)
         {
@@ -269,7 +277,7 @@ public sealed class AcadProcessController
             // privilege boundary throws routinely; the default name is the
             // designed answer, but the failure is no longer invisible.
             DevReloadDiagnostics.Report("AcadProcessController.SafeMainModuleName", ex);
-            return "acad.exe";
+            return p.ProcessName + ".exe";
         }
     }
 

@@ -219,6 +219,13 @@ namespace DevReload
                     Size = new Size(400, 500),
                     MinimumSize = new Size(300, 200),
                     DockEnabled = DockSides.Left | DockSides.Right,
+#if BRICSCAD
+                    // AutoCAD's default style already shows these; BricsCAD's
+                    // default leaves out the auto-hide (roll-up) button.
+                    Style = PaletteSetStyles.ShowAutoHideButton
+                          | PaletteSetStyles.ShowCloseButton
+                          | PaletteSetStyles.ShowPropertiesMenu,
+#endif
                 };
                 // Two AddVisuals = two AutoCAD-native palette tabs. The tab
                 // chrome is the host's, not ours. Both visuals share ONE
@@ -226,7 +233,10 @@ namespace DevReload
                 // second instance would double every registry event.
                 var vm = new ViewModels.DevReloadViewModel();
                 _mgmtPalette.AddVisual(".NET", new DevReloadPanel(vm));
+#if !BRICSCAD
+                // OARX hosts ObjectARX modules; BricsCAD cannot load them.
                 _mgmtPalette.AddVisual("OARX", new OarxPanel(vm));
+#endif
             }
             _mgmtPalette.Visible = true;
         }
