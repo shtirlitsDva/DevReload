@@ -1,7 +1,8 @@
-<!-- Copy this file to Directory.Build.props.user and set your AutoCAD path.
+<!-- Copy this file to Directory.Build.props.user and set your AutoCAD / BricsCAD paths.
      Directory.Build.props.user is git-ignored so your local path won't be committed. -->
 <Project>
   <PropertyGroup>
     <AutoCADPath>C:\Program Files\Autodesk\AutoCAD 2025</AutoCADPath>
+    <BricsCADPath>C:\Program Files\Bricsys\BricsCAD V26 en_US</BricsCADPath>
   </PropertyGroup>
 </Project>

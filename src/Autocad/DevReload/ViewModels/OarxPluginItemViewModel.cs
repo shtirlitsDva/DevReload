@@ -173,8 +173,13 @@ namespace DevReload.ViewModels
                 return;
 
             var result = OarxConfigLoader.ActivateProfile(Name, value.Name);
+#if BRICSCAD
+            var ed = Bricscad.ApplicationServices.Application
+                .DocumentManager.MdiActiveDocument?.Editor;
+#else
             var ed = Autodesk.AutoCAD.ApplicationServices.Application
                 .DocumentManager.MdiActiveDocument?.Editor;
+#endif
             ed?.WriteMessage($"\n{Name}: {result.Message}");
             if (!result.Success)
             {

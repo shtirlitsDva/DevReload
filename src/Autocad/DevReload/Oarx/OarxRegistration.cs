@@ -3,6 +3,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
+#if BRICSCAD
+using Bricscad.Internal;
+#else
+using Autodesk.AutoCAD.Internal;
+#endif
+
 namespace DevReload.Oarx
 {
     /// <summary>The three ObjectARX module flavours DevReload can host.</summary>
@@ -123,7 +129,7 @@ namespace DevReload.Oarx
         /// only be reloaded before the first postload has run.</summary>
         public List<string> PostloadManagedAssemblies { get; init; } = new();
 
-        public List<(string Group, string Name, Autodesk.AutoCAD.Internal.CommandCallback Callback)>
+        public List<(string Group, string Name, CommandCallback Callback)>
             LoaderCommands { get; } = new();
 
         /// <summary>The plugins.json entry this registration was built from.

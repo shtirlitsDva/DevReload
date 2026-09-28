@@ -2,8 +2,13 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+#if BRICSCAD
+using Bricscad.Internal;
+using Teigha.Runtime;
+#else
 using Autodesk.AutoCAD.Internal;
 using Autodesk.AutoCAD.Runtime;
+#endif
 
 using DevReload.Diagnostics;
 
@@ -87,8 +92,13 @@ namespace DevReload
             var inner = ex is TargetInvocationException tie ? tie.InnerException ?? ex : ex;
             try
             {
+#if BRICSCAD
+                var doc = Bricscad.ApplicationServices.Application
+                    .DocumentManager.MdiActiveDocument;
+#else
                 var doc = Autodesk.AutoCAD.ApplicationServices.Application
                     .DocumentManager.MdiActiveDocument;
+#endif
                 doc?.Editor.WriteMessage("\n" + inner.ToString() + "\n");
             }
             catch (System.Exception reportEx)

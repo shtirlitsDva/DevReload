@@ -3,9 +3,15 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
+#if BRICSCAD
+using Bricscad.ApplicationServices;
+using Bricscad.Internal;
+using Teigha.Runtime;
+#else
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.Internal;
 using Autodesk.AutoCAD.Runtime;
+#endif
 
 using DevReload.Core;
 using DevReload.Diagnostics;

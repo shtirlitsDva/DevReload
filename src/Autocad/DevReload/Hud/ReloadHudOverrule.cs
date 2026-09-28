@@ -1,12 +1,21 @@
 ﻿using System;
 using System.Collections.Generic;
 
+#if BRICSCAD
+using Bricscad.ApplicationServices;
+using Teigha.Colors;
+using Teigha.DatabaseServices;
+using Teigha.Geometry;
+using Teigha.GraphicsInterface;
+using Teigha.Runtime;
+#else
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.GraphicsInterface;
 using Autodesk.AutoCAD.Runtime;
+#endif
 
 namespace DevReload.Hud
 {
@@ -165,9 +174,16 @@ namespace DevReload.Hud
             base.SetAttributes(drawable, traits);
             // Never cached, never plotted, and the geometry depends on the
             // viewport — so it must be re-elaborated on every view change.
+#if BRICSCAD
+            // BricsCAD exposes no managed DrawableAttributes enum; these are the
+            // ObjectARX/ODA SetAttributesFlags values it mirrors (kDrawableRegenDraw,
+            // kDrawableViewDependentViewportDraw, kDrawableNotPlottable).
+            return 256 | 2048 | 16384;
+#else
             return (int)(DrawableAttributes.RegenDraw
                        | DrawableAttributes.ViewDependentViewportDraw
                        | DrawableAttributes.NotPlottable);
+#endif
         }
 
         // All the geometry is viewport-dependent; returning false is what makes
@@ -307,7 +323,11 @@ namespace DevReload.Hud
                 Extents2d box = style.ExtentsBox(s, false, true, null);
                 return box.MaxPoint.X - box.MinPoint.X;
             }
+#if BRICSCAD
+            catch (Teigha.Runtime.Exception)
+#else
             catch (Autodesk.AutoCAD.Runtime.Exception)
+#endif
             {
                 return 0.0;
             }

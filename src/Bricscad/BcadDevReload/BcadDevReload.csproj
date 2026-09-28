@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<!-- BricsCAD host head. Compiles the SAME sources as the AutoCAD head
+	     (src/Autocad/DevReload) against BricsCAD's managed API (BrxMgd/TD_Mgd).
+	     Host differences live in `#if BRICSCAD` blocks in those sources — never
+	     in forked copies. -->
+	<PropertyGroup>
+		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+		<OutputType>Library</OutputType>
+		<AssemblyName>BcadDevReload</AssemblyName>
+		<RootNamespace>DevReload</RootNamespace>
+		<DefineConstants>$(DefineConstants);BRICSCAD</DefineConstants>
+		<NoWarn>$(NoWarn);CA1416</NoWarn>
+		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+		<AcadHeadDir>..\..\Autocad\DevReload\</AcadHeadDir>
+		<EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+		<EnableDefaultPageItems>false</EnableDefaultPageItems>
+	</PropertyGroup>
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
+		<OutputPath>bin\Debug\</OutputPath>
+		<DebugType>full</DebugType>
+	</PropertyGroup>
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
+		<OutputPath>bin\Release\</OutputPath>
+		<DebugType>full</DebugType>
+	</PropertyGroup>
+	<ItemGroup>
+		<Reference Include="BrxMgd">
+			<HintPath>$(BricsCADPath)\BrxMgd.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="TD_Mgd">
+			<HintPath>$(BricsCADPath)\TD_Mgd.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+	</ItemGroup>
+	<ItemGroup>
+		<Compile Include="$(AcadHeadDir)**\*.cs"
+		         Exclude="$(AcadHeadDir)obj\**;$(AcadHeadDir)bin\**"
+		         Link="%(RecursiveDir)%(Filename)%(Extension)" />
+		<Page Include="$(AcadHeadDir)**\*.xaml"
+		      Exclude="$(AcadHeadDir)obj\**;$(AcadHeadDir)bin\**"
+		      Link="%(RecursiveDir)%(Filename)%(Extension)" />
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+	</ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\..\Shared\Acad.Rpc.Core\Acad.Rpc.Core.csproj" />
+		<ProjectReference Include="..\..\Shared\UiMcp.Core\UiMcp.Core.csproj" />
+	</ItemGroup>
+	<Import Project="..\..\Shared\WpfSHARED\WpfSHARED.projitems" Label="Shared" />
+	<Import Project="..\..\Shared\DevReload.BuildCore\DevReload.BuildCore.projitems" Label="Shared" />
+	<Import Project="..\..\Shared\DevReload.Diagnostics\DevReload.Diagnostics.projitems" Label="Shared" />
+</Project>

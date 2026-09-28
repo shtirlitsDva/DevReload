@@ -21,9 +21,21 @@ dotnet build src/Autocad/DevReload/DevReload.csproj -c Release -p:Platform=x64
 
 ## Repo Layout
 
+- `src/Bricscad/` — BricsCAD host head `BcadDevReload` (links the AutoCAD sources)
 - `src/Autocad/` — AutoCAD host: `DevReload` (plugin + palette), `Acad.Process`, `Acad.Rpc.Bridge`
 - `src/Shared/` — host-agnostic: `Acad.Rpc.Core` (MCP/RPC engine; legacy name, used by both hosts), `WpfSHARED` (shproj, owns Theme.xaml), `DevReload.BuildCore` (shproj: BuildService, GitWorktreeService, SharedAssembliesFile, IsolatedPluginContext)
 - `src/Revit/` — Revit host: `RevitDevReload.R22/R23/R24` (net48, legacy byte-loader) and `RevitDevReload.R25` (net8, collectible ALC) over `RevitDevReload.Shared.shproj`; `Revit.Cli` test/agent driver
+
+## BricsCAD Port
+
+```bash
+# BricsCAD V26 host head (same sources as src/Autocad/DevReload, compiled with BRICSCAD)
+dotnet build src/Bricscad/BcadDevReload/BcadDevReload.csproj -c Debug -p:Platform=x64
+```
+
+Host differences are `#if BRICSCAD` blocks in `src/Autocad/DevReload` sources — never forked
+files. Config is `%APPDATA%\DevReload\plugins.bricscad.json`. BricsCAD auto-scans loaded
+assemblies too; `BricsCadScanSuppressor` owns that. See `docs/bricscad-port/design.md`.
 
 ## Revit Port
 

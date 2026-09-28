@@ -5,7 +5,11 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Acad.Rpc.Core;
+#if BRICSCAD
+using Bricscad.ApplicationServices;
+#else
 using Autodesk.AutoCAD.ApplicationServices;
+#endif
 using UiMcp.Win32;
 
 using DevReload.Diagnostics;

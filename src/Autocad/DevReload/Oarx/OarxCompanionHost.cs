@@ -101,6 +101,10 @@ namespace DevReload.Oarx
                 return;
             }
 
+#if BRICSCAD
+            // OARX is ObjectARX-only; BricsCAD has no ExtensionLoader.
+            ui.Line($"WARNING: companion {Path.GetFileName(fullPath)} not loaded: OARX is AutoCAD-only");
+#else
             try
             {
                 Autodesk.AutoCAD.Runtime.ExtensionLoader.Load(fullPath);
@@ -110,6 +114,7 @@ namespace DevReload.Oarx
             {
                 ui.Line($"WARNING: companion {Path.GetFileName(fullPath)} failed to load: {ex.Message}");
             }
+#endif
         }
     }
 }

@@ -3,7 +3,11 @@ using System.Collections.Generic;
 
 using Acad.Rpc.Core;
 
+#if BRICSCAD
+using Bricscad.ApplicationServices;
+#else
 using Autodesk.AutoCAD.ApplicationServices;
+#endif
 
 namespace DevReload.Rpc
 {
