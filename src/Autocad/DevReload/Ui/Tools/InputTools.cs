@@ -1,7 +1,12 @@
 using System;
 using System.ComponentModel;
 using Acad.Rpc.Core;
+#if BRICSCAD
+// BricsCAD keeps MainWindow/DocumentManager on this Application (no Core one).
+using Bricscad.ApplicationServices;
+#else
 using Autodesk.AutoCAD.ApplicationServices.Core;
+#endif
 using UiMcp.Canvas;
 using UiMcp.Core.Geometry;
 using UiMcp.Dto;

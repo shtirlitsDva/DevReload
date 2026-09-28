@@ -6,16 +6,18 @@ using Microsoft.Win32;
 namespace Acad.Process;
 
 /// <summary>
-/// Discovers AutoCAD/vertical installs from the Windows registry.
+/// Discovers AutoCAD/vertical and BricsCAD installs from the Windows registry.
 /// Reads <c>HKLM\SOFTWARE\Autodesk\AutoCAD\R&lt;n&gt;.0\&lt;productCode&gt;</c>
 /// (and 32-on-64 view if needed) for the install location and product
 /// identity. Flavor is detected from <c>ProductName</c> rather than
 /// product-code numerology — the codes change each major release and
-/// product-name strings are stable.
+/// product-name strings are stable. BricsCAD lives under
+/// <c>HKLM\SOFTWARE\Bricsys\BricsCAD\V&lt;n&gt;x64\&lt;locale&gt;</c>.
 /// </summary>
 public static class AcadInstallRegistry
 {
     private const string RootKey = @"SOFTWARE\Autodesk\AutoCAD";
+    private const string BricsCadRootKey = @"SOFTWARE\Bricsys\BricsCAD";
 
     /// <summary>
     /// Enumerate every installed flavor on the machine. Result is
@@ -28,6 +30,7 @@ public static class AcadInstallRegistry
         var results = new List<AcadInstall>();
         DiscoverFromHive(RegistryView.Registry64, results);
         DiscoverFromHive(RegistryView.Registry32, results);
+        DiscoverBricsCad(results);
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var dedup = new List<AcadInstall>();
@@ -105,6 +108,47 @@ public static class AcadInstallRegistry
         }
     }
 
+    /// <summary>
+    /// One entry per <c>V&lt;n&gt;x64\&lt;locale&gt;</c> key with an
+    /// <c>InstallDir</c> holding bricscad.exe. The locale stands in for the
+    /// product code: it is what tells two installs of one release apart. Only
+    /// V26+ runs .NET 8 and can host DevReload; older ones are still listed,
+    /// as AutoCAD's are, so the caller sees what the machine has.
+    /// </summary>
+    private static void DiscoverBricsCad(List<AcadInstall> sink)
+    {
+        using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
+        using var rootKey = baseKey.OpenSubKey(BricsCadRootKey);
+        if (rootKey == null) return;
+
+        foreach (var releaseName in rootKey.GetSubKeyNames())
+        {
+            if (releaseName.Length < 2 || releaseName[0] != 'V') continue;
+            using var releaseKey = rootKey.OpenSubKey(releaseName);
+            if (releaseKey == null) continue;
+
+            foreach (var locale in releaseKey.GetSubKeyNames())
+            {
+                using var localeKey = releaseKey.OpenSubKey(locale);
+                string? installPath = localeKey?.GetValue("InstallDir") as string;
+                if (string.IsNullOrEmpty(installPath)) continue;
+
+                string exePath = Path.Combine(installPath, "bricscad.exe");
+                if (!File.Exists(exePath)) continue;
+
+                string version = localeKey!.GetValue("FullVersion") as string ?? string.Empty;
+                sink.Add(new AcadInstall(
+                    Flavor: AcadFlavor.BricsCAD,
+                    ProductName: $"BricsCAD {version}".TrimEnd(),
+                    ReleaseKey: releaseName,
+                    ProductCode: locale,
+                    InstallPath: installPath.TrimEnd('\\'),
+                    ExePath: exePath,
+                    ProductCmdLineArg: string.Empty));
+            }
+        }
+    }
+
     private static string ExtractProductCode(string registrySubkey)
     {
         const string prefix = "ACAD-";
@@ -135,6 +179,7 @@ internal static class FlavorTable
         if (name.Contains("electrical")) return AcadFlavor.Electrical;
         if (name.Contains("map 3d")) return AcadFlavor.Map3D;
         if (name.Contains("architecture")) return AcadFlavor.Architecture;
+        if (name.Contains("bricscad")) return AcadFlavor.BricsCAD;
         if (name.Contains("autocad")) return AcadFlavor.AutoCAD;
         return AcadFlavor.Unknown;
     }

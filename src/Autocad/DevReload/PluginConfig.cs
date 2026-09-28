@@ -66,7 +66,13 @@ namespace DevReload
     public static class PluginConfigLoader
     {
         private const string AppFolder = "DevReload";
+        // One file per host: a plugin is built against one host's API, so an
+        // AutoCAD entry would never load in BricsCAD (and vice versa).
+#if BRICSCAD
+        private const string ConfigFileName = "plugins.bricscad.json";
+#else
         private const string ConfigFileName = "plugins.json";
+#endif
 
         private static readonly JsonSerializerOptions _jsonOptions = new()
         {

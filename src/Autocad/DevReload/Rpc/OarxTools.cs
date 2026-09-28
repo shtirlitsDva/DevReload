@@ -1,3 +1,5 @@
+#if !BRICSCAD
+// OARX drives ObjectARX modules, which only AutoCAD loads: no oarx_* tools on BricsCAD.
 using System.Collections.Generic;
 using System.ComponentModel;
 
@@ -147,3 +149,4 @@ namespace DevReload.Rpc
             OarxPayloadHost.Reload(name, payloadDir);
     }
 }
+#endif

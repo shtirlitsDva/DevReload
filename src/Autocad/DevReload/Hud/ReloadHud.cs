@@ -1,11 +1,19 @@
 ﻿using System;
 using System.Runtime.InteropServices;
 
+#if BRICSCAD
+using Bricscad.ApplicationServices;
+using Teigha.DatabaseServices;
+using Teigha.Geometry;
+using Teigha.GraphicsInterface;
+using Teigha.Runtime;
+#else
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.GraphicsInterface;
 using Autodesk.AutoCAD.Runtime;
+#endif
 
 namespace DevReload.Hud
 {

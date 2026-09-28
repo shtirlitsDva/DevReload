@@ -1,9 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+#if BRICSCAD
+// BricsCAD keeps MainWindow/DocumentManager on this Application (no Core one).
+using Bricscad.ApplicationServices;
+using Teigha.DatabaseServices;
+using Bricscad.EditorInput;
+#else
 using Autodesk.AutoCAD.ApplicationServices.Core;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
+#endif
 using UiMcp.Core.Geometry;
 using UiMcp.Win32;
 

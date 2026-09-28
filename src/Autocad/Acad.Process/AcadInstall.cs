@@ -1,8 +1,8 @@
 namespace Acad.Process;
 
 /// <summary>
-/// One installed AutoCAD/vertical product. Discovered via registry.
-/// <see cref="ExePath"/> is the launchable acad.exe.
+/// One installed AutoCAD/vertical or BricsCAD product. Discovered via registry.
+/// <see cref="ExePath"/> is the launchable acad.exe or bricscad.exe.
 /// <see cref="ProductCmdLineArg"/> is the <c>/product</c> selector passed
 /// to acad.exe to start in the right vertical mode — empty for vanilla
 /// AutoCAD.

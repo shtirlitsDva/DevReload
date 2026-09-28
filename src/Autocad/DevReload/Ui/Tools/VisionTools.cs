@@ -10,6 +10,12 @@ using UiMcp.Core.Vision;
 using UiMcp.Dto;
 using UiMcp.Win32;
 using UiMcp.Wpf;
+#if BRICSCAD
+// BricsCAD keeps MainWindow on the ApplicationServices Application (no Core one).
+using HostApplication = Bricscad.ApplicationServices.Application;
+#else
+using HostApplication = Autodesk.AutoCAD.ApplicationServices.Core.Application;
+#endif
 
 namespace UiMcp.Tools;
 
@@ -29,7 +35,7 @@ public static class VisionTools
     // captures crop this so occlusion (e.g. the agent's own terminal on top)
     // never corrupts the image.
     private static IntPtr FrameHwnd() =>
-        Autodesk.AutoCAD.ApplicationServices.Core.Application.MainWindow?.Handle ?? IntPtr.Zero;
+        HostApplication.MainWindow?.Handle ?? IntPtr.Zero;
 
     private static PixelRect VirtualScreen() => new(
         NativeMethods.GetSystemMetrics(NativeMethods.SM_XVIRTUALSCREEN),
@@ -103,7 +109,7 @@ public static class VisionTools
         if (captureStride < 1) captureStride = 1;
         int w = region.Width, h = region.Height;
 
-        Foreground.Ensure(Autodesk.AutoCAD.ApplicationServices.Core.Application.MainWindow?.Handle ?? IntPtr.Zero);
+        Foreground.Ensure(HostApplication.MainWindow?.Handle ?? IntPtr.Zero);
 
         SynthInput.DragPathPx(path, button, stepDelayMs, onSample: i =>
         {

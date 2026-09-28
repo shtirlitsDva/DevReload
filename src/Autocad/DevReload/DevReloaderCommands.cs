@@ -4,10 +4,19 @@ using System.Linq;
 using System.Threading;
 
 using Acad.Rpc.Core;
+#if BRICSCAD
+using Bricscad.ApplicationServices;
+using Bricscad.EditorInput;
+using Teigha.Runtime;
+using Bricscad.Windows;
+using ScanSuppressor = DevReload.BricsCadScanSuppressor;
+#else
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Runtime;
 using Autodesk.AutoCAD.Windows;
+using ScanSuppressor = DevReload.AutoCadScanSuppressor;
+#endif
 
 using DevReload.Diagnostics;
 using DevReload.Hud;
@@ -69,14 +78,14 @@ namespace DevReload
             // what the NoCommands marker used to work around.
             try
             {
-                AutoCadScanSuppressor.Install();
-                DevReloadDiagnostics.Info("AutoCAD assembly scan suppressed for DevReload ALCs");
+                ScanSuppressor.Install();
+                DevReloadDiagnostics.Info("Host assembly scan suppressed for DevReload ALCs");
             }
             catch (System.Exception ex)
             {
                 // Loud, not silent: without suppression every plugin needs the
                 // marker back, and PluginManager must not call Initialize.
-                DevReloadDiagnostics.Report("AutoCadScanSuppressor.Install", ex);
+                DevReloadDiagnostics.Report("ScanSuppressor.Install", ex);
                 ed?.WriteMessage(
                     "\nDevReload: WARNING - could not suppress AutoCAD's assembly scan " +
                     $"({ex.Message}) Plugins on this AutoCAD version still need the " +
@@ -191,8 +200,8 @@ namespace DevReload
             // otherwise keep its file locked for whatever runs next.
             DevReloadDiagnostics.Step(failures, "OarxManager.UnloadAll",
                 () => OarxManager.UnloadAll());
-            DevReloadDiagnostics.Step(failures, "AutoCadScanSuppressor.Restore",
-                () => AutoCadScanSuppressor.Restore());
+            DevReloadDiagnostics.Step(failures, "ScanSuppressor.Restore",
+                () => ScanSuppressor.Restore());
 
             DevReloadDiagnostics.ThrowIfAny("DevReloaderCommands.Terminate", failures);
         }
@@ -210,6 +219,13 @@ namespace DevReload
                     Size = new Size(400, 500),
                     MinimumSize = new Size(300, 200),
                     DockEnabled = DockSides.Left | DockSides.Right,
+#if BRICSCAD
+                    // AutoCAD's default style already shows these; BricsCAD's
+                    // default leaves out the auto-hide (roll-up) button.
+                    Style = PaletteSetStyles.ShowAutoHideButton
+                          | PaletteSetStyles.ShowCloseButton
+                          | PaletteSetStyles.ShowPropertiesMenu,
+#endif
                 };
                 // Two AddVisuals = two AutoCAD-native palette tabs. The tab
                 // chrome is the host's, not ours. Both visuals share ONE
@@ -217,7 +233,10 @@ namespace DevReload
                 // second instance would double every registry event.
                 var vm = new ViewModels.DevReloadViewModel();
                 _mgmtPalette.AddVisual(".NET", new DevReloadPanel(vm));
+#if !BRICSCAD
+                // OARX hosts ObjectARX modules; BricsCAD cannot load them.
                 _mgmtPalette.AddVisual("OARX", new OarxPanel(vm));
+#endif
             }
             _mgmtPalette.Visible = true;
         }

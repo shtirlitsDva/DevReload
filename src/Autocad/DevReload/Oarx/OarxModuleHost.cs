@@ -5,7 +5,11 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 
+#if BRICSCAD
+using Teigha.Runtime;
+#else
 using Autodesk.AutoCAD.Runtime;
+#endif
 
 using Exception = System.Exception;
 

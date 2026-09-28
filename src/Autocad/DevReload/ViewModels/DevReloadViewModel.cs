@@ -9,7 +9,11 @@ using System.Threading.Tasks;
 using System.Windows.Data;
 using System.Windows.Threading;
 
+#if BRICSCAD
+using Bricscad.ApplicationServices;
+#else
 using Autodesk.AutoCAD.ApplicationServices;
+#endif
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -347,7 +351,7 @@ namespace DevReload.ViewModels
             string activeCsproj = GitWorktreeService.ResolveActiveCsproj(
                 entry.ProjectFilePath, entry.ActiveWorktreePath);
             string acadRoot = System.IO.Path.GetDirectoryName(
-                typeof(Autodesk.AutoCAD.ApplicationServices.Application).Assembly.Location) ?? "";
+                typeof(Application).Assembly.Location) ?? "";
             string acadRootNorm = acadRoot.Length == 0
                 ? "" : System.IO.Path.GetFullPath(acadRoot).TrimEnd('\\', '/');
             var externalRefs = CsprojReferenceScanner

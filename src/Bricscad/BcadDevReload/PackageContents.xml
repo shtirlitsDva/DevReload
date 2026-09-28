@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- BricsCAD V26+ app autoloader (APPAUTOLOADER). Install to
+     %APPDATA%\Bricsys\ApplicationPlugins\DevReload.bundle -->
+<ApplicationPackage
+    SchemaVersion="1.0"
+    Name="DevReload"
+    AppVersion="1.0.0"
+    Description="Dev Plugin Loader for BricsCAD V26"
+    Author="shtirlitsDva"
+    ProductCode="{97200F13-9E28-40D5-A539-B3AC2161B6DE}">
+
+  <Components>
+    <ComponentEntry
+        AppName="DevReload"
+        ModuleName="./Contents/Win64/BcadDevReload.dll"
+        AppDescription="Dev Plugin Loader"
+        AppType=".Net"
+        LoadOnAutoCADStartup="True">
+      <!-- BricsCAD series is the bare major ("26" or "26.0"); "V26" never matches. -->
+      <RuntimeRequirements OS="Win64" SeriesMin="26" SeriesMax="26" />
+    </ComponentEntry>
+  </Components>
+</ApplicationPackage>

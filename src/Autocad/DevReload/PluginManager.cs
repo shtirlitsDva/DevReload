@@ -5,10 +5,19 @@ using System.Linq;
 using System.Reflection;
 
 using Acad.Rpc.Core;
+#if BRICSCAD
+using Bricscad.ApplicationServices;
+using Bricscad.EditorInput;
+using Bricscad.Internal;
+using Teigha.Runtime;
+using ScanSuppressor = DevReload.BricsCadScanSuppressor;
+#else
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Internal;
 using Autodesk.AutoCAD.Runtime;
+using ScanSuppressor = DevReload.AutoCadScanSuppressor;
+#endif
 
 using DevReload.Core;
 using DevReload.Diagnostics;
@@ -565,7 +574,7 @@ namespace DevReload
             // NullReferenceException" that read as a DevReload fault. The most
             // common one is a plugin touching MdiActiveDocument.Editor while no
             // document is open (the AutoCAD Start tab counts as none).
-            if (AutoCadScanSuppressor.IsActive)
+            if (ScanSuppressor.IsActive)
             {
                 try
                 {

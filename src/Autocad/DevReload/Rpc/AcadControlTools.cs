@@ -7,12 +7,19 @@ using System.Threading.Tasks;
 
 using Acad.Rpc.Core;
 
+#if BRICSCAD
+using Bricscad.ApplicationServices;
+using Bricscad.Internal;
+#else
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.Internal;
+#endif
 
+#if !BRICSCAD
 // IsQuiescent lives on the core Application, which the ApplicationServices one
 // derives from. Named explicitly so the reader can find the API that answers it.
 using CoreApplication = Autodesk.AutoCAD.ApplicationServices.Core.Application;
+#endif
 
 namespace DevReload.Rpc
 {
@@ -51,7 +58,7 @@ namespace DevReload.Rpc
             // dash form (e.g. -LAYER) is a distinct registered command.
             string firstToken = (string)tokens[0];
             string commandName = firstToken.TrimStart('.', '_', '\'');
-            if (commandName.Length == 0 || !Utils.IsCommandDefined(commandName))
+            if (commandName.Length == 0 || !IsCommandDefined(commandName))
                 throw new InvalidOperationException(
                     $"unknown AutoCAD command '{firstToken}': not defined in this instance — nothing was run. " +
                     "If it belongs to a plugin, load the plugin first (e.g. devreload_load_plugin).");
@@ -106,12 +113,26 @@ namespace DevReload.Rpc
         /// in application context, which is the one place the answer is about
         /// AutoCAD rather than about the caller.</para>
         /// </remarks>
+        private static bool IsCommandDefined(string commandName) =>
+#if BRICSCAD
+            // BricsCAD lacks Utils.IsCommandDefined; IsCommandNameInUse answers it.
+            Utils.IsCommandNameInUse(commandName) != CommandTypeFlags.NoneCmd;
+#else
+            Utils.IsCommandDefined(commandName);
+#endif
+
         private static AcadLiveState Snapshot()
         {
             var docs = Application.DocumentManager;
             var doc = docs.MdiActiveDocument;
             return new AcadLiveState(
+#if BRICSCAD
+                // BricsCAD has no application-level IsQuiescent; the active
+                // editor's is the same question. No document = nothing running.
+                IsQuiescent: doc?.Editor.IsQuiescent ?? true,
+#else
                 IsQuiescent: CoreApplication.IsQuiescent,
+#endif
                 ActiveCommand: doc?.CommandInProgress ?? string.Empty,
                 IsApplicationContext: docs.IsApplicationContext,
                 HasActiveDocument: doc != null,

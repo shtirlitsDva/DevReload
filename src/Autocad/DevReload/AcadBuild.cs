@@ -1,4 +1,8 @@
+#if BRICSCAD
+using Bricscad.EditorInput;
+#else
 using Autodesk.AutoCAD.EditorInput;
+#endif
 
 using DevReload.Core;
 using DevReload.Hud;

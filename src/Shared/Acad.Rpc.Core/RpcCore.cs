@@ -107,6 +107,10 @@ public sealed class RpcCore
     {
         if (asm == null) return;
         lock (_gate) { if (_toolsByAssembly.ContainsKey(asm)) return; }
+        // Only an assembly that references this one can carry the surface
+        // attribute. Checking that first skips reflecting over every host
+        // assembly — BricsCAD's multi-module TD_Mgd throws from GetTypes.
+        if (!CanCarrySurface(asm)) return;
         bool hasSurface;
         try
         {
@@ -585,6 +589,13 @@ public sealed class RpcCore
         a["openWorldHint"] = false;
         return a;
     }
+
+    private static readonly string SurfaceAssemblyName =
+        typeof(AcadRpcSurfaceAttribute).Assembly.GetName().Name!;
+
+    private static bool CanCarrySurface(Assembly asm) =>
+        asm.GetName().Name == SurfaceAssemblyName
+        || asm.GetReferencedAssemblies().Any(n => n.Name == SurfaceAssemblyName);
 
     private static Type[] SafeGetTypes(Assembly asm)
     {

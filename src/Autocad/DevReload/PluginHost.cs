@@ -3,6 +3,12 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 
+#if BRICSCAD
+using ExtensionApplicationAttribute = Teigha.Runtime.ExtensionApplicationAttribute;
+#else
+using ExtensionApplicationAttribute = Autodesk.AutoCAD.Runtime.ExtensionApplicationAttribute;
+#endif
+
 using DevReload.Core;
 
 namespace DevReload
@@ -73,7 +79,7 @@ namespace DevReload
             // assembly can export several implementations, so scanning where the
             // author declared a type would pick a different one than AutoCAD did.
             Type? declared = pluginAssembly
-                .GetCustomAttributes<Autodesk.AutoCAD.Runtime.ExtensionApplicationAttribute>()
+                .GetCustomAttributes<ExtensionApplicationAttribute>()
                 .FirstOrDefault()?.Type;
 
             if (declared != null)
