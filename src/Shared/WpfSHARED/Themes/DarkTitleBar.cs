@@ -64,6 +64,31 @@ namespace WpfSHARED
                 ApplyToHandle(new WindowInteropHelper(window).Handle, caption, text, border);
         }
 
+        /// <summary>
+        /// Themes a window of the host application itself (e.g. a BricsCAD
+        /// dialog, which Windows draws with a white title bar). Colours come
+        /// from this assembly's compiled palette: caption and border
+        /// <c>HostTitleBarColor</c>, text <c>FgColor</c>. DWM keeps the
+        /// attributes for the window's lifetime, so one call per window is
+        /// enough. DWM only accepts them from the process that owns the window.
+        /// </summary>
+        public static void ApplyToHostWindow(IntPtr hwnd)
+        {
+            if (hwnd == IntPtr.Zero) throw new ArgumentException("no window handle", nameof(hwnd));
+            var (caption, text) = HostColors.Value;
+            ApplyToHandle(hwnd, caption, text, caption);
+        }
+
+        private static readonly Lazy<(Color Caption, Color Text)> HostColors = new(() =>
+        {
+            string asm = typeof(DarkTitleBar).Assembly.GetName().Name!;
+            var palette = new ResourceDictionary
+            {
+                Source = new Uri($"/{asm};component/Themes/Palette.xaml", UriKind.Relative),
+            };
+            return ((Color)palette["HostTitleBarColor"], (Color)palette["FgColor"]);
+        });
+
         private static void ApplyToHandle(IntPtr hwnd, Color caption, Color text, Color border)
         {
             int on = 1;

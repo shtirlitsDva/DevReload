@@ -38,5 +38,9 @@
          (e.g. the accent split-button), independent of the base colour. -->
     <Color x:Key="OverlayHoverColor">#22FFFFFF</Color>
     <Color x:Key="OverlayPressedColor">#33000000</Color>
+    <!-- The host's own main-window title bar (DarkTitleBar.ApplyToHostWindow):
+         BricsCAD's ribbon tone, so the caption runs into the toolbar row
+         below it instead of Windows' white. -->
+    <Color x:Key="HostTitleBarColor">#2D3135</Color>
 
 </ResourceDictionary>

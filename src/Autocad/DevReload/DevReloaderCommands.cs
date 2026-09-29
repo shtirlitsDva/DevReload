@@ -142,6 +142,12 @@ namespace DevReload
             // empty plugins.json too.
             try { EnsureManagerPanel(); }
             catch (System.Exception ex) { DevReloadDiagnostics.Report("EnsureManagerPanel", ex); }
+
+            // BricsCAD is dark inside, but Windows draws its title bars white.
+            // DWM lets the owning process recolour them; the colour is
+            // HostTitleBarColor in Palette.BricsCAD.xaml.
+            try { BricsCadTitleBars.Install(); }
+            catch (System.Exception ex) { DevReloadDiagnostics.Report("BricsCadTitleBars.Install", ex); }
 #endif
 
             var config = PluginConfigLoader.Load();
@@ -212,6 +218,10 @@ namespace DevReload
                 () => AcadRpcHost.Current.ShutdownAsync().GetAwaiter().GetResult());
             DevReloadDiagnostics.Step(failures, "AcadMainThreadDispatcher.Dispose",
                 () => _dispatcher?.Dispose());
+#if BRICSCAD
+            DevReloadDiagnostics.Step(failures, "BricsCadTitleBars.Uninstall",
+                () => BricsCadTitleBars.Uninstall());
+#endif
             DevReloadDiagnostics.Step(failures, "PluginManager.UnloadAll",
                 () => PluginManager.UnloadAll());
             // Native modules must leave with the session too; a mapped .arx would
