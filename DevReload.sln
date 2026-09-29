@@ -270,6 +270,9 @@ Global
 		src\Shared\DevReload.Diagnostics\DevReload.Diagnostics.projitems*{8ab9fae3-ee04-46b0-b664-177802dff7a0}*SharedItemsImports = 5
 		src\Shared\WpfSHARED\WpfSHARED.projitems*{a1b2c3d4-e5f6-7890-abcd-ef1234567890}*SharedItemsImports = 13
 		src\Shared\DevReload.Diagnostics\DevReload.Diagnostics.projitems*{bc4b33ef-ed84-44ff-bdad-719aea03a85a}*SharedItemsImports = 5
+		src\Shared\DevReload.BuildCore\DevReload.BuildCore.projitems*{be503e91-411c-4894-99e5-bbdeb9d7feca}*SharedItemsImports = 5
+		src\Shared\DevReload.Diagnostics\DevReload.Diagnostics.projitems*{be503e91-411c-4894-99e5-bbdeb9d7feca}*SharedItemsImports = 5
+		src\Shared\WpfSHARED\WpfSHARED.projitems*{be503e91-411c-4894-99e5-bbdeb9d7feca}*SharedItemsImports = 5
 		src\Shared\DevReload.BuildCore\DevReload.BuildCore.projitems*{f20d38a6-0aa5-13a5-7aa3-d587d97dbffb}*SharedItemsImports = 5
 		src\Shared\DevReload.Diagnostics\DevReload.Diagnostics.projitems*{f20d38a6-0aa5-13a5-7aa3-d587d97dbffb}*SharedItemsImports = 5
 		src\Shared\WpfSHARED\WpfSHARED.projitems*{f20d38a6-0aa5-13a5-7aa3-d587d97dbffb}*SharedItemsImports = 5
