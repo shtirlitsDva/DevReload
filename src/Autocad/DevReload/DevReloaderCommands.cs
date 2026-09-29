@@ -1,5 +1,7 @@
 ﻿using System;
+#if !BRICSCAD
 using System.Drawing;
+#endif
 using System.Linq;
 using System.Threading;
 
@@ -44,9 +46,15 @@ namespace DevReload
     /// </summary>
     public class DevReloaderCommands : IExtensionApplication
     {
+#if BRICSCAD
+        // BricsCAD's native dock panel. Its PaletteSet is a compatibility shim:
+        // docked it loses auto-hide and never remembers where it was.
+        private static Panel? _mgmtPanel;
+#else
         private static PaletteSet? _mgmtPalette;
         private static readonly Guid MgmtPaletteGuid =
             new("fb1be221-4d6f-48ff-a0d3-39dc935bf749");
+#endif
 
         private static AcadIdlePumpDispatcher? _dispatcher;
 
@@ -125,6 +133,16 @@ namespace DevReload
             {
                 DevReloadDiagnostics.Report("AcadRpcHost.StartAsync", ex);
             }
+
+#if BRICSCAD
+            // Created at load, like Bricsys' own CsBrxMgd sample: from here on
+            // the panel is a native tool panel (stack icon, right-click >
+            // Panels, -TOOLPANEL) and BricsCAD restores it as the workspace
+            // last saved it. Before the config check, so it exists with an
+            // empty plugins.json too.
+            try { EnsureManagerPanel(); }
+            catch (System.Exception ex) { DevReloadDiagnostics.Report("EnsureManagerPanel", ex); }
+#endif
 
             var config = PluginConfigLoader.Load();
             if (config == null || (config.Plugins.Count == 0 && config.OarxPlugins.Count == 0))
@@ -211,6 +229,14 @@ namespace DevReload
         [CommandMethod("DEVRELOAD")]
         public static void OpenManager()
         {
+#if BRICSCAD
+            // Opens the panel, or brings it forward when already open: hide +
+            // show selects its tab / expands it in an icon or flyout stack,
+            // the same as BricsCAD's own -TOOLPANEL Show.
+            var panel = EnsureManagerPanel();
+            if (panel.Visible) panel.Visible = false;
+            panel.Visible = true;
+#else
             if (_mgmtPalette == null)
             {
                 _mgmtPalette = new PaletteSet(
@@ -219,13 +245,6 @@ namespace DevReload
                     Size = new Size(400, 500),
                     MinimumSize = new Size(300, 200),
                     DockEnabled = DockSides.Left | DockSides.Right,
-#if BRICSCAD
-                    // AutoCAD's default style already shows these; BricsCAD's
-                    // default leaves out the auto-hide (roll-up) button.
-                    Style = PaletteSetStyles.ShowAutoHideButton
-                          | PaletteSetStyles.ShowCloseButton
-                          | PaletteSetStyles.ShowPropertiesMenu,
-#endif
                 };
                 // Two AddVisuals = two AutoCAD-native palette tabs. The tab
                 // chrome is the host's, not ours. Both visuals share ONE
@@ -233,13 +252,46 @@ namespace DevReload
                 // second instance would double every registry event.
                 var vm = new ViewModels.DevReloadViewModel();
                 _mgmtPalette.AddVisual(".NET", new DevReloadPanel(vm));
-#if !BRICSCAD
-                // OARX hosts ObjectARX modules; BricsCAD cannot load them.
                 _mgmtPalette.AddVisual("OARX", new OarxPanel(vm));
-#endif
             }
             _mgmtPalette.Visible = true;
+#endif
         }
+
+#if BRICSCAD
+        // One Panel per session: BricsCAD ignores a second Panel with the same
+        // name. Docks into RDOCK, the right-hand stack with Properties and
+        // Layers. No OARX view: BricsCAD cannot load ObjectARX.
+        private static Panel EnsureManagerPanel() =>
+            _mgmtPanel ??= new Panel("DevReloadManager",
+                new DockingTemplate(DockSides.Right, "RDOCK", 30),
+                new DevReloadPanel(new ViewModels.DevReloadViewModel()))
+            {
+                Title = "DevReload",
+                Icon = GlyphIcon(""), // Segoe MDL2 "Refresh"
+            };
+
+        // Panel icons must be bitmaps (a DrawingImage shows BricsCAD's "P"
+        // placeholder), so the glyph is rendered once into one.
+        private static System.Windows.Media.ImageSource GlyphIcon(string glyph)
+        {
+            const int px = 32;
+            var text = new System.Windows.Media.FormattedText(glyph,
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Windows.FlowDirection.LeftToRight,
+                new System.Windows.Media.Typeface("Segoe MDL2 Assets"), px,
+                System.Windows.Media.Brushes.White, 1.0);
+            var visual = new System.Windows.Media.DrawingVisual();
+            using (var dc = visual.RenderOpen())
+                dc.DrawText(text, new System.Windows.Point(
+                    (px - text.Width) / 2, (px - text.Height) / 2));
+            var bmp = new System.Windows.Media.Imaging.RenderTargetBitmap(
+                px, px, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+            bmp.Render(visual);
+            bmp.Freeze();
+            return bmp;
+        }
+#endif
 
         // ── Config → PluginManager bridge ─────────────────────────────
 

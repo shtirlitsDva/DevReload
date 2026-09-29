@@ -8,6 +8,12 @@
   <PropertyGroup Label="Configuration">
     <Import_RootNamespace>WpfSHARED</Import_RootNamespace>
   </PropertyGroup>
+  <PropertyGroup>
+    <!-- Which Themes\Palette.<name>.xaml this project compiles as
+         Themes/Palette.xaml. A host head overrides it (BcadDevReload:
+         BricsCAD); switching a host's look is this one property. -->
+    <ThemePalette Condition="'$(ThemePalette)' == ''">Default</ThemePalette>
+  </PropertyGroup>
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)Forms\StringGridWindow.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Forms\TGridWindow.cs" />
@@ -23,6 +29,11 @@
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
       <Link>Themes\Theme.xaml</Link>
+    </Page>
+    <Page Include="$(MSBuildThisFileDirectory)Themes\Palette.$(ThemePalette).xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+      <Link>Themes\Palette.xaml</Link>
     </Page>
   </ItemGroup>
 </Project>

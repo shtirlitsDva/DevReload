@@ -1,0 +1,42 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ════════════════════════════════════════════════════════════════
+         BricsCAD V26 palette. Cool, blue-leaning darks that sit between
+         BricsCAD's own two tones (#18191C icon strips, #2D3135 ribbon), and
+         text/greys from Bricsys' web neutral scale (#E7EBF2 … #1A1A1F).
+         Rule: no colour with R = G = B; those read as dead grey here.
+         Same keys as Palette.Default.xaml; see there for how a palette is
+         chosen.
+         ════════════════════════════════════════════════════════════════ -->
+
+    <!-- Panel body: one step darker than BricsCAD's #2D3135. -->
+    <Color x:Key="BgColor">#25292E</Color>
+    <!-- Cards and bars: slate navy, darker than the panel body. -->
+    <Color x:Key="SurfaceColor">#1F2633</Color>
+    <!-- BricsCAD's active-toggle blue. -->
+    <Color x:Key="AccentColor">#3D78C5</Color>
+    <Color x:Key="AccentHoverColor">#5089D4</Color>
+    <Color x:Key="DangerColor">#C9504A</Color>
+    <Color x:Key="DangerHoverColor">#A9403B</Color>
+    <Color x:Key="SuccessColor">#4E9A63</Color>
+    <!-- Subtle green surface used to tint controls that signal "shared
+         config present for this branch/build". -->
+    <Color x:Key="SharedConfigColor">#2F4F3A</Color>
+    <!-- Bricsys web neutral-100 / neutral-400. -->
+    <Color x:Key="FgColor">#E7EBF2</Color>
+    <Color x:Key="MutedColor">#9096A2</Color>
+    <!-- Control outlines (text boxes, combo boxes, popups): neutral-600. -->
+    <Color x:Key="InputBorderColor">#565A64</Color>
+    <!-- Darkest surface — the open ComboBox dropdown body; BricsCAD's
+         dock strip and status bar. -->
+    <Color x:Key="DropdownColor">#18191C</Color>
+    <!-- ComboBox item hover / selected: a lighter slate navy. -->
+    <Color x:Key="MenuHoverColor">#2C3647</Color>
+    <Color x:Key="SelectionColor">#37629A</Color>
+    <!-- Translucent overlays for hover/pressed states on coloured surfaces
+         (e.g. the accent split-button), independent of the base colour. -->
+    <Color x:Key="OverlayHoverColor">#22FFFFFF</Color>
+    <Color x:Key="OverlayPressedColor">#33000000</Color>
+
+</ResourceDictionary>

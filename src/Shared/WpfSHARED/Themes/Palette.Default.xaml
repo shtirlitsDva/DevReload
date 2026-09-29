@@ -1,0 +1,38 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ════════════════════════════════════════════════════════════════
+         Default palette (AutoCAD, Revit): DevReload's own blue-slate
+         colours. Each project compiles ONE palette file as
+         Themes/Palette.xaml (property ThemePalette, see WpfSHARED.projitems);
+         Theme.xaml merges it and builds every brush and style on these
+         keys. A palette holds colours only, and every palette defines the
+         same keys.
+         ════════════════════════════════════════════════════════════════ -->
+
+    <Color x:Key="BgColor">#3B4453</Color>
+    <Color x:Key="SurfaceColor">#2D3442</Color>
+    <Color x:Key="AccentColor">#63B3ED</Color>
+    <Color x:Key="AccentHoverColor">#4299E1</Color>
+    <Color x:Key="DangerColor">#E53E3E</Color>
+    <Color x:Key="DangerHoverColor">#C53030</Color>
+    <Color x:Key="SuccessColor">#48BB78</Color>
+    <!-- Subtle green surface used to tint controls that signal "shared
+         config present for this branch/build". Muted so it reads as a hint,
+         not an action button. -->
+    <Color x:Key="SharedConfigColor">#2F5D43</Color>
+    <Color x:Key="FgColor">#E2E8F0</Color>
+    <Color x:Key="MutedColor">#A0AEC0</Color>
+    <!-- Control outlines (text boxes, combo boxes, popups). -->
+    <Color x:Key="InputBorderColor">#4A5568</Color>
+    <!-- Darkest surface — the open ComboBox dropdown body. -->
+    <Color x:Key="DropdownColor">#1A202C</Color>
+    <!-- ComboBox item hover / selected. -->
+    <Color x:Key="MenuHoverColor">#2D3748</Color>
+    <Color x:Key="SelectionColor">#2B4C7E</Color>
+    <!-- Translucent overlays for hover/pressed states on coloured surfaces
+         (e.g. the accent split-button), independent of the base colour. -->
+    <Color x:Key="OverlayHoverColor">#22FFFFFF</Color>
+    <Color x:Key="OverlayPressedColor">#33000000</Color>
+
+</ResourceDictionary>

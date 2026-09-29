@@ -14,6 +14,8 @@
 		<AcadHeadDir>..\..\Autocad\DevReload\</AcadHeadDir>
 		<EnableDefaultCompileItems>false</EnableDefaultCompileItems>
 		<EnableDefaultPageItems>false</EnableDefaultPageItems>
+		<!-- WpfSHARED compiles Themes\Palette.BricsCAD.xaml as the theme's colours. -->
+		<ThemePalette>BricsCAD</ThemePalette>
 	</PropertyGroup>
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
 		<OutputPath>bin\Debug\</OutputPath>
