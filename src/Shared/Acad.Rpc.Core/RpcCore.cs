@@ -263,7 +263,9 @@ public sealed class RpcCore
                     var r = await InvokeToolAsync(tool, args, ct).ConfigureAwait(false);
                     return McpProtocol.CallToolResult(r.Text, r.Structured, r.Images, r.IsError);
                 }
-                catch (Exception ex)
+                // A cancelled call passes through: the transport sends no reply
+                // for it (MCP), while a tool's own failure becomes an error result.
+                catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
                 {
                     return McpProtocol.CallToolResultText($"{ex.GetType().Name}: {ex.Message}", isError: true);
                 }

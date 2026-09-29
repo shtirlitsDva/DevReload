@@ -33,6 +33,7 @@ public sealed class InstanceConnection : IDisposable
     private CancellationTokenSource? _readerCts;
     private Task? _readerLoop;
     private CancellationTokenSource? _connectCts;
+    private readonly SemaphoreSlim _writeLock = new(1, 1);
     private int _nextId;
     private readonly ConcurrentDictionary<int, TaskCompletionSource<JsonNode?>> _pending = new();
 
@@ -90,12 +91,8 @@ public sealed class InstanceConnection : IDisposable
         var msg = new JsonObject { ["jsonrpc"] = "2.0", ["id"] = id, ["method"] = method };
         if (@params != null) msg["params"] = @params.DeepClone();
 
-        StreamWriter? writer;
-        lock (_gate) { writer = _writer; }
-        if (writer == null) { _pending.TryRemove(id, out _); throw new InvalidOperationException("writer gone"); }
-
-        try { await writer.WriteLineAsync(JsonSerializer.Serialize(msg, McpProtocol.JsonOptions)).ConfigureAwait(false); }
-        catch (Exception ex) { _pending.TryRemove(id, out _); throw new IOException("write to pipe failed", ex); }
+        try { await WriteAsync(msg).ConfigureAwait(false); }
+        catch { _pending.TryRemove(id, out _); throw; }
 
         // A frozen-but-alive instance (WER "has stopped working", or a full
         // process hang) keeps the pipe connected but never replies and never
@@ -113,12 +110,56 @@ public sealed class InstanceConnection : IDisposable
 
         await using var reg = waitCt.Register(() => tcs.TrySetCanceled(waitCt));
         try { return await tcs.Task.ConfigureAwait(false); }
-        catch (OperationCanceledException) when (timeout.HasValue && !ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (waitCt.IsCancellationRequested)
         {
-            throw new TimeoutException(
-                $"pid {Pid} did not respond to '{method}' within {timeout.Value.TotalSeconds:0}s — instance is frozen or crashing.");
+            // We stopped waiting, so the instance must stop too: otherwise the
+            // call stays queued in AutoCAD and runs later for nobody.
+            SendCancelled(id, ct.IsCancellationRequested ? "cancelled by the client" : "timed out in the bridge");
+            if (!ct.IsCancellationRequested)
+                throw new TimeoutException(
+                    $"pid {Pid} did not respond to '{method}' within {timeout!.Value.TotalSeconds:0}s — instance is frozen or crashing.");
+            throw;
         }
         finally { _pending.TryRemove(id, out _); }
+    }
+
+    private void SendCancelled(int id, string reason)
+    {
+        // Fire and forget: the caller is already done with this request.
+        _ = Task.Run(async () =>
+        {
+            try { await WriteAsync(McpProtocol.MakeCancelled(JsonValue.Create(id), reason)).ConfigureAwait(false); }
+            catch (Exception ex)
+            {
+                // Category B - report, do not rethrow. A failed write has already
+                // dropped the connection (WriteAsync); nothing is left to cancel.
+                _log($"InstanceConnection: cancel for request {id} not sent: {ex.Message}");
+            }
+        });
+    }
+
+    /// <summary>
+    /// Writes one message. Serialized: StreamWriter allows one pending write,
+    /// and a second concurrent WriteLineAsync throws. Before this lock two
+    /// tool calls at once could leave the writer broken for good. A write that
+    /// fails drops the connection, so the pool builds a fresh one rather than
+    /// failing every later call on a dead writer.
+    /// </summary>
+    private async Task WriteAsync(JsonObject msg)
+    {
+        StreamWriter? writer;
+        lock (_gate) { writer = _writer; }
+        if (writer == null) throw new InvalidOperationException($"pid {Pid} pipe is not connected");
+
+        string line = JsonSerializer.Serialize(msg, McpProtocol.JsonOptions);
+        await _writeLock.WaitAsync().ConfigureAwait(false);
+        try { await writer.WriteLineAsync(line).ConfigureAwait(false); }
+        catch (Exception ex)
+        {
+            Disconnect();
+            throw new IOException("write to pipe failed; the connection was dropped and will be rebuilt on the next call", ex);
+        }
+        finally { _writeLock.Release(); }
     }
 
     private async Task ConnectLoopAsync(CancellationToken ct)

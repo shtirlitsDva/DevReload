@@ -146,10 +146,10 @@ public class AutoAttachTests
 
         Assert.False(outcome.Bound);
         Assert.Null(outcome.Pid);
-        Assert.Contains("no acad.exe processes running", outcome.Reason);
+        Assert.Contains("no acad.exe / bricscad.exe processes running", outcome.Reason);
         Assert.Null(binding.Current);
         Assert.Single(logs);
-        Assert.Contains("no acad.exe processes running", logs[0]);
+        Assert.Contains("no acad.exe / bricscad.exe processes running", logs[0]);
     }
 
     [Fact]

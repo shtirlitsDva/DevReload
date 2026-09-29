@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipes;
@@ -52,6 +53,10 @@ public sealed class AcadRpcHost
         public Connection(StreamWriter writer) { Writer = writer; }
         public StreamWriter Writer { get; }
         public SemaphoreSlim WriteLock { get; } = new(1, 1);
+
+        /// <summary>Requests still running, by JSON-RPC id (as its JSON text),
+        /// so <c>notifications/cancelled</c> can reach them.</summary>
+        public ConcurrentDictionary<string, CancellationTokenSource> InFlight { get; } = new();
     }
 
     private AcadRpcHost(AcadRpcHostOptions options)
@@ -239,13 +244,45 @@ public sealed class AcadRpcHost
             JsonObject? @params = req["params"] as JsonObject;
 
             if (method == null) continue;
-            bool isNotification = id == null;
 
-            // Serialize requests within a single client (preserves ordering);
-            // concurrency across clients comes from each having its own
-            // HandleClientAsync task. The main-thread dispatcher serializes
-            // the actual AutoCAD work regardless.
-            await DispatchAndReplyAsync(conn, id, method, @params, isNotification, ct).ConfigureAwait(false);
+            if (method == McpProtocol.CancelledNotification)
+            {
+                if (@params?["requestId"] is JsonNode rid && conn.InFlight.TryGetValue(rid.ToJsonString(), out var victim))
+                    DevReloadDiagnostics.RunReporting("AcadRpcHost: cancel request", victim.Cancel);
+                continue;
+            }
+
+            // Not awaited: each request runs on its own, so a call waiting for
+            // the main thread (a command at a prompt, a modal dialog) never
+            // stops this loop reading the next one. It used to be awaited, and
+            // one stuck call froze every tool on the connection, off-thread
+            // ones included. Ordering needs nothing from here: the client
+            // matches replies by id, and the main-thread dispatcher runs its
+            // work in arrival order.
+            _ = RunRequestAsync(conn, id, method, @params, ct);
+        }
+    }
+
+    private async Task RunRequestAsync(
+        Connection conn, JsonNode? id, string method, JsonObject? @params, CancellationToken ct)
+    {
+        using var requestCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        string? key = id?.ToJsonString();
+        if (key != null) conn.InFlight[key] = requestCts;
+        try
+        {
+            await DispatchAndReplyAsync(conn, id, method, @params, isNotification: id == null, requestCts.Token)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // Category B - report, do not rethrow. Nothing awaits this task; the
+            // usual cause is the reply write failing because the client is gone.
+            DevReloadDiagnostics.Report($"AcadRpcHost: request '{method}'", ex);
+        }
+        finally
+        {
+            if (key != null) conn.InFlight.TryRemove(new KeyValuePair<string, CancellationTokenSource>(key, requestCts));
         }
     }
 
@@ -257,6 +294,12 @@ public sealed class AcadRpcHost
             JsonNode? result = await Core.DispatchAsync(method, @params, ct).ConfigureAwait(false);
             if (!isNotification)
                 await WriteAsync(conn, McpProtocol.MakeResponse(id!, result, null));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Cancelled by the client (notifications/cancelled) or by shutdown.
+            // MCP: no response for a cancelled request; the client has already
+            // stopped waiting for it.
         }
         catch (NotSupportedException nse)
         {

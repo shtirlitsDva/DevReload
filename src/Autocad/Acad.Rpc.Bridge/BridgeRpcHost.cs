@@ -48,6 +48,10 @@ public sealed class BridgeRpcHost : IDisposable
     private readonly HashSet<string> _localToolNames = new(StringComparer.Ordinal);
     private readonly object _localNamesGate = new();
 
+    // Client requests still running, by JSON-RPC id (as its JSON text), so
+    // notifications/cancelled can reach them.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, CancellationTokenSource> _inFlight = new();
+
     public BridgeRpcHost(RpcCore core, ForwarderPool pool, Action<string>? log = null)
     {
         _core = core ?? throw new ArgumentNullException(nameof(core));
@@ -111,11 +115,28 @@ public sealed class BridgeRpcHost : IDisposable
         if (method == null) return;
         bool isNotification = id == null;
 
+        if (method == McpProtocol.CancelledNotification)
+        {
+            // The client stopped waiting (e.g. the user interrupted a tool call).
+            // Cancelling the request's token makes InstanceConnection pass the
+            // cancel on to the AutoCAD instance.
+            if (@params?["requestId"] is JsonNode rid && _inFlight.TryGetValue(rid.ToJsonString(), out var victim))
+                DevReloadDiagnostics.RunReporting("BridgeRpcHost: cancel request", victim.Cancel);
+            return;
+        }
+
+        using var requestCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        string? key = id?.ToJsonString();
+        if (key != null) _inFlight[key] = requestCts;
         try
         {
-            JsonNode? result = await DispatchAsync(method, @params, ct).ConfigureAwait(false);
+            JsonNode? result = await DispatchAsync(method, @params, requestCts.Token).ConfigureAwait(false);
             if (!isNotification)
                 await WriteAsync(McpProtocol.MakeResponse(id!, result, null));
+        }
+        catch (OperationCanceledException) when (requestCts.IsCancellationRequested)
+        {
+            // MCP: no response for a cancelled request.
         }
         catch (NotSupportedException nse)
         {
@@ -130,6 +151,10 @@ public sealed class BridgeRpcHost : IDisposable
                 await WriteAsync(McpProtocol.MakeResponse(
                     id!, null,
                     McpProtocol.MakeError(McpProtocol.ErrorCodes.InternalError, ex.Message)));
+        }
+        finally
+        {
+            if (key != null) _inFlight.TryRemove(new KeyValuePair<string, CancellationTokenSource>(key, requestCts));
         }
     }
 
@@ -188,7 +213,7 @@ public sealed class BridgeRpcHost : IDisposable
                 {
                     return await conn.ForwardRequestAsync("tools/call", forwardParams, ct, ToolCallTimeout).ConfigureAwait(false);
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (!ct.IsCancellationRequested)
                 {
                     return McpProtocol.CallToolResultText(
                         $"forwarding '{toolName}' to pid {targetPid} failed: {ex.Message}", isError: true);

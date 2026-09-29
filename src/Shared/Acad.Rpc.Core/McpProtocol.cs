@@ -14,6 +14,7 @@ namespace Acad.Rpc.Core;
 ///   - tools/list  (request)
 ///   - tools/call  (request)
 ///   - notifications/tools/list_changed  (server-to-client one-way)
+///   - notifications/cancelled  (one-way, either direction; params.requestId)
 ///   - ping  (request, returns {})
 /// Wire format: line-delimited JSON-RPC 2.0. Each message is exactly
 /// one JSON object on one line (no Content-Length framing).
@@ -21,6 +22,18 @@ namespace Acad.Rpc.Core;
 public static class McpProtocol
 {
     public const string LatestProtocolVersion = "2025-11-25";
+
+    /// <summary>Tells the receiver to stop a request it is still running.
+    /// No response is sent for the cancelled request.</summary>
+    public const string CancelledNotification = "notifications/cancelled";
+
+    /// <summary>A <c>notifications/cancelled</c> message for request <paramref name="requestId"/>.</summary>
+    public static JsonObject MakeCancelled(JsonNode requestId, string reason) =>
+        MakeNotification(CancelledNotification, new JsonObject
+        {
+            ["requestId"] = requestId.DeepClone(),
+            ["reason"] = reason,
+        });
 
     // Versions whose required server-side behavior (for a tools-only
     // server over a line-delimited pipe) we actually implement.
