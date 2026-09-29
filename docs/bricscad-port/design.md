@@ -135,10 +135,33 @@ plugin that targets both hosts can use the same `#if` pattern with two csproj he
 `Bcad.Mcp` is the worked example).
 </plugins>
 
+<hud>
+The reload HUD (`ReloadHudOverrule` on a `DBPoint` transient carrier) works in BricsCAD once
+`SetAttributes` includes `kDrawableIsAnEntity` (1). Without that bit, BricsCAD asks a transient
+for its attributes once and never calls `WorldDraw`/`ViewportDraw`. It then draws nothing: not
+the overrule's geometry and not the carrier's own. This holds for a `DrawableOverrule` and for a
+managed `Drawable` subclass alike, in every `TransientDrawingMode`, at idle and mid-command.
+
+Measured live on V26 with a probe:
+- Flags `256|2048|16384` or `0` give 1 attributes call and 0 draw calls.
+- Flags `1` or `1|256|2048|16384` get a draw on every `UpdateTransient`.
+
+Bricsys's own rhino.inside-bricscad `CompoundDrawable` returns `DrawableIsAnEntity`, which is
+where the lead came from. The managed `AttributesFlags` enum stops at `DrawableRegenDraw`, so
+the other values are the native ones.
+
+Other findings from the same investigation:
+- It had nothing to do with the Idle starvation. Plain entity transients draw at idle and
+  mid-command in an agent-launched instance, with `UpdateTransient` + `UpdateScreen` + the pump.
+- A managed `Drawable` subclass IS dispatched in BricsCAD, unlike AutoCAD.
+- `DeviceContextViewportCorners` returns real corners in BricsCAD (AutoCAD: `((0,0),(0,0))`).
+  The SCREENSIZE-based layout agrees with them, so no BricsCAD-specific layout is needed.
+- The HUD needs a drawing area at least 220 px tall; a small window clips or hides it.
+
+The general porting guide for transients (for any plugin) is `transients-migration.md`.
+</hud>
+
 <deferred>
-- Reload HUD: the DrawableOverrule transient is never drawn in BricsCAD mid-command
-  (`SetAttributes` is called; `WorldDraw` only on an idle regen). Each reload logs "HUD
-  registered but never drawn". It does no harm.
 - OARX: ObjectARX-only, so the OARX tab and `oarx_*` tools are left out on BricsCAD. The
   BricsCAD equivalent is a BRX module, which waits for the BRX SDK.
 </deferred>

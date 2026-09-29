@@ -175,10 +175,13 @@ namespace DevReload.Hud
             // Never cached, never plotted, and the geometry depends on the
             // viewport — so it must be re-elaborated on every view change.
 #if BRICSCAD
-            // BricsCAD exposes no managed DrawableAttributes enum; these are the
-            // ObjectARX/ODA SetAttributesFlags values it mirrors (kDrawableRegenDraw,
-            // kDrawableViewDependentViewportDraw, kDrawableNotPlottable).
-            return 256 | 2048 | 16384;
+            // BricsCAD's managed AttributesFlags stops at DrawableRegenDraw, so the
+            // rest are the native SetAttributesFlags values: kDrawableIsAnEntity,
+            // kDrawableRegenDraw, kDrawableViewDependentViewportDraw,
+            // kDrawableNotPlottable. kDrawableIsAnEntity is load-bearing: without
+            // it BricsCAD never calls WorldDraw/ViewportDraw for a transient — it
+            // asks for the attributes once and draws nothing (measured live, V26).
+            return 1 | 256 | 2048 | 16384;
 #else
             return (int)(DrawableAttributes.RegenDraw
                        | DrawableAttributes.ViewDependentViewportDraw
