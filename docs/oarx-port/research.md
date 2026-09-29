@@ -234,7 +234,7 @@ Reused unchanged:
 - `plugins.json` + `PluginConfigLoader` + the registration/mutation funnel
 - `PluginManager`'s public shape: Load / DevReload / Unload / BuildOnly / snapshots / events
 - The palette (`DevReloadViewModel`, per-plugin cards) and the MCP tool surface
-- `AcadIdlePumpDispatcher` — the idle driver the state machine needs
+- `AcadMainThreadDispatcher` — the main-thread driver the state machine needs
 
 New, and genuinely new:
 

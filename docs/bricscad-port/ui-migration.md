@@ -50,7 +50,7 @@ BricsCAD: a plugin hands BricsCAD a view, a name, a title and an icon. BricsCAD 
 | `Icon` (`System.Drawing.Icon`) | `Icon` must be a WPF `BitmapSource`; a `DrawingImage` shows a "P" placeholder |
 | `StateChanged` | `StateChanged` (`PanelStateEventArgs.NewState`) |
 | created lazily in the palette command | created in `Initialize` (see `<lifecycle>`) |
-| `Close()` / `Dispose()` | cannot be removed; empty it instead |
+| `Close()` / `Dispose()` | no .NET API; removed on unload through the native `DestroyPanel` (see `<removing-panels>`) |
 | position saved per Guid | position saved in the workspace per `name` |
 </mapping>
 
@@ -61,39 +61,171 @@ BricsCAD: a plugin hands BricsCAD a view, a name, a title and an icon. BricsCAD 
   command, BricsCAD doesn't know the panel exists until someone runs that command. This is a
   rule for all our BricsCAD plugins.
 - **The command only brings the panel forward.** It never creates the panel.
-- **One Panel per name, per session.** A Panel can't be removed, and a second Panel with the
-  same name is silently ignored (the first keeps its content). With hot reload (DevReload), a
-  reload therefore must not create the panel again.
-  - Create each Panel once per BricsCAD session around a `ContentControl`.
-  - Park both in `AppDomain` data.
-  - Each load puts new views into the ContentControl; `Terminate` / `Dispose` empties it and
-    unhooks every event.
-  - Put only BricsCAD and WPF types into `AppDomain` data. A type from the plugin's own
-    assembly there would pin the collectible ALC, and the plugin could never unload.
+- **A name is taken while its panel lives.** A second `Panel` with the name of a live panel is
+  silently ignored: the first keeps its content. Once the first is removed (see
+  `<removing-panels>`), a new Panel with that name is accepted.
+- **Hot-reloadable plugins create on load and remove on unload.**
+  - `Initialize` creates the panels.
+  - `Terminate`, when the plugin is unloaded, empties them and removes them. An unloaded
+    plugin then leaves no empty icon behind, and the next load creates fresh panels. They land
+    where the workspace had the old ones.
+  - Wrap each view in a `ContentControl` and set its `Content = null` in `Terminate`.
+    BricsCAD keeps a removed Panel object alive, and if that object still holds our view, the
+    view keeps the plugin's collectible ALC loaded.
 - **Choose names with care.**
   - The name is permanent: renaming leaves a stale `WSESW` entry behind in `default.cui`.
   - The name is also the tab label in tabs mode, so use something readable (`ACD-MCP`, not
     `AcdMcpScriptPanel`).
 - **Plain plugins.** A plugin that is never hot-reloaded (DevReload itself) can simply keep
-  the Panel in a static field. `EnsureManagerPanel()` in `DevReloaderCommands.cs` does that.
+  the Panel in a static field and never remove it. `EnsureManagerPanel()` in
+  `DevReloaderCommands.cs` does that.
 
 ```csharp
-// Hot-reloadable panel (ACD-MCP ScriptPanel.cs, trimmed).
-const string SlotKey = "MyPlugin.Panel";
-if (AppDomain.CurrentDomain.GetData(SlotKey) is not object[] slot)
+// Hot-reloadable panel.
+static readonly List<(Panel Panel, ContentControl Host)> _made = [];
+static bool _quitting;
+
+public void Initialize()
 {
-    var host = new ContentControl();
-    slot = [new Panel("MyPlugin", new DockingTemplate(DockSides.Right, "RDOCK", 40), host)
-               { Title = "My Plugin", Icon = GlyphIcon("") }, host];
-    AppDomain.CurrentDomain.SetData(SlotKey, slot);
+    var host = new ContentControl { Content = new MyView() };
+    var panel = new Panel("MyPlugin", new DockingTemplate(DockSides.Right, "RDOCK", 40), host)
+        { Title = "My Plugin", Icon = GlyphIcon("") };
+    _made.Add((panel, host));
+    Application.BeginQuit += OnBeginQuit;
+    Application.QuitAborted += OnQuitAborted;
 }
-var panel = (Panel)slot[0];
-var hostControl = (ContentControl)slot[1];
-hostControl.Content = new MyView();   // on load
-// ...
-hostControl.Content = null;           // in Terminate
+
+public void Terminate()
+{
+    Application.BeginQuit -= OnBeginQuit;
+    Application.QuitAborted -= OnQuitAborted;
+    foreach (var (_, host) in _made) host.Content = null;       // managed only: always safe
+    if (!_quitting)                                               // see <teardown-at-exit>
+        foreach (var (panel, _) in _made) PanelRemover.Remove(panel);
+    _made.Clear();
+}
+
+static void OnBeginQuit(object? s, EventArgs e) => _quitting = true;
+static void OnQuitAborted(object? s, EventArgs e) => _quitting = false;
 ```
 </lifecycle>
+
+<teardown-at-exit>
+When BricsCAD quits, it frees its native panels FIRST and only then unloads plugins:
+`kUnloadAppMsg` → DevReload `Terminate` → each plugin's `Terminate`. So any `Panel` member
+called from `Terminate` at exit reads freed memory. Even `Visible` does. The result is an
+`AccessViolationException`, which .NET cannot catch, and BricsCAD dies. ACD-MCP 3.1.1 crashed
+every exit this way, because its teardown checked `Panel.Visible`.
+
+Rules:
+- `Terminate` touches only managed objects: empty the `ContentControl`s, unhook events.
+  Removing a `StateChanged` handler is safe; it only touches the managed delegate field.
+- Native panel calls (`Visible`, `PanelRemover.Remove`) run only on a DevReload unload, never
+  while quitting. Track that with `Application.BeginQuit` (set a flag) and
+  `Application.QuitAborted` (clear it).
+
+Verified live: with PanelStackDemo and ACD-MCP loaded, BricsCAD quits cleanly.
+</teardown-at-exit>
+
+<removing-panels>
+The .NET `Panel` is a thin wrapper around a native `BcUiPanel`. It has no destructor and no
+remove method. The native side does have one: `brx26.dll` exports
+`BcUiPanel::DestroyPanel()` (`?DestroyPanel@BcUiPanel@@QEAA_NXZ`), and BrxMgd never calls it.
+Calling it ourselves:
+- removes the panel's window and its stack icon;
+- drops it from `-TOOLPANEL ?`;
+- frees the name, so a new `Panel` with the same name is accepted, and it returns to the
+  position the workspace remembered.
+
+It is one-way. `Visible = true` on a destroyed Panel does nothing; create a new Panel instead.
+
+How we reach the native call:
+- **The native pointer.** `Panel` keeps its native `AcMgPanel*` in the private field
+  `m_pImpObj`. A pointer field can't be read through `FieldInfo` without unsafe code, so a
+  small `DynamicMethod` returns it as an `IntPtr`.
+- **The offset.** The `BcUiPanel` part sits at an offset inside `AcMgPanel`: 232 in V26.2.
+  Don't hard-code it. Read it from BrxMgd's own IL: the `Visible` getter is
+  `ldfld m_pImpObj; ldc.i4 <offset>; conv.i8; add`. The offset then follows whatever BrxMgd
+  build is installed, and if Bricsys changes the code, we get a clear exception instead of a
+  crash.
+- **The export.** Find the loaded `brxNN.dll` among the process modules (no hard-coded 26),
+  get the export with `NativeLibrary.GetExport`, and call it through a delegate
+  (`ThisCall`; `bool` is one byte).
+- **The leftover.** BricsCAD keeps the removed `AcMgPanel` and its managed `Panel` in memory.
+  That is a few hundred bytes per reload, harmless as long as its `ContentControl` is empty
+  (see `<lifecycle>`).
+
+The helper, as tested in PanelStackDemo:
+
+```csharp
+internal static class PanelRemover
+{
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    [return: MarshalAs(UnmanagedType.U1)]
+    private delegate bool BcUiPanelBoolCall(IntPtr self);
+
+    private static readonly Lazy<(Func<Panel, IntPtr> GetImp, int Offset, BcUiPanelBoolCall Destroy)> Native =
+        new(Bind);
+
+    // True when BricsCAD destroyed the panel. Never call while BricsCAD quits.
+    public static bool Remove(Panel panel)
+    {
+        var (getImp, offset, destroy) = Native.Value;
+        return destroy(getImp(panel) + offset);
+    }
+
+    private static (Func<Panel, IntPtr>, int, BcUiPanelBoolCall) Bind()
+    {
+        var impField = typeof(Panel).GetField("m_pImpObj", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? throw new MissingFieldException(typeof(Panel).FullName, "m_pImpObj");
+
+        var dm = new DynamicMethod("GetPanelImp", typeof(IntPtr), [typeof(Panel)], typeof(Panel), skipVisibility: true);
+        var il = dm.GetILGenerator();
+        il.Emit(OpCodes.Ldarg_0);
+        il.Emit(OpCodes.Ldfld, impField);
+        il.Emit(OpCodes.Ret);
+        var getImp = dm.CreateDelegate<Func<Panel, IntPtr>>();
+
+        var brx = Process.GetCurrentProcess().Modules.Cast<ProcessModule>()
+            .FirstOrDefault(m => Regex.IsMatch(m.ModuleName, @"^brx\d+\.dll$", RegexOptions.IgnoreCase))
+            ?? throw new DllNotFoundException("brxNN.dll is not loaded.");
+        var export = NativeLibrary.GetExport(NativeLibrary.Load(brx.FileName), "?DestroyPanel@BcUiPanel@@QEAA_NXZ");
+
+        return (getImp, ReadOffset(impField), Marshal.GetDelegateForFunctionPointer<BcUiPanelBoolCall>(export));
+    }
+
+    // Finds "ldfld m_pImpObj; ldc.i4 <offset>; conv.i8; add" in Panel.Visible's getter.
+    private static int ReadOffset(FieldInfo impField)
+    {
+        var getter = typeof(Panel).GetProperty("Visible")!.GetGetMethod()!;
+        var il = getter.GetMethodBody()!.GetILAsByteArray()!;
+        for (int i = 0; i + 12 <= il.Length; i++)
+        {
+            if (il[i] != 0x7B || il[i + 5] != 0x20 || il[i + 10] != 0x6A || il[i + 11] != 0x58) continue;
+            if (getter.Module.ResolveField(BitConverter.ToInt32(il, i + 1)) != impField) continue;
+            return BitConverter.ToInt32(il, i + 6);
+        }
+        throw new InvalidOperationException("BcUiPanel offset not found in Panel.Visible IL; BrxMgd changed.");
+    }
+}
+```
+
+The other native exports of `BcUiPanel` in `brx26.dll` are:
+- constructors / destructor and `CreatePanel`;
+- `Show`, `IsShown`, `IsPanelCreated`;
+- `Get` / `SetName`, `GetConfigKey`, `Get` / `SetIconSource`;
+- `Get` / `SetDefaultDock`, `Get` / `SetDefaultStackID`;
+- `RegisterRestartableTool`.
+
+Only `DestroyPanel` (and `GetDefaultDock` / `GetDefaultStackID`) are missing from the .NET
+wrapper.
+
+How it was found:
+- decompile `BrxMgd.dll` with `ilspycmd -t Bricscad.Windows.Panel`;
+- list the `BcUiPanel` imports in BrxMgd and the exports in `brx26.dll` with
+  `grep -a -o '?[A-Za-z_]*@BcUiPanel@@...'`;
+- then call it live through ACD-MCP's `autocad_script_execute`.
+</removing-panels>
 
 <showing>
 - **Bring forward = hide, then show.**
@@ -204,7 +336,10 @@ BricsCAD's dark UI is not AutoCAD's, so each host gets its own colours. The styl
   - the icon is on the stack right after startup;
   - the command brings the panel forward in all three `STACKPANELTYPE` modes;
   - after a DevReload reload, the panel still shows the new views;
-  - the panel appears in `-TOOLPANEL` and in right-click > Panels.
+  - the panel appears in `-TOOLPANEL` and in right-click > Panels;
+  - after unloading, the icon is gone and `-TOOLPANEL ?` no longer lists the panel;
+  - after loading again, the icon is back in the same place;
+  - BricsCAD quits without crashing while the plugin is loaded.
 - **Start BricsCAD yourself.** A BricsCAD started by an agent process never fires
   `Application.Idle`, so anything waiting for Idle (auto-start, the RPC pipes) starves.
 - **Screenshots.**
@@ -225,6 +360,10 @@ Assumptions that turned out false, so nobody repeats them:
   resizable flyout (2) narrows it.
 - "Create the panel lazily in its command." It works, but the icon is missing until someone
   runs the command.
+- "A Panel can never be removed, so park it for the whole session." Wrong: the native
+  `DestroyPanel` removes it, and the name becomes free again.
+- "`Terminate` can check `Panel.Visible`." Not while quitting: the panel is already freed,
+  and BricsCAD crashes.
 </wrong-turns>
 
 <references>
@@ -238,7 +377,8 @@ Assumptions that turned out false, so nobody repeats them:
   `STACKPANELTYPE`, `-TOOLPANEL`).
 - Worked examples:
   - DevReload `DevReloaderCommands.cs`: a single view, static Panel.
-  - ACD-MCP `Ui/ScriptPanel.cs` + `Ui/SideTabHost.cs`: two tabs, hot-reloadable.
+  - ACD-MCP `Ui/ScriptPanel.cs` + `Ui/SideTabHost.cs`: two tabs, hot-reloadable. It still
+    parks its panel for the session (the older pattern) instead of removing it on unload.
 </references>
 
 </bricscad-ui-migration>

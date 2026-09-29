@@ -56,7 +56,7 @@ namespace DevReload
             new("fb1be221-4d6f-48ff-a0d3-39dc935bf749");
 #endif
 
-        private static AcadIdlePumpDispatcher? _dispatcher;
+        private static AcadMainThreadDispatcher? _dispatcher;
 
         public void Initialize()
         {
@@ -106,7 +106,7 @@ namespace DevReload
             // ToolCollection on load/unload.
             try
             {
-                _dispatcher = new AcadIdlePumpDispatcher();
+                _dispatcher = new AcadMainThreadDispatcher();
                 int pid = System.Diagnostics.Process.GetCurrentProcess().Id;
                 var host = AcadRpcHost.Initialize(new AcadRpcHostOptions(
                     PipeName: $"acad-rpc-{pid}",
@@ -210,7 +210,7 @@ namespace DevReload
 
             DevReloadDiagnostics.Step(failures, "AcadRpcHost.Shutdown",
                 () => AcadRpcHost.Current.ShutdownAsync().GetAwaiter().GetResult());
-            DevReloadDiagnostics.Step(failures, "AcadIdlePumpDispatcher.Dispose",
+            DevReloadDiagnostics.Step(failures, "AcadMainThreadDispatcher.Dispose",
                 () => _dispatcher?.Dispose());
             DevReloadDiagnostics.Step(failures, "PluginManager.UnloadAll",
                 () => PluginManager.UnloadAll());

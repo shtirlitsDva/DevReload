@@ -80,7 +80,7 @@ namespace DevReload.Rpc
 
             // Where this continuation runs is AutoCAD's choice, and the snapshot
             // is only about AutoCAD when read from application context on the
-            // main thread. The idle pump is the one path that guarantees both.
+            // main thread. The main-thread dispatcher is the one path that guarantees both.
             return await AcadRpcHost.Current.Dispatcher.InvokeAsync(Snapshot, CancellationToken.None);
         }
 
@@ -109,8 +109,8 @@ namespace DevReload.Rpc
         ///
         /// <para>Thread and context matter: the quiescence APIs are main-thread
         /// only, and asked from inside a command they always answer false —
-        /// measured, not assumed. Every caller here arrives through the idle pump
-        /// in application context, which is the one place the answer is about
+        /// measured, not assumed. Every caller here arrives through the main-thread
+        /// dispatcher in application context, which is the one place the answer is about
         /// AutoCAD rather than about the caller.</para>
         /// </remarks>
         private static bool IsCommandDefined(string commandName) =>

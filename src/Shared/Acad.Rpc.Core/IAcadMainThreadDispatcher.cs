@@ -6,7 +6,7 @@ namespace Acad.Rpc.Core;
 
 /// <summary>
 /// Marshals a delegate onto AutoCAD's main thread. The AutoCAD-bound
-/// implementation lives in DevReload (Application.Idle pump); a fake is
+/// implementation lives in DevReload (AcadMainThreadDispatcher); a fake is
 /// provided for unit tests in Acad.Rpc.Core. This keeps Acad.Rpc.Core
 /// free of any AutoCAD reference and fully unit-testable.
 /// </summary>

@@ -95,6 +95,13 @@ public sealed class AcadProcessController
             // for the agent's process-control tools.
             AppendArg(psi, $"\"{options.DrawingPath}\"");
         }
+        else if (install.Flavor == AcadFlavor.BricsCAD)
+        {
+            // Without a drawing BricsCAD stays on its Start page with no
+            // document, and the tools need one. /T opens a new drawing
+            // from the meters template (we work in meters).
+            AppendArg(psi, $"/T \"{BricsCadMetersTemplate(install)}\"");
+        }
 
         if (!string.IsNullOrEmpty(options.StartupCommands))
         {
@@ -110,6 +117,17 @@ public sealed class AcadProcessController
 
         return SysProcess.Start(psi)
             ?? throw new InvalidOperationException("Process.Start returned null");
+    }
+
+    // Metric (meters) template, the unit we work in. Taken from the install
+    // itself (UserDataCache), which exists before BricsCAD's first run seeds
+    // the user's own Templates folder. ProductCode is the locale for BricsCAD.
+    private static string BricsCadMetersTemplate(AcadInstall install)
+    {
+        var path = Path.Combine(install.InstallPath, "UserDataCache", "Templates", install.ProductCode, "Default-m.dwt");
+        return File.Exists(path)
+            ? path
+            : throw new FileNotFoundException($"BricsCAD meters template not found: {path}");
     }
 
     private static string WriteStartupScript(string commands)

@@ -106,7 +106,7 @@ public interface IAcadMainThreadDispatcher
     Task<T> InvokeAsync<T>(Func<T> work, CancellationToken ct);
 }
 
-public sealed class AcadIdlePumpDispatcher : IAcadMainThreadDispatcher { /* Application.Idle queue */ }
+public sealed class AcadMainThreadDispatcher : IAcadMainThreadDispatcher { /* posted to the main thread's SynchronizationContext */ }
 
 [AttributeUsage(AttributeTargets.Method)]
 public sealed class RunOnAcadMainThreadAttribute : Attribute { }

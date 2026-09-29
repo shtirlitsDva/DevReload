@@ -51,10 +51,11 @@ The behaviour below was measured in V26.2.
   our own SCRIPT/BATCH side tabs inside (`SideTabHost.cs`), since a Panel has no tabs of its own.
 - `Panel.Icon` must be a bitmap. A `DrawingImage` shows BricsCAD's "P" placeholder, so we
   render a Segoe MDL2 glyph into a `RenderTargetBitmap`.
-- A Panel cannot be removed, and a second Panel with the same name is silently ignored (the
-  first keeps its content). A hot-reloaded plugin therefore creates each Panel once per
-  session around a `ContentControl`, parks both in `AppDomain` data (only BricsCAD/WPF types,
-  so the ALC is not pinned), and swaps its views in on load and out on unload.
+- The .NET API cannot remove a Panel, and a second Panel with the name of a live one is
+  silently ignored. The native `BcUiPanel::DestroyPanel()` (exported by `brx26.dll`) does
+  remove it and frees the name, so a hot-reloaded plugin creates its panels on load and
+  removes them on unload. Never touch a Panel while BricsCAD quits: it is already freed (access
+  violation). See `ui-migration.md` (`<removing-panels>`, `<teardown-at-exit>`).
 - A Panel is a native tool panel, a peer of Properties and Layers: it shows in the stack, in
   right-click > Panels and in `-TOOLPANEL` (Show/Hide/Toggle), and the workspace (`default.cui`,
   `WSESW` entries) stores where it sits. So create it when the plugin loads, as Bricsys'
@@ -70,13 +71,32 @@ The behaviour below was measured in V26.2.
   nothing. A ✕ close gives `Visible=false` and a Hide event.
 - One command per panel (BricsCAD's own convention, e.g. `LAYERSPANELOPEN`), not one command
   that opens several. Plugin teardown empties the panels instead of closing them.
-- No `RegisterRestartableTool` yet (untested). A BricsCAD started by an agent process
-  (`acad_start`, or `Start-Process` from the tool host) never fires `Application.Idle`, so both
-  RPC pipes starve. This happens even with panel-free builds. A BricsCAD the user starts works.
+- No `RegisterRestartableTool` yet (untested).
 - Colours: each project compiles one `Palette.<name>.xaml` as `Themes/Palette.xaml`, which
   Theme.xaml merges. BricsCAD heads use `Palette.BricsCAD.xaml` (greys and blue sampled from
   BricsCAD's UI). Switching palettes is one csproj property (`ThemePalette`).
 </ui>
+
+<main-thread>
+Never rely on `Application.Idle` in BricsCAD. It is raised from MFC's `CWinApp::OnIdle`
+(bricscad.exe → wx idle → `CaApp::fireIdle` → `acedRegisterOnIdleWinMsg` callbacks), which
+returns early while BricsCAD's input queue holds anything. A BricsCAD started by a script or
+agent (`acad_start`, `Start-Process`, WMI) fired it 0 times in 18 s, even at an idle
+`Enter command` prompt with a drawing open. One started by the user fires it; the exact trigger
+was not pinned down, and does not need to be.
+
+What works in every case: post to the main thread's `SynchronizationContext` (a
+`WindowsFormsSynchronizationContext`, captured in `Initialize`), or WPF `Dispatcher.BeginInvoke`.
+Measured: posts from a background thread ran on the main thread within 10 ms, in application
+context. So:
+- DevReload's `AcadMainThreadDispatcher` posts a drain and runs tool work only when
+  `DocumentManager.IsApplicationContext` and no modal loop is up; otherwise it retries every
+  100 ms. Measured: a call made while `LINE` waited for a point waited, then ran when LINE ended.
+- ACD-MCP posts its auto-start and already posts every tool call (`Pipe/MainThread.cs`).
+
+`acad_start` opens a new drawing from `Default-m.dwt` (meters) with `/T`, since the Start page
+has no document.
+</main-thread>
 
 <auto-scan>
 BricsCAD DOES scan assemblies as they load, like AutoCAD. The scanner is the private static
