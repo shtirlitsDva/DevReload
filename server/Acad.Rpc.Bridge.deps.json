@@ -1,0 +1,56 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v8.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v8.0": {
+      "Acad.Rpc.Bridge/1.0.0": {
+        "dependencies": {
+          "Acad.Process": "1.0.0",
+          "Acad.Rpc.Core": "1.0.0"
+        },
+        "runtime": {
+          "Acad.Rpc.Bridge.dll": {}
+        }
+      },
+      "Acad.Process/1.0.0": {
+        "dependencies": {
+          "Acad.Rpc.Core": "1.0.0"
+        },
+        "runtime": {
+          "Acad.Process.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "Acad.Rpc.Core/1.0.0": {
+        "runtime": {
+          "Acad.Rpc.Core.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "Acad.Rpc.Bridge/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "Acad.Process/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "Acad.Rpc.Core/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}
