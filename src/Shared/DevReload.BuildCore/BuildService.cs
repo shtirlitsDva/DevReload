@@ -637,11 +637,18 @@ namespace DevReload.Core
                     "Microsoft Visual Studio", "Installer", "vswhere.exe");
                 if (!File.Exists(vswhere)) return null;
 
+                // The 64-bit MSBuild (Bin\amd64), never the 32-bit one in Bin\.
+                // A C++ build records which compiler host built it (32-bit:
+                // HostX86, VCToolArchitecture=Native32Bit; 64-bit: HostX64,
+                // Native64Bit), and a build by the other MSBuild recompiles the
+                // whole project - so DevReload and every shell building the same
+                // tree must run the same one, and the shells run the PATH one,
+                // which is amd64. No fallback to the 32-bit exe.
                 var psi = new ProcessStartInfo
                 {
                     FileName = vswhere,
                     Arguments = "-latest -products * -requires Microsoft.Component.MSBuild " +
-                                "-find MSBuild\\**\\Bin\\MSBuild.exe",
+                                "-find MSBuild\\**\\Bin\\amd64\\MSBuild.exe",
                     RedirectStandardOutput = true,
                     UseShellExecute = false,
                     CreateNoWindow = true,
