@@ -5,6 +5,15 @@ DevReload on BricsCAD V26 (.NET 8). The .NET plugin loop (register, LOAD / DEV /
 DEVRELOAD palette), the in-process MCP tools and the out-of-process `acad_*` process tools work,
 checked live in BricsCAD V26.2.08. ACD-MCP runs in BricsCAD too (its own BricsCAD head), and
 DevReload loads it on dev machines like any other plugin.
+
+This file holds only what is specific to DevReload. General BricsCAD porting knowledge (API
+mapping, panels, transients, `Application.Idle`, auto-scan, bundles, testing) lives in the
+shared porting docs:
+- `X:\AutoCAD DRI - 01 Civil 3D\Dev\00 Bricscad porting\bricscad-porting.md` (main, start here)
+- `X:\AutoCAD DRI - 01 Civil 3D\Dev\00 Bricscad porting\ui-panels.md`
+- `X:\AutoCAD DRI - 01 Civil 3D\Dev\00 Bricscad porting\transients.md`
+
+Add general findings there, not here.
 </summary>
 
 <structure>
@@ -17,97 +26,41 @@ DevReload loads it on dev machines like any other plugin.
 - Output: `BcadDevReload.dll`. A Release build also writes `Deploy\BcadDevReload.bundle`.
 </structure>
 
-<api-mapping>
-| AutoCAD | BricsCAD |
-|---|---|
-| `Autodesk.AutoCAD.ApplicationServices` / `EditorInput` / `Windows` / `Internal` | `Bricscad.*` (same sub-names) |
-| `Autodesk.AutoCAD.Runtime` / `DatabaseServices` / `Geometry` / `GraphicsInterface` / `Colors` | `Teigha.*` |
-| `Core.Application.MainWindow`, `Core.Application.DocumentManager` | `Bricscad.ApplicationServices.Application` (no Core equivalents) |
-| `Core.Application.IsQuiescent` | `doc.Editor.IsQuiescent` |
-| `Utils.IsCommandDefined` | `Utils.IsCommandNameInUse(name) != CommandTypeFlags.NoneCmd` |
-| `DrawableAttributes` enum | raw ARX/ODA flag values (256, 2048, 16384) |
-| `Utils.AddCommand` / `RemoveCommand` / `CommandCallback` | identical signatures in `Bricscad.Internal` |
-| `PaletteSet` + `AddVisual` | `Bricscad.Windows.Panel` (see `<ui>`) |
-</api-mapping>
-
 <ui>
-BricsCAD's own UI is Qt. Its `PaletteSet` is a compatibility shim: docked, it loses auto-hide,
-mashes `AddVisual` tabs and forgets its position. The native .NET container is
-`Bricscad.Windows.Panel(name, DockingTemplate, Visual)`. It docks into a panel stack, e.g.
-`RDOCK` (Properties, Layers), with its own title and icon, and it hosts our WPF views unchanged.
-Porting another plugin's UI: follow `ui-migration.md`.
+General panel rules: `ui-panels.md` on X:.
 
-References:
-- API: https://developer.bricsys.com/bricscad/help/en_US/CurVer/DevRef/ (BricsCAD .NET API >
-  Bricscad.Windows > Panel; the BRX side is `BcUiPanel`). Signatures only, no remarks.
-- Samples shipped with BricsCAD: `API\dotnet\CsBrxMgd\CsBrxMgd\Commands.cs` (.NET Panel created
-  in `Initialize`) and `API\brx\brxSample\cmd\cmdGui.cpp` (`BcUiPanelMFC`).
-- User side: https://help.bricsys.com/en-us/document/bricscad/panels (stacks, `STACKPANELTYPE`,
-  `-TOOLPANEL`).
-The behaviour below was measured in V26.2.
-
-- DevReload creates one Panel, `DevReloadManager`, in `RDOCK` when it loads; `DEVRELOAD`
-  brings it forward. ACD-MCP does the same with one Panel, `ACD-MCP` (`ScriptPanel.cs`), with
-  our own SCRIPT/BATCH side tabs inside (`SideTabHost.cs`), since a Panel has no tabs of its own.
-- `Panel.Icon` must be a bitmap. A `DrawingImage` shows BricsCAD's "P" placeholder, so we
-  render a Segoe MDL2 glyph into a `RenderTargetBitmap`.
-- The .NET API cannot remove a Panel, and a second Panel with the name of a live one is
-  silently ignored. The native `BcUiPanel::DestroyPanel()` (exported by `brx26.dll`) does
-  remove it and frees the name, so a hot-reloaded plugin creates its panels on load and
-  removes them on unload. Never touch a Panel while BricsCAD quits: it is already freed (access
-  violation). See `ui-migration.md` (`<removing-panels>`, `<teardown-at-exit>`).
-- A Panel is a native tool panel, a peer of Properties and Layers: it shows in the stack, in
-  right-click > Panels and in `-TOOLPANEL` (Show/Hide/Toggle), and the workspace (`default.cui`,
-  `WSESW` entries) stores where it sits. So create it when the plugin loads, as Bricsys'
-  `API\dotnet\CsBrxMgd` sample does; created only inside a command, BricsCAD doesn't know it
-  exists until that command runs.
-- Layout belongs to the user and BricsCAD. `STACKPANELTYPE` is one setting for every stack; a
-  plugin doesn't choose it. 0 tabs; 1 collapsible (icon strip, the panel flies out over the
-  drawing); 2 resizable flyout (icon strip, the panel narrows the drawing). In tabs mode the tab
-  label is the panel's `Name`, not its `Title`.
-- "Bring forward" is `Visible = false` then `Visible = true`: the panel stays in its stack
-  and expands (or gets its tab selected), the same as `-TOOLPANEL Show`. Verified live, in one
-  call and across calls. Setting `Visible = true` on a panel that is already visible does
-  nothing. A ✕ close gives `Visible=false` and a Hide event.
-- One command per panel (BricsCAD's own convention, e.g. `LAYERSPANELOPEN`), not one command
-  that opens several. Plugin teardown empties the panels instead of closing them.
-- No `RegisterRestartableTool` yet (untested).
+- DevReload creates one Panel, `DevReloadManager`, in `RDOCK` when it loads
+  (`EnsureManagerPanel()` in `DevReloaderCommands.cs`); `DEVRELOAD` brings it forward.
+  DevReload is never hot-reloaded, so the Panel lives in a static field and is never removed.
+- The icon is a Segoe MDL2 glyph rendered by `GlyphIcon` in `DevReloaderCommands.cs`.
 - Colours: each project compiles one `Palette.<name>.xaml` as `Themes/Palette.xaml`, which
-  Theme.xaml merges. BricsCAD heads use `Palette.BricsCAD.xaml` (greys and blue sampled from
-  BricsCAD's UI). Switching palettes is one csproj property (`ThemePalette`).
+  Theme.xaml merges. The csproj property `ThemePalette` (`Default` / `BricsCAD`) picks it;
+  BricsCAD heads use `Palette.BricsCAD.xaml`.
+- `BricsCadTitleBars` (WinEvent hook) themes every BricsCAD window's title bar. It starts in
+  `Initialize`, which BricsCAD defers until the first drawing opens, so windows opened from the
+  Start page stay light.
+- No `RegisterRestartableTool` yet (untested).
 </ui>
 
 <main-thread>
-Never rely on `Application.Idle` in BricsCAD. It is raised from MFC's `CWinApp::OnIdle`
-(bricscad.exe → wx idle → `CaApp::fireIdle` → `acedRegisterOnIdleWinMsg` callbacks), which
-returns early while BricsCAD's input queue holds anything. A BricsCAD started by a script or
-agent (`acad_start`, `Start-Process`, WMI) fired it 0 times in 18 s, even at an idle
-`Enter command` prompt with a drawing open. One started by the user fires it; the exact trigger
-was not pinned down, and does not need to be.
+Background: `bricscad-porting.md` `<main-thread>` on X: (`Application.Idle` never fires in an
+agent-started BricsCAD).
 
-What works in every case: post to the main thread's `SynchronizationContext` (a
-`WindowsFormsSynchronizationContext`, captured in `Initialize`), or WPF `Dispatcher.BeginInvoke`.
-Measured: posts from a background thread ran on the main thread within 10 ms, in application
-context. So:
-- DevReload's `AcadMainThreadDispatcher` posts a drain and runs tool work only when
-  `DocumentManager.IsApplicationContext` and no modal loop is up; otherwise it retries every
-  100 ms. Measured: a call made while `LINE` waited for a point waited, then ran when LINE ended.
-- ACD-MCP posts its auto-start and already posts every tool call (`Pipe/MainThread.cs`).
-
-`acad_start` opens a new drawing from `Default-m.dwt` (meters) with `/T`, since the Start page
-has no document.
+- `AcadMainThreadDispatcher` posts a drain to the main thread's `SynchronizationContext` and
+  runs tool work only when `DocumentManager.IsApplicationContext` and no modal loop is up;
+  otherwise it retries every 100 ms.
+- ACD-MCP posts its auto-start and every tool call (`Pipe/MainThread.cs`).
+- `acad_start` opens a new drawing from `Default-m.dwt` (meters) with `/T`, since the Start page
+  has no document.
 </main-thread>
 
 <auto-scan>
-BricsCAD DOES scan assemblies as they load, like AutoCAD. The scanner is the private static
-`Bricscad.ApplicationServices.AssemblyLoader.OnLoad`, subscribed directly to
-`AppDomain.AssemblyLoad`. Without suppression (measured live): Initialize ran twice, and after
-UNLOAD the command from the first load still answered.
+Background: `bricscad-porting.md` `<auto-scan>` on X:.
 
-`BricsCadScanSuppressor` unsubscribes that handler and adds a wrapper that skips assemblies in
-an `IsolatedPluginContext`. Call sites use a `ScanSuppressor` alias, so AutoCAD and BricsCAD
-share one path. Verified live: Initialize runs once, DEV swaps the code, and UNLOAD removes
-the command.
+`BricsCadScanSuppressor` unsubscribes BricsCAD's `AssemblyLoader.OnLoad` and adds a wrapper that
+skips assemblies in an `IsolatedPluginContext`. Call sites use a `ScanSuppressor` alias, so
+AutoCAD and BricsCAD share one path. Verified live: Initialize runs once, DEV swaps the code,
+and UNLOAD removes the command.
 </auto-scan>
 
 <config>
@@ -116,17 +69,15 @@ built against one host's API.
 </config>
 
 <autoload>
-BricsCAD reads Autodesk-format bundles from `%APPDATA%\Bricsys\ApplicationPlugins`. Install
-`Deploy\BcadDevReload.bundle` there as `DevReload.bundle`.
-
-`RuntimeRequirements` takes the bare major: `SeriesMin="26" SeriesMax="26"`. `"V26"` and
-`"R25.0"` never match, so the bundle is silently skipped. No registry key is needed.
+Install `Deploy\BcadDevReload.bundle` in `%APPDATA%\Bricsys\ApplicationPlugins` as
+`DevReload.bundle` (`SeriesMin="26" SeriesMax="26"`; why: `bricscad-porting.md` `<autoload>`
+on X:).
 </autoload>
 
 <process-tools>
-`Acad.Process` discovers BricsCAD from `HKLM\SOFTWARE\Bricsys\BricsCAD\V<n>x64\<locale>`
-(`InstallDir`, `FullVersion`) as flavor `BricsCAD`, and enumerates `bricscad.exe` alongside
-`acad.exe`. The MCP tools are shared; they route to a host by pid.
+`Acad.Process` discovers BricsCAD from the registry (see `bricscad-porting.md` `<discovery>` on
+X:) as flavor `BricsCAD`, and enumerates `bricscad.exe` alongside `acad.exe`. The MCP tools are
+shared; they route to a host by pid.
 </process-tools>
 
 <plugins>
@@ -136,29 +87,16 @@ plugin that targets both hosts can use the same `#if` pattern with two csproj he
 </plugins>
 
 <hud>
-The reload HUD (`ReloadHudOverrule` on a `DBPoint` transient carrier) works in BricsCAD once
-`SetAttributes` includes `kDrawableIsAnEntity` (1). Without that bit, BricsCAD asks a transient
-for its attributes once and never calls `WorldDraw`/`ViewportDraw`. It then draws nothing: not
-the overrule's geometry and not the carrier's own. This holds for a `DrawableOverrule` and for a
-managed `Drawable` subclass alike, in every `TransientDrawingMode`, at idle and mid-command.
+Background: `transients.md` on X: (the `DrawableIsAnEntity` bit).
 
-Measured live on V26 with a probe:
-- Flags `256|2048|16384` or `0` give 1 attributes call and 0 draw calls.
-- Flags `1` or `1|256|2048|16384` get a draw on every `UpdateTransient`.
-
-Bricsys's own rhino.inside-bricscad `CompoundDrawable` returns `DrawableIsAnEntity`, which is
-where the lead came from. The managed `AttributesFlags` enum stops at `DrawableRegenDraw`, so
-the other values are the native ones.
-
-Other findings from the same investigation:
-- It had nothing to do with the Idle starvation. Plain entity transients draw at idle and
-  mid-command in an agent-launched instance, with `UpdateTransient` + `UpdateScreen` + the pump.
-- A managed `Drawable` subclass IS dispatched in BricsCAD, unlike AutoCAD.
-- `DeviceContextViewportCorners` returns real corners in BricsCAD (AutoCAD: `((0,0),(0,0))`).
-  The SCREENSIZE-based layout agrees with them, so no BricsCAD-specific layout is needed.
+- `ReloadHudOverrule` on a `DBPoint` transient carrier returns `1 | 256 | 2048 | 16384` under
+  `#if BRICSCAD`. Without bit 1 the HUD drew nothing in BricsCAD.
+- Layout is SCREENSIZE-based on both hosts (why: `transients.md` `<viewport-data>`).
+- `ReloadHud.PumpPaint` pumps while the reload holds the main thread (`transients.md`
+  `<driving-updates>`).
 - The HUD needs a drawing area at least 220 px tall; a small window clips or hides it.
-
-The general porting guide for transients (for any plugin) is `transients-migration.md`.
+- It logs "HUD registered but never drawn" when a cycle ends with zero frames; that is the
+  symptom a missing entity bit causes.
 </hud>
 
 <deferred>

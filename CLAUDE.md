@@ -39,7 +39,10 @@ dotnet build src/Bricscad/BcadDevReload/BcadDevReload.csproj -c Release -p:Platf
 
 Host differences are `#if BRICSCAD` blocks in `src/Autocad/DevReload` sources — never forked
 files. Config is `%APPDATA%\DevReload\plugins.bricscad.json`. BricsCAD auto-scans loaded
-assemblies too; `BricsCadScanSuppressor` owns that. See `docs/bricscad-port/design.md`.
+assemblies too; `BricsCadScanSuppressor` owns that. See `docs/bricscad-port/design.md`
+(DevReload-specific). General BricsCAD porting knowledge (panels, transients, Idle, bundles) lives
+in `X:\AutoCAD DRI - 01 Civil 3D\Dev\00 Bricscad porting\bricscad-porting.md`; add new general
+findings there.
 
 ## Revit Port
 
