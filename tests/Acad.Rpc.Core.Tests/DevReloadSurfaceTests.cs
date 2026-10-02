@@ -153,6 +153,8 @@ public class DevReloadSurfaceTests
     [InlineData("acad_close_active_drawing", "saveChanges")]
     [InlineData("acad_activate_document", "documentName")]
     // OARX: group fields vs profile fields are separate tools.
+    [InlineData("oarx_reload", "name", "modifiedDrawings")]
+    [InlineData("oarx_unload_plugin", "name", "modifiedDrawings")]
     [InlineData("oarx_update_plugin", "name", "commandPrefix", "loadOnStartup", "buildConfiguration")]
     [InlineData("oarx_publish_profile", "name", "worktreePath", "profile", "copyFrom", "projectFilePaths",
         "msbuildProperties", "preloadNativeModules", "preloadManagedAssemblies", "postloadManagedAssemblies", "buildFolder", "activate")]

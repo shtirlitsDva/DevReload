@@ -420,7 +420,9 @@ namespace DevReload.Oarx
         /// The dev loop: unload the whole group, prove every output is writable,
         /// rebuild, load again.
         /// </summary>
-        public static OarxActionResult Reload(string name, IReloadProgress? progress = null)
+        public static OarxActionResult Reload(
+            string name, IReloadProgress? progress = null,
+            ModifiedDrawings modifiedDrawings = ModifiedDrawings.Refuse)
         {
             if (!_plugins.TryGetValue(name, out var reg))
                 return new OarxActionResult(name, false, false, "not registered");
@@ -428,12 +430,31 @@ namespace DevReload.Oarx
             var ui = progress ?? DefaultProgress();
             ui.Begin($"{name}: reload", Cycle);
 
+            OarxDrawingCycle? drawings = null;
+            // Reopened once, on every way out: before the verdict when the cycle
+            // completes, from the finally on an early return or a throw.
+            void Reopen()
+            {
+                drawings?.Reopen(ui);
+                drawings = null;
+            }
+
             try
             {
                 ui.Step(ReloadStep.Preflight);
                 var resolve = ResolveTargets(reg, ui);
                 if (resolve != null) { ui.Finish(resolve, false); return Result(reg, false, resolve); }
                 WarnAboutOtherHosts(ui);
+
+                // BricsCAD will not unload a module under its live objects, so the
+                // drawings come out first and go back in after the load. A no-op on
+                // AutoCAD (OarxDrawingCycle).
+                drawings = OarxDrawingCycle.Close(modifiedDrawings, ui, out string? refusal);
+                if (drawings == null)
+                {
+                    ui.Finish("unsaved drawings", false);
+                    return Result(reg, false, refusal!);
+                }
 
                 ui.Step(ReloadStep.Unload);
                 UnloadModules(reg, ui);
@@ -483,6 +504,7 @@ namespace DevReload.Oarx
                 RunPreloads(reg, ui);
                 LoadModules(reg, ui);
                 RunPostloads(reg, ui);
+                Reopen();
                 ui.Finish("reloaded", true);
                 return Result(reg, true, "reloaded");
             }
@@ -491,9 +513,17 @@ namespace DevReload.Oarx
                 ui.Finish(ex.Message, false);
                 return Result(reg, false, ex.Message);
             }
+            finally
+            {
+                // On a failed cycle the group is unloaded, so the drawings reopen
+                // with stand-ins for its objects; the next reload closes them again.
+                Reopen();
+            }
         }
 
-        public static OarxActionResult Unload(string name, IReloadProgress? progress = null)
+        public static OarxActionResult Unload(
+            string name, IReloadProgress? progress = null,
+            ModifiedDrawings modifiedDrawings = ModifiedDrawings.Refuse)
         {
             if (!_plugins.TryGetValue(name, out var reg))
                 return new OarxActionResult(name, false, false, "not registered");
@@ -505,10 +535,25 @@ namespace DevReload.Oarx
                     return Result(reg, true, "not loaded");
 
                 ui.Begin($"{name}: unload", Cycle);
+
+                // BricsCAD: the drawings holding the module's objects must close
+                // first (OarxDrawingCycle). They are NOT reopened: with the module
+                // gone they would only show stand-ins, which a later load would not
+                // turn back.
+                var drawings = OarxDrawingCycle.Close(modifiedDrawings, ui, out string? refusal);
+                if (drawings == null)
+                {
+                    ui.Finish("unsaved drawings", false);
+                    return Result(reg, false, refusal!);
+                }
+
                 ui.Step(ReloadStep.Unload);
                 UnloadModules(reg, ui);
                 ui.Finish("unloaded", true);
-                return Result(reg, true, "unloaded");
+                string closed = drawings.Closed.Count == 0
+                    ? string.Empty
+                    : " Closed, and not reopened: " + string.Join(", ", drawings.Closed) + ".";
+                return Result(reg, true, "unloaded." + closed);
             }
             catch (Exception ex)
             {
@@ -712,11 +757,9 @@ namespace DevReload.Oarx
         {
             try
             {
-                int self = System.Diagnostics.Process.GetCurrentProcess().Id;
-                var others = System.Diagnostics.Process.GetProcessesByName("acad")
-                    .Select(p => p.Id).Where(id => id != self).ToList();
+                var others = OarxModuleHost.OtherHostProcesses();
                 if (others.Count > 0)
-                    ui.Line($"NOTE: another AutoCAD is running (pid {string.Join(", ", others)}). " +
+                    ui.Line($"NOTE: another {OarxModuleHost.HostName} is running (pid {string.Join(", ", others)}). " +
                             "If it has these modules loaded, the rebuild will be blocked.");
             }
             catch (Exception ex)
@@ -746,6 +789,15 @@ namespace DevReload.Oarx
 
         // ── Loader commands ───────────────────────────────────────────
 
+        // BricsCAD: {PREFIX}DEV/UNLOAD close the drawings around the unload
+        // (OarxDrawingCycle), and a document-context command cannot close its
+        // own document. Session runs it in application context.
+#if BRICSCAD
+        private const CommandFlags LoaderCommandFlags = CommandFlags.Modal | CommandFlags.Session;
+#else
+        private const CommandFlags LoaderCommandFlags = CommandFlags.Modal;
+#endif
+
         public static void RegisterLoaderCommands(string name, string prefix)
         {
             if (!_plugins.TryGetValue(name, out var reg)) return;
@@ -756,7 +808,7 @@ namespace DevReload.Oarx
             {
                 string cmd = prefix + suffix;
                 CommandCallback cb = () => action();
-                Utils.AddCommand(group, cmd, cmd, CommandFlags.Modal, cb);
+                Utils.AddCommand(group, cmd, cmd, LoaderCommandFlags, cb);
                 reg.LoaderCommands.Add((group, cmd, cb));
             }
 

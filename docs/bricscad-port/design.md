@@ -99,9 +99,21 @@ Background: `transients.md` on X: (the `DrawableIsAnEntity` bit).
   symptom a missing entity bit causes.
 </hud>
 
-<deferred>
-- OARX: ObjectARX-only, so the OARX tab and `oarx_*` tools are left out on BricsCAD. The
-  BricsCAD equivalent is a BRX module, which waits for the BRX SDK.
-</deferred>
+<oarx>
+- OARX runs on both hosts. BricsCAD loads BRX modules through the same `SystemObjects.DynamicLinker`
+  `LoadModule`/`UnloadModule`, and the groups live in `plugins.bricscad.json`.
+- BricsCAD will not unload a module while an open drawing holds objects of its classes. It sends
+  `kUnloadAppMsg` first, takes the module's OK, and only then keeps the module, so a module with no
+  guard of its own is left torn down under live objects and the next regen crashes (measured
+  2026-10-02, NorsynDrawingTools). AutoCAD unloads and keeps the objects as stand-ins.
+- So on BricsCAD `OarxDrawingCycle` closes every named drawing before the unload and, on a reload,
+  reopens them after the load and makes the active one active again. One drawing always stays open
+  (the Start tab has no document to run in): an unnamed one with no unsaved changes, or a new blank one.
+- Unsaved changes: `modifiedDrawings` on `oarx_reload` / `oarx_unload_plugin` is `refuse` (default),
+  `save` or `discard`. Everything is decided before anything closes, so a refusal changes nothing.
+  An unnamed drawing with unsaved changes cannot be reopened, so only `discard` closes it.
+- `{PREFIX}LOAD/DEV/UNLOAD` are `Session` commands on BricsCAD: a document command cannot close its
+  own document. The in-editor commands use `refuse`.
+</oarx>
 
 </bricscad-port>

@@ -126,9 +126,9 @@ namespace DevReload.Oarx
             catch (Exception ex)
             {
                 throw new OarxModuleException(
-                    $"AutoCAD refused to load '{Path.GetFileName(fullPath)}'. " +
+                    $"{HostName} refused to load '{Path.GetFileName(fullPath)}'. " +
                     "The usual causes are a missing dependency next to the module, " +
-                    "a module built against a different ObjectARX/AutoCAD version, " +
+                    $"a module built against a different SDK or {HostName} version, " +
                     "or a mismatched platform. " + DescribeDependencyHint(fullPath), ex);
             }
             finally
@@ -160,7 +160,7 @@ namespace DevReload.Oarx
             catch (Exception ex)
             {
                 throw new OarxModuleException(
-                    $"AutoCAD refused to unload '{moduleFileName}'. " +
+                    $"{HostName} refused to unload '{moduleFileName}'. " +
                     "The module is locked (its entry point never called " +
                     "unlockApplication) or something still depends on it.", ex);
             }
@@ -168,8 +168,19 @@ namespace DevReload.Oarx
             if (IsLoaded(moduleFileName))
                 throw new OarxModuleException(
                     $"'{moduleFileName}' reported no error but is still registered " +
-                    "with the dynamic linker.");
+                    "with the dynamic linker." + StillLoadedHint);
         }
+
+#if BRICSCAD
+        // BricsCAD keeps a module whose objects are still in an open drawing
+        // (OarxDrawingCycle). The cycle closes the named drawings, so what is left
+        // is an unnamed one, or a drawing opened in the meantime.
+        private const string StillLoadedHint =
+            " BricsCAD does not unload a module while an open drawing holds its objects. " +
+            "Close every drawing that holds them, then unload again.";
+#else
+        private const string StillLoadedHint = "";
+#endif
 
         /// <summary>
         /// Can the linker rewrite this file right now? Opening for write with no
@@ -202,17 +213,17 @@ namespace DevReload.Oarx
 
             if (IsMappedInThisProcess(name))
                 reasons.Add(
-                    "it is still mapped into THIS AutoCAD even though the linker " +
+                    $"it is still mapped into THIS {HostName} even though the linker " +
                     "released it — another loaded module imports a symbol from it, " +
                     "so Windows will not unmap it (structure the projects so nothing " +
                     "imports from a reloadable module)");
 
             // F8: the probe is process-global, so a second AutoCAD holding the
             // module blocks the build just as effectively.
-            var others = OtherAutocadProcesses();
+            var others = OtherHostProcesses();
             if (others.Count > 0)
                 reasons.Add(
-                    $"another AutoCAD/Civil 3D is running (pid {string.Join(", ", others)}) " +
+                    $"another {HostName} is running (pid {string.Join(", ", others)}) " +
                     "and may have the same module loaded");
 
             if (reasons.Count == 0)
@@ -240,19 +251,29 @@ namespace DevReload.Oarx
             }
         }
 
-        private static List<int> OtherAutocadProcesses()
+        /// <summary>The CAD this assembly was built for, as the user knows it.</summary>
+#if BRICSCAD
+        public const string HostName = "BricsCAD";
+#else
+        public const string HostName = "AutoCAD/Civil 3D";
+#endif
+
+        /// <summary>Other running instances of THIS host. The other host does not
+        /// matter: it cannot load a module built for this one.</summary>
+        public static List<int> OtherHostProcesses()
         {
             try
             {
-                int self = Process.GetCurrentProcess().Id;
-                return Process.GetProcessesByName("acad")
+                using var current = Process.GetCurrentProcess();
+                int self = current.Id;
+                return Process.GetProcessesByName(current.ProcessName)
                     .Select(p => p.Id)
                     .Where(id => id != self)
                     .ToList();
             }
             catch (Exception ex)
             {
-                DevReloadDiagnostics.Report("OarxModuleHost.OtherAutocadProcesses", ex);
+                DevReloadDiagnostics.Report("OarxModuleHost.OtherHostProcesses", ex);
                 return new List<int>();
             }
         }

@@ -1,5 +1,7 @@
-#if !BRICSCAD
-// OARX drives ObjectARX modules, which only AutoCAD loads: no oarx_* tools on BricsCAD.
+// Both hosts: AutoCAD loads ObjectARX modules, BricsCAD loads BRX ones, through
+// the same dynamic-linker API. BricsCAD's one difference (it will not unload
+// under live objects) is OarxDrawingCycle's, behind the modifiedDrawings argument.
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 
@@ -50,10 +52,11 @@ namespace DevReload.Rpc
         // ── Lifecycle ────────────────────────────────────────────────
 
         [AcadRpcTool(Effect = ToolEffect.Destructive), RunOnAcadMainThread,
-         Description("The OARX dev loop: unload the whole group, prove every module output is writable, rebuild from the ACTIVE profile's folder, load again in order. Equivalent to the generated {PREFIX}DEV command. BLOCKS for the length of the compile. If the build fails the group is left UNLOADED (a loaded module locks its file, so it must come out before the linker can write it) and the response carries the build log.")]
+         Description("The OARX dev loop: unload the whole group, prove every module output is writable, rebuild from the ACTIVE profile's folder, load again in order. Equivalent to the generated {PREFIX}DEV command. BLOCKS for the length of the compile. If the build fails the group is left UNLOADED (a loaded module locks its file, so it must come out before the linker can write it) and the response carries the build log. On BricsCAD, which will not unload a module while a drawing holds its objects, every named drawing is closed before the unload and reopened after the load (the active one made active again); an unnamed drawing with no unsaved changes stays open, and a blank one is added if none does.")]
         public static OarxActionResult Reload(
-            [Description("Registered OARX group name as in plugins.json (e.g. \"NdhPipeline\")")] string name) =>
-            OarxManager.Reload(name);
+            [Description("Registered OARX group name as in plugins.json (e.g. \"NdhPipeline\")")] string name,
+            [Description(ModifiedDrawingsHelp)] string modifiedDrawings = "refuse") =>
+            OarxManager.Reload(name, null, ParseModifiedDrawings(modifiedDrawings));
 
         [AcadRpcTool(Effect = ToolEffect.Additive, Idempotent = true), RunOnAcadMainThread,
          Description("Load the group from its ACTIVE profile as it currently sits on disk, in registration order, building only the modules whose output is missing. Equivalent to the generated {PREFIX}LOAD command. No-op if the group is already fully loaded.")]
@@ -62,10 +65,26 @@ namespace DevReload.Rpc
             OarxManager.Load(name);
 
         [AcadRpcTool(Effect = ToolEffect.Destructive, Idempotent = true), RunOnAcadMainThread,
-         Description("Unload every module in the group, walking the registration order BACKWARDS (the .arx comes out before the .dbx whose classes it uses). Equivalent to the generated {PREFIX}UNLOAD command. No-op if nothing is loaded.")]
+         Description("Unload every module in the group, walking the registration order BACKWARDS (the .arx comes out before the .dbx whose classes it uses). Equivalent to the generated {PREFIX}UNLOAD command. No-op if nothing is loaded. On BricsCAD every named drawing is closed first and NOT reopened (with the module gone it would show only stand-ins); the response names them.")]
         public static OarxActionResult UnloadPlugin(
-            [Description("Registered OARX group name")] string name) =>
-            OarxManager.Unload(name);
+            [Description("Registered OARX group name")] string name,
+            [Description(ModifiedDrawingsHelp)] string modifiedDrawings = "refuse") =>
+            OarxManager.Unload(name, null, ParseModifiedDrawings(modifiedDrawings));
+
+        private const string ModifiedDrawingsHelp =
+            "BricsCAD only (ignored on AutoCAD): what to do with a drawing that has unsaved changes when the drawings must close. " +
+            "'refuse' (default): close nothing, unload nothing, and name the drawings. 'save': save each named drawing first. " +
+            "'discard': close without saving. An unnamed drawing with unsaved changes cannot be reopened, so only 'discard' closes it.";
+
+        private static ModifiedDrawings ParseModifiedDrawings(string value) =>
+            value?.Trim().ToLowerInvariant() switch
+            {
+                null or "" or "refuse" => ModifiedDrawings.Refuse,
+                "save" => ModifiedDrawings.Save,
+                "discard" => ModifiedDrawings.Discard,
+                _ => throw new ArgumentException(
+                    $"modifiedDrawings must be refuse, save or discard, not '{value}'."),
+            };
 
         // ── Group ────────────────────────────────────────────────────
 
@@ -149,4 +168,3 @@ namespace DevReload.Rpc
             OarxPayloadHost.Reload(name, payloadDir);
     }
 }
-#endif
