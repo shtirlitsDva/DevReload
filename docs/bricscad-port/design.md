@@ -100,7 +100,8 @@ Background: `transients.md` on X: (the `DrawableIsAnEntity` bit).
 </hud>
 
 <oarx>
-- OARX runs on both hosts. BricsCAD loads BRX modules through the same `SystemObjects.DynamicLinker`
+- OARX runs on both hosts: the `oarx_*` tools and the `{PREFIX}` commands are gated live on
+  BricsCAD V26.2 (the OARX tab compiles there; not yet looked at). BricsCAD loads BRX modules through the same `SystemObjects.DynamicLinker`
   `LoadModule`/`UnloadModule`, and the groups live in `plugins.bricscad.json`.
 - BricsCAD will not unload a module while an open drawing holds objects of its classes. It sends
   `kUnloadAppMsg` first, takes the module's OK, and only then keeps the module, so a module with no
@@ -114,6 +115,9 @@ Background: `transients.md` on X: (the `DrawableIsAnEntity` bit).
   An unnamed drawing with unsaved changes cannot be reopened, so only `discard` closes it.
 - `{PREFIX}LOAD/DEV/UNLOAD` are `Session` commands on BricsCAD: a document command cannot close its
   own document. The in-editor commands use `refuse`.
+- A failed build leaves the group unloaded and the drawings reopened with stand-ins for its
+  objects. If BricsCAD then counts them as modified, the next reload refuses until it is given
+  `discard`; the refusal names the drawings.
 </oarx>
 
 </bricscad-port>
