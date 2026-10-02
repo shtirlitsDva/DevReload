@@ -149,6 +149,9 @@ internal static class NativeMethods
     public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     public const int SW_RESTORE = 9;
 
+    [DllImport("user32.dll")]
+    public static extern bool IsIconic(IntPtr hWnd);
+
     // ── Capture ────────────────────────────────────────────────────────
     public const uint PW_RENDERFULLCONTENT = 0x00000002;
 

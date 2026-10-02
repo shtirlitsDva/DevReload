@@ -19,7 +19,12 @@ public static class Foreground
         if (hwnd == IntPtr.Zero) return false;
         if (NativeMethods.GetForegroundWindow() == hwnd) return true;
 
-        NativeMethods.ShowWindow(hwnd, NativeMethods.SW_RESTORE);
+        // Only a minimized window needs restoring: SW_RESTORE on a maximized one
+        // un-maximizes it, which moves the canvas out from under the captured
+        // view transform (observed live on BricsCAD: the click landed on empty
+        // canvas and opened a window selection).
+        if (NativeMethods.IsIconic(hwnd))
+            NativeMethods.ShowWindow(hwnd, NativeMethods.SW_RESTORE);
 
         uint fgThread = NativeMethods.GetWindowThreadProcessId(NativeMethods.GetForegroundWindow(), out _);
         uint targetThread = NativeMethods.GetWindowThreadProcessId(hwnd, out _);
