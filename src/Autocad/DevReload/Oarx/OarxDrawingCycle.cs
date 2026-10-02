@@ -91,6 +91,51 @@ namespace DevReload.Oarx
                 return null;
             }
 
+            // The HUD draws into the active drawing, which is about to close.
+            ui.LeavingDocument();
+            try
+            {
+                var closed = CloseAll(all, policy, ui);
+                refusal = null;
+                return new OarxDrawingCycle(closed, active);
+            }
+            finally
+            {
+                ui.EnteredDocument();
+            }
+#else
+            refusal = null;
+            return new OarxDrawingCycle(new List<string>(), null);
+#endif
+        }
+
+        /// <summary>Open the closed drawings again, in their order, and give back
+        /// the active one. A drawing that will not open is reported, and the rest
+        /// still open.</summary>
+        public void Reopen(IReloadProgress ui)
+        {
+#if BRICSCAD
+            if (_closed.Count == 0) return;
+            ui.LeavingDocument();
+            try
+            {
+                OpenAll(ui);
+            }
+            finally
+            {
+                ui.EnteredDocument();
+            }
+#endif
+        }
+
+#if BRICSCAD
+        /// <summary>Close every named drawing, and an unnamed one with unsaved
+        /// changes (only Discard gets here with one). Leaves one drawing open and
+        /// active: an unnamed one with no unsaved changes, or a new blank one.</summary>
+        private static List<string> CloseAll(
+            List<Document> all, ModifiedDrawings policy, IReloadProgress ui)
+        {
+            var docs = Application.DocumentManager;
             var keep = all.FirstOrDefault(d => !d.IsNamedDrawing && IsSaved(d))
                        ?? docs.Add(string.Empty);
 
@@ -119,20 +164,12 @@ namespace DevReload.Oarx
                 }
                 closed.Add(path);
             }
-            refusal = null;
-            return new OarxDrawingCycle(closed, active);
-#else
-            refusal = null;
-            return new OarxDrawingCycle(new List<string>(), null);
-#endif
+            docs.MdiActiveDocument = keep;
+            return closed;
         }
 
-        /// <summary>Open the closed drawings again, in their order, and give back
-        /// the active one. A drawing that will not open is reported, and the rest
-        /// still open.</summary>
-        public void Reopen(IReloadProgress ui)
+        private void OpenAll(IReloadProgress ui)
         {
-#if BRICSCAD
             var docs = Application.DocumentManager;
             foreach (string path in _closed)
             {
@@ -156,10 +193,8 @@ namespace DevReload.Oarx
                     return;
                 }
             }
-#endif
         }
 
-#if BRICSCAD
         /// <summary>Has the drawing no unsaved changes? The COM document's Saved
         /// flag answers without making the drawing active (the managed Document has
         /// no such property). If it cannot be read, the drawing counts as unsaved:

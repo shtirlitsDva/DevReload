@@ -854,10 +854,13 @@ namespace DevReload.Oarx
 
         private static IReloadProgress DefaultProgress()
         {
-            var ed = Application.DocumentManager.MdiActiveDocument?.Editor;
-            if (ed == null) return NullReloadProgress.Instance;
+            if (Application.DocumentManager.MdiActiveDocument == null)
+                return NullReloadProgress.Instance;
 
-            void Write(string msg) => ed.WriteMessage("\n" + msg);
+            // The ACTIVE editor at each write, never one captured here: on BricsCAD
+            // the cycle closes the drawing it started in (OarxDrawingCycle).
+            static void Write(string msg) =>
+                Application.DocumentManager.MdiActiveDocument?.Editor.WriteMessage("\n" + msg);
             return new CompositeReloadProgress(
                 new ReloadHud(warn => Write("[OARX] " + warn)),
                 new EditorReloadProgress(Write, "OARX"));

@@ -46,6 +46,9 @@ namespace DevReload.Hud
             new() { CarrierPtr = Carrier.UnmanagedObject };
 
         private static bool _shown;
+        // Shown, but taken out of its document while the cycle closes or opens
+        // drawings (LeavingDocument); EnteredDocument shows it again.
+        private static bool _suspended;
         private static bool _overruleAdded;
         private static bool _previousOverruling;
 
@@ -67,8 +70,15 @@ namespace DevReload.Hud
         public void Begin(string title, ReloadCycle cycle)
         {
             Hud.Reset(title, cycle);
+            _suspended = false;
             if (_shown) { Tick(); return; }
+            Show();
+        }
 
+        /// <summary>Add the transient to the ACTIVE document's graphics, with the
+        /// overrule that draws it.</summary>
+        private void Show()
+        {
             var mgr = TransientManager.CurrentTransientManager;
             if (mgr == null)
             {
@@ -99,7 +109,7 @@ namespace DevReload.Hud
 
         public void Step(ReloadStep step)
         {
-            if (!_shown) return;
+            if (!_shown && !_suspended) return;
 
             int index = Hud.Cycle.IndexOf(step);
             if (index < 0)
@@ -118,13 +128,33 @@ namespace DevReload.Hud
 
         public void Line(string text)
         {
-            if (!_shown) return;
+            // While suspended the line is kept for the frame after EnteredDocument.
+            if (!_shown && !_suspended) return;
             Hud.AddLine(text);
             Tick();
         }
 
+        /// <summary>The transient lives in one document's graphics, so it comes out
+        /// before the cycle closes that document; painting into a closed one fails
+        /// with eInvalidDrawing (measured on BricsCAD, OarxDrawingCycle).</summary>
+        public void LeavingDocument()
+        {
+            if (!_shown) return;
+            Erase();
+            _shown = false;
+            _suspended = true;
+        }
+
+        public void EnteredDocument()
+        {
+            if (!_suspended) return;
+            _suspended = false;
+            Show();
+        }
+
         public void Finish(string verdict, bool ok)
         {
+            _suspended = false;
             if (!_shown) return;
             Hud.Finished = true;
             Hud.Ok = ok;
@@ -170,6 +200,11 @@ namespace DevReload.Hud
                 _warn("(HUD registered but never drawn — the graphics system did " +
                       "not elaborate the transient)");
 
+            Erase();
+        }
+
+        private static void Erase()
+        {
             var mgr = TransientManager.CurrentTransientManager;
             if (mgr != null)
             {

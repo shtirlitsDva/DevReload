@@ -81,6 +81,14 @@ namespace DevReload.Hud
         void Step(ReloadStep step);
         void Line(string text);
         void Finish(string verdict, bool ok);
+
+        /// <summary>The cycle is about to close or open drawings. A sink that draws
+        /// into a document lets go of it: that document may not survive.</summary>
+        void LeavingDocument() { }
+
+        /// <summary>The drawings are in place again. A sink that draws into a
+        /// document takes up the active one.</summary>
+        void EnteredDocument() { }
     }
 
     /// <summary>Discards everything. Used when a cycle runs headless — tests, and
@@ -124,6 +132,8 @@ namespace DevReload.Hud
         public void Step(ReloadStep step) { foreach (var s in _sinks) Safe(() => s.Step(step)); }
         public void Line(string text) { foreach (var s in _sinks) Safe(() => s.Line(text)); }
         public void Finish(string v, bool ok) { foreach (var s in _sinks) Safe(() => s.Finish(v, ok)); }
+        public void LeavingDocument() { foreach (var s in _sinks) Safe(s.LeavingDocument); }
+        public void EnteredDocument() { foreach (var s in _sinks) Safe(s.EnteredDocument); }
 
         // A reporting sink must never be the reason a reload fails.
         /// <summary>
