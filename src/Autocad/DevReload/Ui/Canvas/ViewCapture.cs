@@ -83,7 +83,9 @@ public static class ViewCapture
         }, IntPtr.Zero);
 
         IntPtr target; string how;
+        IntPtr activeView = mdi != IntPtr.Zero ? ActiveMdiView(mdi) : IntPtr.Zero;
         if (dxgi != IntPtr.Zero) { target = dxgi; how = "DXGI flip-mode view"; }
+        else if (activeView != IntPtr.Zero) { target = activeView; how = "active MDI child's view"; }
         else if (mdi != IntPtr.Zero) { target = mdi; how = "MDIClient"; }
         else if (largest != IntPtr.Zero) { target = largest; how = "largest visible child (fallback)"; }
         else { target = main; how = "main frame (fallback)"; }
@@ -91,6 +93,31 @@ public static class ViewCapture
         NativeMethods.GetWindowRect(target, out var wr);
         var rect = new PixelRect(wr.Left, wr.Top, wr.Right - wr.Left, wr.Bottom - wr.Top);
         return (rect, $"device rect from {how} hwnd 0x{target.ToInt64():X}");
+    }
+
+    /// <summary>
+    /// The view window of the ACTIVE drawing (BricsCAD, which has no DXGI flip
+    /// view): the MDIClient spans every document, but a drawing window need not
+    /// be maximized, and several cascade inside it. WM_MDIGETACTIVE names the
+    /// active child; its MFC view (class AfxFrameOrView*) is the canvas.
+    /// Calibrated live, BricsCAD V26: the MDIClient rect put the ribbon inside
+    /// the mapping and a click meant for a pipe landed on a text 5 units away.
+    /// </summary>
+    private static IntPtr ActiveMdiView(IntPtr mdiClient)
+    {
+        const uint WM_MDIGETACTIVE = 0x0229;
+        NativeMethods.SendMessageTimeout(mdiClient, WM_MDIGETACTIVE, IntPtr.Zero, IntPtr.Zero,
+            NativeMethods.SMTO_ABORTIFHUNG, 1000, out IntPtr child);
+        if (child == IntPtr.Zero) return IntPtr.Zero;
+        IntPtr view = IntPtr.Zero;
+        NativeMethods.EnumChildWindows(child, (h, _) =>
+        {
+            if (!NativeMethods.IsWindowVisible(h)) return true;
+            if (!ClassOf(h).StartsWith("AfxFrameOrView", StringComparison.OrdinalIgnoreCase)) return true;
+            view = h;
+            return false;
+        }, IntPtr.Zero);
+        return view;
     }
 
     private static string ClassOf(IntPtr h)
