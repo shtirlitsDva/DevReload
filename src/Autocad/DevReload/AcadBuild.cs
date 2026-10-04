@@ -4,6 +4,8 @@ using Bricscad.EditorInput;
 using Autodesk.AutoCAD.EditorInput;
 #endif
 
+using System.Collections.Generic;
+
 using DevReload.Core;
 using DevReload.Hud;
 
@@ -30,11 +32,17 @@ namespace DevReload
         /// window was frozen solid; now the HUD is the progress indicator and a
         /// wait cursor over a live, animating window reads as a hang.</para>
         /// </remarks>
+        /// <param name="msBuildProperties">The plugin's extra "Name=Value"
+        /// MSBuild properties (e.g. a host switch that picks the references and
+        /// the output folder). Every TargetPath query for the same plugin passes
+        /// the same list, or the build lands where the load never looks.</param>
         internal static BuildResult Build(
-            string csprojPath, string buildConfiguration, Editor? ed, IReloadProgress ui) =>
+            string csprojPath, string buildConfiguration,
+            IReadOnlyList<string> msBuildProperties, Editor? ed, IReloadProgress ui) =>
             BuildService.BuildProject(
                 csprojPath, buildConfiguration, Platform,
                 msg => ed?.WriteMessage("\n" + msg),
-                runner: new PumpedBuildRunner(ui));
+                runner: new PumpedBuildRunner(ui),
+                extraProperties: msBuildProperties);
     }
 }

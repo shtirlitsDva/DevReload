@@ -307,7 +307,8 @@ namespace DevReload.ViewModels
             {
                 buildDir = BuildService.ResolveBuildDir(
                     entry.ProjectFilePath, entry.ActiveWorktreePath,
-                    entry.BuildConfiguration, AcadBuild.Platform);
+                    entry.BuildConfiguration, AcadBuild.Platform,
+                    extraProperties: entry.MsBuildProperties);
             }
             catch (Exception ex)
             {
@@ -448,7 +449,8 @@ namespace DevReload.ViewModels
             {
                 pluginDir = BuildService.ResolveBuildDir(
                     entry.ProjectFilePath, entry.ActiveWorktreePath,
-                    entry.BuildConfiguration, AcadBuild.Platform);
+                    entry.BuildConfiguration, AcadBuild.Platform,
+                    extraProperties: entry.MsBuildProperties);
             }
             catch (Exception ex)
             {
@@ -728,6 +730,7 @@ namespace DevReload.ViewModels
 
             string projectFile = Entry.ProjectFilePath!;
             string? worktree = Entry.ActiveWorktreePath;
+            List<string>? props = Entry.MsBuildProperties?.ToList();
             string current = SelectedConfiguration;
 
             Task.Run(() =>
@@ -736,7 +739,8 @@ namespace DevReload.ViewModels
                 try
                 {
                     configs = BuildService.GetConfigurations(
-                        projectFile, worktree, AcadBuild.Platform);
+                        projectFile, worktree, AcadBuild.Platform,
+                        extraProperties: props);
                 }
                 catch
                 {
@@ -771,6 +775,7 @@ namespace DevReload.ViewModels
             string projectFile = Entry.ProjectFilePath!;
             string? worktree = Entry.ActiveWorktreePath;
             string config = Entry.BuildConfiguration;
+            List<string>? props = Entry.MsBuildProperties?.ToList();
 
             Task.Run(() =>
             {
@@ -778,7 +783,8 @@ namespace DevReload.ViewModels
                 try
                 {
                     string? buildDir = BuildService.ResolveBuildDir(
-                        projectFile, worktree, config, AcadBuild.Platform);
+                        projectFile, worktree, config, AcadBuild.Platform,
+                        extraProperties: props);
                     present = !string.IsNullOrEmpty(buildDir)
                         && File.Exists(SharedAssembliesFile.PathFor(buildDir));
                 }

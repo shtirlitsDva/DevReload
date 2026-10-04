@@ -37,6 +37,12 @@ namespace DevReload
         public string? ProjectFilePath { get; set; }
         public string? ActiveWorktreePath { get; set; }
 
+        /// <summary>Extra "Name=Value" MSBuild properties for every build AND
+        /// every TargetPath query of this plugin, e.g. a host switch
+        /// (<c>NorsynHost=BricsCAD</c>) that changes the references and the
+        /// output folder. Null when there are none, so it is not written.</summary>
+        public List<string>? MsBuildProperties { get; set; }
+
         // Legacy fields kept ONLY so MigrateIfNeeded can read old plugins.json
         // files. After migration the values are null → not re-serialised (see
         // DefaultIgnoreCondition.WhenWritingNull below). The JSON property
@@ -94,16 +100,30 @@ namespace DevReload
             if (!File.Exists(path))
                 return null;
 
-            string json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<PluginConfig>(json, _jsonOptions);
+            return Deserialize(File.ReadAllText(path));
         }
 
         public static void Save(PluginConfig config)
         {
             string path = GetConfigPath();
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            string json = JsonSerializer.Serialize(config, _jsonOptions);
-            File.WriteAllText(path, json);
+            File.WriteAllText(path, Serialize(config));
+        }
+
+        /// <summary>The file's text as a config. The one reader, so a test can
+        /// round-trip the format without touching %APPDATA%.</summary>
+        public static PluginConfig? Deserialize(string json) =>
+            JsonSerializer.Deserialize<PluginConfig>(json, _jsonOptions);
+
+        /// <summary>The config as the file's text. An empty
+        /// <see cref="PluginEntry.MsBuildProperties"/> is dropped here, once, so
+        /// no writer can leave an empty list in the file.</summary>
+        public static string Serialize(PluginConfig config)
+        {
+            foreach (var entry in config.Plugins)
+                if (entry.MsBuildProperties is { Count: 0 })
+                    entry.MsBuildProperties = null;
+            return JsonSerializer.Serialize(config, _jsonOptions);
         }
 
         /// <summary>
@@ -120,7 +140,8 @@ namespace DevReload
             string projectFilePath,
             string buildConfiguration = "Debug",
             string? commandPrefix = null,
-            bool loadOnStartup = false)
+            bool loadOnStartup = false,
+            IReadOnlyList<string>? msBuildProperties = null)
         {
             if (string.IsNullOrWhiteSpace(projectFilePath))
                 return new RegisterPluginResult(false, "", "projectFilePath is required");
@@ -130,12 +151,19 @@ namespace DevReload
                 return new RegisterPluginResult(false, "",
                     $"could not derive plugin name from '{projectFilePath}'");
 
+            List<string>? props = msBuildProperties?
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Select(p => p.Trim())
+                .ToList();
+            if (props is { Count: 0 }) props = null;
+
             // Asked, not kept: a project whose TargetPath MSBuild cannot resolve is
             // a project DevReload could never load, so this is registration's
             // validation step. The answer is deliberately not stored — it would go
             // stale the moment a worktree or configuration was selected.
             if (string.IsNullOrEmpty(BuildService.QueryMsBuildProperty(
-                    projectFilePath, "TargetPath", buildConfiguration, AcadBuild.Platform)))
+                    projectFilePath, "TargetPath", buildConfiguration, AcadBuild.Platform,
+                    extraProperties: props)))
                 return new RegisterPluginResult(false, name,
                     $"could not resolve TargetPath for '{name}' ({buildConfiguration}). " +
                     "Restore/build the project at least once and try again.");
@@ -159,6 +187,7 @@ namespace DevReload
                     ? null
                     : commandPrefix.Trim().ToUpperInvariant(),
                 LoadOnStartup = loadOnStartup,
+                MsBuildProperties = props,
             };
 
             config.Plugins.Add(entry);

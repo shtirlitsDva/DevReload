@@ -144,7 +144,7 @@ public class DevReloadSurfaceTests
     [InlineData("devreload_list_worktrees", "repoRoot")]
     [InlineData("devreload_read_shared_assemblies", "buildDir")]
     [InlineData("devreload_write_shared_assemblies", "buildDir", "sharedAssemblies", "mixedModeAssemblies", "streamedAssemblies")]
-    [InlineData("devreload_register_new_plugin", "projectFilePath", "buildConfiguration", "commandPrefix", "loadOnStartup")]
+    [InlineData("devreload_register_new_plugin", "projectFilePath", "buildConfiguration", "commandPrefix", "loadOnStartup", "msbuildProperties")]
     // In-AutoCAD acad_* control tools (AcadControlTools, DevReload assembly).
     [InlineData("acad_send_command", "commandString")]
     [InlineData("acad_post_command", "commandString")]

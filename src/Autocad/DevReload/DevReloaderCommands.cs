@@ -321,6 +321,7 @@ namespace DevReload
             if (entry.ProjectFilePath != null) builder.WithProjectFilePath(entry.ProjectFilePath);
             builder.WithBuildConfiguration(entry.BuildConfiguration);
             builder.WithActiveWorktreePath(entry.ActiveWorktreePath);
+            builder.WithMsBuildProperties(entry.MsBuildProperties);
             builder.WithCommands();
             // Shared / mixed-mode assembly choice is no longer held in
             // PluginEntry — it lives in <buildDir>/SharedAssemblies.Config.json

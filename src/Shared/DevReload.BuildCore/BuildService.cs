@@ -388,12 +388,14 @@ namespace DevReload.Core
             string? activeWorktreePath,
             string buildConfiguration,
             string? platform,
-            string? solutionDir = null)
+            string? solutionDir = null,
+            IReadOnlyList<string>? extraProperties = null)
         {
             string csproj = GitWorktreeService.ResolveActiveCsproj(
                 projectFilePath, activeWorktreePath);
             return QueryMsBuildProperty(
-                csproj, "TargetPath", buildConfiguration, platform, solutionDir);
+                csproj, "TargetPath", buildConfiguration, platform, solutionDir,
+                extraProperties);
         }
 
         public static string? ResolveBuildDir(
@@ -401,11 +403,12 @@ namespace DevReload.Core
             string? activeWorktreePath,
             string buildConfiguration,
             string? platform,
-            string? solutionDir = null)
+            string? solutionDir = null,
+            IReadOnlyList<string>? extraProperties = null)
         {
             string? targetPath = ResolveTargetPath(
                 projectFilePath, activeWorktreePath, buildConfiguration,
-                platform, solutionDir);
+                platform, solutionDir, extraProperties);
             return string.IsNullOrEmpty(targetPath)
                 ? null
                 : Path.GetDirectoryName(targetPath);
@@ -422,7 +425,8 @@ namespace DevReload.Core
             string projectFilePath,
             string? activeWorktreePath,
             string? platform,
-            string? solutionDir = null)
+            string? solutionDir = null,
+            IReadOnlyList<string>? extraProperties = null)
         {
             string csproj = GitWorktreeService.ResolveActiveCsproj(
                 projectFilePath, activeWorktreePath);
@@ -438,7 +442,7 @@ namespace DevReload.Core
             // `Configurations` is a top-level property, not one gated on the
             // active configuration. "Debug" is always a valid value to evaluate.
             string? raw = QueryMsBuildProperty(
-                csproj, "Configurations", "Debug", platform, solutionDir);
+                csproj, "Configurations", "Debug", platform, solutionDir, extraProperties);
             if (string.IsNullOrWhiteSpace(raw))
                 return Array.Empty<string>();
 

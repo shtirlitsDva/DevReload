@@ -153,9 +153,11 @@ namespace DevReload.Rpc
             [Description("Absolute path to the .csproj. The plugin name is the file name without extension; renaming is not supported.")] string projectFilePath,
             [Description("'Debug' or 'Release' (default Debug). Determines which TargetPath MSBuild resolves for the auto-derived dllPath.")] string buildConfiguration = "Debug",
             [Description("Optional command prefix for the generated {prefix}LOAD/DEV/UNLOAD commands")] string? commandPrefix = null,
-            [Description("Auto-load at AutoCAD startup")] bool loadOnStartup = false) =>
+            [Description("Auto-load at AutoCAD startup")] bool loadOnStartup = false,
+            [Description("Extra 'Name=Value' MSBuild properties applied to every build AND every TargetPath query of this plugin (e.g. 'NorsynHost=BricsCAD', a switch that changes the references and the output folder). Persisted as msBuildProperties.")] string[]? msbuildProperties = null) =>
             PluginConfigLoader.RegisterNewPlugin(
-                projectFilePath, buildConfiguration, commandPrefix, loadOnStartup);
+                projectFilePath, buildConfiguration, commandPrefix, loadOnStartup,
+                msbuildProperties);
 
     }
 }

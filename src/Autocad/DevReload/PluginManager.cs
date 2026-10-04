@@ -141,7 +141,7 @@ namespace DevReload
                     ed?.WriteMessage($"\n{pluginName} DLL not found, building...");
                     ui.Step(ReloadStep.Build);
                     build = AcadBuild.Build(
-                        csprojPath, reg.BuildConfiguration, ed, ui);
+                        csprojPath, reg.BuildConfiguration, reg.MsBuildProperties, ed, ui);
                     if (!build.Success || build.OutputPath == null)
                     {
                         ui.Finish("build failed", false);
@@ -162,7 +162,7 @@ namespace DevReload
                     string csprojPath = GetEffectiveCsprojPath(reg);
                     ui.Step(ReloadStep.Build);
                     build = AcadBuild.Build(
-                        csprojPath, reg.BuildConfiguration, ed, ui);
+                        csprojPath, reg.BuildConfiguration, reg.MsBuildProperties, ed, ui);
                     if (!build.Success || build.OutputPath == null)
                     {
                         ui.Finish("rebuild failed", false);
@@ -205,7 +205,7 @@ namespace DevReload
 
                 ui.Step(ReloadStep.Build);
                 build = AcadBuild.Build(
-                    csprojPath, reg.BuildConfiguration, ed, ui);
+                    csprojPath, reg.BuildConfiguration, reg.MsBuildProperties, ed, ui);
                 if (!build.Success || build.OutputPath == null)
                 {
                     // Nothing was torn down, so whatever was running before this
@@ -266,7 +266,7 @@ namespace DevReload
                 string csprojPath = GetEffectiveCsprojPath(reg);
                 ui.Step(ReloadStep.Build);
                 var build = AcadBuild.Build(
-                    csprojPath, reg.BuildConfiguration, ed, ui);
+                    csprojPath, reg.BuildConfiguration, reg.MsBuildProperties, ed, ui);
                 if (!build.Success || build.OutputPath == null)
                 {
                     ui.Finish("build failed", false);
@@ -675,11 +675,13 @@ namespace DevReload
                 reg.ProjectFilePath, reg.ActiveWorktreePath);
 
         /// <summary>Where this plugin's current selection (project + configuration
-        /// + worktree) lands, per MSBuild. Null when MSBuild cannot be asked.</summary>
+        /// + worktree + MSBuild properties) lands, per MSBuild. Null when MSBuild
+        /// cannot be asked.</summary>
         private static string? ResolveTargetPath(PluginRegistration reg)
             => BuildService.ResolveTargetPath(
                 reg.ProjectFilePath, reg.ActiveWorktreePath,
-                reg.BuildConfiguration, AcadBuild.Platform);
+                reg.BuildConfiguration, AcadBuild.Platform,
+                extraProperties: reg.MsBuildProperties);
 
         private static PluginRegistration GetRegistration(string pluginName)
         {
@@ -755,7 +757,8 @@ namespace DevReload
                     "its configurations can't be resolved");
 
             var configs = BuildService.GetConfigurations(
-                entry.ProjectFilePath, entry.ActiveWorktreePath, AcadBuild.Platform);
+                entry.ProjectFilePath, entry.ActiveWorktreePath, AcadBuild.Platform,
+                extraProperties: entry.MsBuildProperties);
             if (configs.Count == 0)
                 throw new InvalidOperationException(
                     $"could not resolve configurations for '{pluginName}'. " +
@@ -804,6 +807,11 @@ namespace DevReload
         public required string BuildConfiguration { get; set; }
         public string? ActiveWorktreePath { get; set; }
 
+        /// <summary>Extra "Name=Value" MSBuild properties, passed to every build
+        /// AND every TargetPath query of this plugin (a property can move the
+        /// output, e.g. a host switch). Empty for most plugins.</summary>
+        public IReadOnlyList<string> MsBuildProperties { get; init; } = Array.Empty<string>();
+
         public PluginHost<IExtensionApplication> Host { get; } = new();
         public CommandRegistrar? Registrar { get; init; }
 
@@ -817,6 +825,7 @@ namespace DevReload
         private string? _projectFilePath;
         private string _buildConfiguration = "Debug";
         private string? _activeWorktreePath;
+        private IReadOnlyList<string> _msBuildProperties = Array.Empty<string>();
         private bool _useCommands;
 
         internal PluginRegistrationBuilder(string pluginName)
@@ -846,6 +855,12 @@ namespace DevReload
             return this;
         }
 
+        public PluginRegistrationBuilder WithMsBuildProperties(IEnumerable<string>? properties)
+        {
+            _msBuildProperties = properties?.ToList() ?? (IReadOnlyList<string>)Array.Empty<string>();
+            return this;
+        }
+
         public PluginRegistrationBuilder WithCommands()
         {
             _useCommands = true;
@@ -860,6 +875,7 @@ namespace DevReload
                 ProjectFilePath = _projectFilePath ?? "",
                 BuildConfiguration = _buildConfiguration,
                 ActiveWorktreePath = _activeWorktreePath,
+                MsBuildProperties = _msBuildProperties,
                 Registrar = _useCommands ? new CommandRegistrar() : null,
             };
 
