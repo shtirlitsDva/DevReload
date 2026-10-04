@@ -81,8 +81,9 @@ namespace DevReload.Oarx
         }
 
         /// <summary>
-        /// Load one managed assembly through AutoCAD's extension loader — the
-        /// NETLOAD-equivalent path, so IExtensionApplication.Initialize runs and
+        /// Load one managed assembly the NETLOAD way (AutoCAD's extension
+        /// loader; on BricsCAD a default-context LoadFrom, which its scan turns
+        /// into the same thing), so IExtensionApplication.Initialize runs and
         /// [CommandMethod]s register. Default ALC, never unloaded, so this is
         /// idempotent by assembly simple name. Never throws: the failure is
         /// reported and the cycle continues.
@@ -101,20 +102,27 @@ namespace DevReload.Oarx
                 return;
             }
 
-#if BRICSCAD
-            // OARX is ObjectARX-only; BricsCAD has no ExtensionLoader.
-            ui.Line($"WARNING: companion {Path.GetFileName(fullPath)} not loaded: OARX is AutoCAD-only");
-#else
             try
             {
+#if BRICSCAD
+                // BricsCAD has no public managed loader (AutoCAD's ExtensionLoader).
+                // Its scan, subscribed to AppDomain.AssemblyLoad, initializes the
+                // IExtensionApplication and registers the [CommandMethod]s of any
+                // BrxMgd-referencing assembly as it loads into the default context,
+                // so LoadFrom is NETLOAD here. Not BricsCAD's own NETLOAD route
+                // (the native LoadManagedDll export): that puts an assembly with a
+                // runtimeconfig.json beside it into a load context of its own,
+                // a second identity of its types beside the default-context ones.
+                System.Reflection.Assembly.LoadFrom(fullPath);
+#else
                 Autodesk.AutoCAD.Runtime.ExtensionLoader.Load(fullPath);
+#endif
                 ui.Line($"loaded companion {Path.GetFileName(fullPath)}");
             }
             catch (Exception ex)
             {
                 ui.Line($"WARNING: companion {Path.GetFileName(fullPath)} failed to load: {ex.Message}");
             }
-#endif
         }
     }
 }
