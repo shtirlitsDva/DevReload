@@ -40,23 +40,7 @@ namespace DevReload
             _context = new IsolatedPluginContext(assemblyPath, sharedAssemblyNames);
 
             DateTime writeUtc = File.GetLastWriteTimeUtc(assemblyPath);
-            byte[] asmBytes = File.ReadAllBytes(assemblyPath);
-            Assembly pluginAssembly;
-
-            using (var asmStream = new MemoryStream(asmBytes))
-            {
-                string pdbPath = Path.ChangeExtension(assemblyPath, ".pdb");
-                if (File.Exists(pdbPath))
-                {
-                    byte[] pdbBytes = File.ReadAllBytes(pdbPath);
-                    using var pdbStream = new MemoryStream(pdbBytes);
-                    pluginAssembly = _context.LoadFromStream(asmStream, pdbStream);
-                }
-                else
-                {
-                    pluginAssembly = _context.LoadFromStream(asmStream);
-                }
-            }
+            Assembly pluginAssembly = StreamedAssembly.Load(_context, assemblyPath);
 
             LoadedAssembly = pluginAssembly;
             LoadedFromPath = assemblyPath;

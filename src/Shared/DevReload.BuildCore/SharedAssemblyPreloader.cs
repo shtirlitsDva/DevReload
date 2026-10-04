@@ -121,22 +121,8 @@ namespace DevReload.Core
         // The caller guarantees this runs only when the simple name is NOT
         // already in the default ALC (IsLoadedInDefaultAlc), so there is no
         // idempotency check here — a re-load would throw.
-        private static void LoadSharedFromStream(string asmPath)
-        {
-            byte[] asmBytes = File.ReadAllBytes(asmPath);
-            string pdbPath = Path.ChangeExtension(asmPath, ".pdb");
-            using var asmStream = new MemoryStream(asmBytes);
-            if (File.Exists(pdbPath))
-            {
-                byte[] pdbBytes = File.ReadAllBytes(pdbPath);
-                using var pdbStream = new MemoryStream(pdbBytes);
-                AssemblyLoadContext.Default.LoadFromStream(asmStream, pdbStream);
-            }
-            else
-            {
-                AssemblyLoadContext.Default.LoadFromStream(asmStream);
-            }
-        }
+        private static void LoadSharedFromStream(string asmPath) =>
+            StreamedAssembly.Load(AssemblyLoadContext.Default, asmPath);
 
         private static void EnsureRuntimeConfig(string asmPath, string asmName, Action<string>? log)
         {

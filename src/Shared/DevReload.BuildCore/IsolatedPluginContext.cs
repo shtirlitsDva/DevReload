@@ -66,17 +66,9 @@ namespace DevReload.Core
 
             // Stream-load (same approach as PluginHost) — leaves no file lock,
             // so collectible-ALC unload truly releases the DLL on disk and the
-            // next build can overwrite it.
-            byte[] asmBytes = File.ReadAllBytes(assemblyPath);
-            string pdbPath = Path.ChangeExtension(assemblyPath, ".pdb");
-            using var asmStream = new MemoryStream(asmBytes);
-            if (File.Exists(pdbPath))
-            {
-                byte[] pdbBytes = File.ReadAllBytes(pdbPath);
-                using var pdbStream = new MemoryStream(pdbBytes);
-                return LoadFromStream(asmStream, pdbStream);
-            }
-            return LoadFromStream(asmStream);
+            // next build can overwrite it. The file it came from is published
+            // (StreamedAssembly), since the loaded assembly has no Location.
+            return StreamedAssembly.Load(this, assemblyPath);
         }
 
         protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)

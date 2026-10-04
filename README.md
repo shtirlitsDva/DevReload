@@ -102,6 +102,18 @@ Note: this was written by AI. I don't know which of these are needed.
 
 DevReload constructs one instance of your `IExtensionApplication` per load. It calls `Initialize()` on that instance once the assembly is loaded, and `Terminate()` on the same instance before the ALC is unloaded. Fields written in `Initialize()` are readable in `Terminate()`. Instance and static fields both work.
 
+## Where Your Assembly Came From
+
+A stream-loaded assembly has an empty `Assembly.Location`. DevReload therefore publishes the file each assembly it stream-loads came from (the plugin, its dependencies and streamed shared assemblies) as AppContext data, keyed by the assembly's simple name:
+
+```csharp
+string file = assembly.Location.Length > 0
+    ? assembly.Location
+    : AppContext.GetData("DevReload.AssemblyFile:" + assembly.GetName().Name) as string ?? "";
+```
+
+Read `Location` first: under NETLOAD or a bundle it is the file and nothing is published. Use this when the plugin hands its own file to something outside the process, such as a console that NETLOADs it. A reload publishes the path again.
+
 ## Command Registration
 
 `CommandRegistrar` scans the loaded assembly's exported types and registers every `[CommandMethod]` it finds with `Utils.AddCommand`. Commands registered that way can be removed with `Utils.RemoveCommand`, which DevReload does before it unloads the ALC. `[assembly: CommandClass]` has no effect on this scan; all exported types are read either way.
