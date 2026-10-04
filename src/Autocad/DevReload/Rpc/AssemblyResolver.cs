@@ -37,6 +37,15 @@ internal static class AssemblyResolver
     private static Assembly? OnResolving(AssemblyLoadContext alc, AssemblyName name)
     {
         if (_probeDir == null || string.IsNullOrEmpty(name.Name)) return null;
+
+        // Another add-in may have loaded the same assembly into this context
+        // from its own folder first (NSLOAD's bundle ships CommunityToolkit.Mvvm
+        // too). The runtime does not bind a name to an assembly loaded by path,
+        // so it asks us - and loading our copy as well is refused: "an assembly
+        // with the same name is already loaded" (0x80131621). Hand back theirs
+        // when it is at least the version asked for.
+        if (AlreadyLoaded(alc, name) is { } loadedHere) return loadedHere;
+
         var candidate = Path.Combine(_probeDir, name.Name + ".dll");
         if (!File.Exists(candidate)) return null;
         try
@@ -53,5 +62,24 @@ internal static class AssemblyResolver
             DevReloadDiagnostics.Report($"AssemblyResolver.LoadFromAssemblyPath({candidate})", ex);
             return null;
         }
+    }
+
+    private static Assembly? AlreadyLoaded(AssemblyLoadContext alc, AssemblyName name)
+    {
+        foreach (var assembly in alc.Assemblies)
+        {
+            var have = assembly.GetName();
+            if (!string.Equals(have.Name, name.Name, StringComparison.OrdinalIgnoreCase)) continue;
+            if (name.Version != null && (have.Version == null || have.Version < name.Version))
+            {
+                DevReloadDiagnostics.Info(
+                    $"AssemblyResolver: {name.Name} {have.Version} is already loaded from {assembly.Location}, older than the {name.Version} asked for");
+                return null;
+            }
+            DevReloadDiagnostics.Info(
+                $"AssemblyResolver: resolved {name.Name} {name.Version} to the copy already loaded from {assembly.Location}");
+            return assembly;
+        }
+        return null;
     }
 }
