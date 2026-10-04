@@ -532,6 +532,51 @@
         <Setter Property="Background" Value="{StaticResource BgBrush}"/>
     </Style>
 
+    <!-- ── Side tabs (Views/SideTabs.xaml) ─────────────────────────────
+         AutoCAD's PaletteSet tabs, for a host whose panel has none
+         (BricsCAD). The selected tab takes the page colour so it reads as
+         joined to the page; an accent bar marks it. -->
+    <Style x:Key="SideTab.Strip" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+        <Setter Property="Padding" Value="3,6,0,6"/>
+    </Style>
+
+    <Style x:Key="SideTab" TargetType="RadioButton">
+        <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Margin" Value="0,0,0,2"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Grid>
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="3,0,0,3" Padding="5,14">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <ContentPresenter.LayoutTransform>
+                                    <RotateTransform Angle="-90"/>
+                                </ContentPresenter.LayoutTransform>
+                            </ContentPresenter>
+                        </Border>
+                        <Border x:Name="Marker" Width="3" HorizontalAlignment="Left" CornerRadius="3,0,0,3"
+                                Background="{StaticResource AccentBrush}" Visibility="Collapsed"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource OverlayHoverBrush}"/>
+                            <Setter Property="Foreground" Value="{StaticResource FgBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource BgBrush}"/>
+                            <Setter TargetName="Marker" Property="Visibility" Value="Visible"/>
+                            <Setter Property="Foreground" Value="{StaticResource FgBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ── Empty-state panel (shown when no plugins) ───────────────── -->
     <Style x:Key="EmptyStatePanel" TargetType="StackPanel">
         <Setter Property="Visibility" Value="Visible"/>

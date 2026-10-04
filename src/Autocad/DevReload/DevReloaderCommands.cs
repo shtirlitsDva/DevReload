@@ -271,15 +271,23 @@ namespace DevReload
 #if BRICSCAD
         // One Panel per session: BricsCAD ignores a second Panel with the same
         // name. Docks into RDOCK, the right-hand stack with Properties and
-        // Layers. No OARX view: BricsCAD cannot load ObjectARX.
-        private static Panel EnsureManagerPanel() =>
-            _mgmtPanel ??= new Panel("DevReloadManager",
-                new DockingTemplate(DockSides.Right, "RDOCK", 30),
-                new DevReloadPanel(new ViewModels.DevReloadViewModel()))
+        // Layers. A Panel holds one visual and has no tabs of its own, so the
+        // .NET and OARX views sit behind our side tabs - AutoCAD's two
+        // PaletteSet tabs - sharing ONE view-model for the same reason as there.
+        private static Panel EnsureManagerPanel()
+        {
+            if (_mgmtPanel != null) return _mgmtPanel;
+            var vm = new ViewModels.DevReloadViewModel();
+            var tabs = new SideTabs();
+            tabs.Add(".NET", new DevReloadPanel(vm));
+            tabs.Add("OARX", new OarxPanel(vm));
+            return _mgmtPanel = new Panel("DevReloadManager",
+                new DockingTemplate(DockSides.Right, "RDOCK", 30), tabs)
             {
                 Title = "DevReload",
                 Icon = GlyphIcon(""), // Segoe MDL2 "Refresh"
             };
+        }
 
         // Panel icons must be bitmaps (a DrawingImage shows BricsCAD's "P"
         // placeholder), so the glyph is rendered once into one.
