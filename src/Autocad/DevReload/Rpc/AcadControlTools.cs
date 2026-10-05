@@ -184,20 +184,63 @@ namespace DevReload.Rpc
         // ── Documents ─────────────────────────────────────────────────────
 
         [AcadRpcTool(Effect = ToolEffect.Additive), RunOnAcadMainThread,
-         Description("Open a drawing in this instance. Returns the opened document.")]
-        public static AcadDocumentEntry OpenDrawing(
+         Description("Open a drawing in this instance. Replies once it is the active drawing and the host is quiescent. Returns the opened document.")]
+        public static Task<AcadDocumentEntry> OpenDrawing(
             [Description("Absolute path to a .dwg/.dwt/.dws file.")] string path,
             [Description("Open read-only? Default false.")] bool readOnly = false)
         {
-            return Entry(Application.DocumentManager.Open(path, readOnly));
+            return ActiveAndQuiescent(Application.DocumentManager.Open(path, readOnly), $"opening {path}");
         }
 
         [AcadRpcTool(Effect = ToolEffect.Additive), RunOnAcadMainThread,
-         Description("Create a new empty drawing in this instance. Optional template path; empty uses the default template. Returns the new document; its name is what acad_activate_document takes.")]
-        public static AcadDocumentEntry NewDrawing(
+         Description("Create a new empty drawing in this instance. Optional template path; empty uses the default template. Replies once it is the active drawing and the host is quiescent. Returns the new document; its name is what acad_activate_document takes.")]
+        public static Task<AcadDocumentEntry> NewDrawing(
             [Description("Optional template path (.dwt). Empty uses the default.")] string? templatePath = null)
         {
-            return Entry(Application.DocumentManager.Add(templatePath ?? string.Empty));
+            return ActiveAndQuiescent(Application.DocumentManager.Add(templatePath ?? string.Empty), "a new drawing");
+        }
+
+        // How long a drawing that is already open may take to become the active,
+        // quiescent one. Loading happened inside Open/Add; this is only the
+        // switch, which takes well under a second when nothing is wrong.
+        private const int ActivationBudgetMs = 60_000;
+
+        /// <summary>
+        /// Makes <paramref name="doc"/> the active drawing and replies once the
+        /// host reports it active and quiescent. Called on the main thread; the
+        /// wait runs off it and probes through the main-thread dispatcher.
+        /// </summary>
+        /// <remarks>
+        /// WHY WAIT: DocumentManager.Open/Add return the document while its
+        /// activation is still pending, on both hosts. A reply right then let a
+        /// caller's next input (and a wait_quiescent, which reads the drawing
+        /// that is STILL active) land in the previous drawing (FHT rig,
+        /// 2026-10-05). The reply now names a state the caller can act on.
+        /// </remarks>
+        private static async Task<AcadDocumentEntry> ActiveAndQuiescent(Document doc, string what)
+        {
+            var docs = Application.DocumentManager;
+            if (docs.MdiActiveDocument != doc) docs.MdiActiveDocument = doc;
+
+            var dispatcher = AcadRpcHost.Current.Dispatcher;
+            long deadline = Environment.TickCount64 + ActivationBudgetMs;
+            while (true)
+            {
+                await Task.Delay(QuiescentProbeMs).ConfigureAwait(false);
+                var (entry, ready, state) = await dispatcher.InvokeAsync(() =>
+                {
+                    AcadLiveState now = Snapshot();
+                    bool active = Application.DocumentManager.MdiActiveDocument == doc;
+                    return (Entry(doc), active && now.IsQuiescent, now);
+                }, CancellationToken.None).ConfigureAwait(false);
+
+                if (ready) return entry;
+                if (Environment.TickCount64 >= deadline)
+                    throw new TimeoutException(
+                        $"{what}: the drawing is open but did not become the active, quiescent one within " +
+                        $"{ActivationBudgetMs / 1000} s (active: '{state.ActiveDocumentName}', quiescent " +
+                        $"{state.IsQuiescent}, command '{state.ActiveCommand}').");
+            }
         }
 
         [AcadRpcTool(Effect = ToolEffect.Destructive), RunOnAcadMainThread, RpcRequires(AcadStateChecks.Document),
@@ -222,18 +265,15 @@ namespace DevReload.Rpc
         }
 
         [AcadRpcTool(Effect = ToolEffect.Additive, Idempotent = true), RunOnAcadMainThread,
-         Description("Switch the active document by its name (as reported by acad_list_open_documents). Errors if no open document matches. Returns the document.")]
-        public static AcadDocumentEntry ActivateDocument(
+         Description("Switch the active document by its name (as reported by acad_list_open_documents). Errors if no open document matches. Replies once it is the active drawing and the host is quiescent. Returns the document.")]
+        public static Task<AcadDocumentEntry> ActivateDocument(
             [Description("The drawing's name (full path, or the short name for an unsaved drawing).")] string documentName)
         {
             var docs = Application.DocumentManager;
             foreach (Document d in docs)
             {
                 if (string.Equals(d.Name, documentName, StringComparison.OrdinalIgnoreCase))
-                {
-                    docs.MdiActiveDocument = d;
-                    return Entry(d);
-                }
+                    return ActiveAndQuiescent(d, $"activating {documentName}");
             }
             throw new InvalidOperationException($"no open document named '{documentName}'");
         }

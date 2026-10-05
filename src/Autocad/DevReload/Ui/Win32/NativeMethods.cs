@@ -116,9 +116,12 @@ internal static class NativeMethods
 
     // ── GUI thread state ──────────────────────────────────────────────
     //
-    // Windows reports whether a GUI thread is inside a modal message loop, and
-    // which window is active while it is. That is a direct answer, callable from
-    // any thread, and it replaces inferring "a modal is up" from side effects.
+    // GetGUIThreadInfo reports a GUI thread's active window and the system's
+    // own nested loops: menu tracking and a window being moved or sized. It has
+    // NO "in a modal dialog" flag (winuser.h: GUI_CARETBLINKING 0x1,
+    // GUI_INMOVESIZE 0x2, GUI_INMENUMODE 0x4, GUI_SYSTEMMENUMODE 0x8,
+    // GUI_POPUPMENUMODE 0x10). A modal dialog is seen by what every modal loop
+    // does instead: it disables its owner, the main frame.
 
     [StructLayout(LayoutKind.Sequential)]
     public struct GUITHREADINFO
@@ -133,8 +136,6 @@ internal static class NativeMethods
         public IntPtr hwndCaret;
         public RECT rcCaret;
     }
-
-    public const uint GUI_INMODALLOOP = 0x00000001;
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgui);

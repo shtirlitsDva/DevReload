@@ -208,42 +208,30 @@ public sealed class AcadMainThreadDispatcher : IAcadMainThreadDispatcher, IDispo
 
     /// <summary>The blocking dialog's title, or null when nothing is blocking.</summary>
     /// <remarks>
-    /// Two independent signals, both required.
+    /// Two signals, both required: the main frame is disabled, and the main
+    /// thread's active window is another, enabled window - the dialog.
     ///
-    /// <para>A disabled main frame used to be the whole test, and it is not
-    /// enough: AutoCAD disables its frame for other long main-thread work too —
-    /// activating a document, for one — so a tool call during a tab switch was
-    /// told a dialog was up while no window on the process was a dialog.</para>
+    /// <para>A disabled main frame alone is not enough: AutoCAD disables its
+    /// frame for other long main-thread work too - activating a document, for
+    /// one - and then the active window is the frame itself, or none. Every
+    /// modal loop (MFC DoModal, WinForms and WPF ShowDialog, a task dialog)
+    /// disables its owner and makes itself the thread's active window, so the
+    /// pair names a dialog and nothing else, and the error can say which.</para>
     ///
-    /// <para>The second signal is not an inference at all: GetGUIThreadInfo
-    /// reports GUI_INMODALLOOP when the GUI thread is inside a modal message
-    /// loop, and hwndActive is the window running it. Windows is asked rather
-    /// than deduced from what a modal happens to do to its neighbours, and the
-    /// answer carries the dialog's identity so the error can name it.</para>
-    ///
-    /// <para>Both are needed because each alone over-reports: the frame is
-    /// disabled for non-modal reasons, and the modal loop flag is also set for
-    /// menu and drag loops, which leave the frame enabled.</para>
+    /// <para>This used to test a GetGUIThreadInfo "GUI_INMODALLOOP" flag
+    /// defined as 0x1. Windows has no such flag (winuser.h): 0x1 is
+    /// GUI_CARETBLINKING, so any visible caret on the main thread read as a
+    /// modal loop. On BricsCAD, idle after a command ended with Enter or
+    /// Space, it stayed set and every later call waited for good
+    /// (2026-10-05).</para>
     /// </remarks>
     private static string? BlockingModalTitle()
     {
         try
         {
-            var frame = Application.MainWindow?.Handle ?? IntPtr.Zero;
-            if (frame == IntPtr.Zero) return null;
-            if (NativeMethods.IsWindowEnabled(frame)) return null;
-
-            uint tid = NativeMethods.GetWindowThreadProcessId(frame, out _);
-            if (tid == 0) return null;
-
-            var gti = new NativeMethods.GUITHREADINFO
-            {
-                cbSize = Marshal.SizeOf<NativeMethods.GUITHREADINFO>(),
-            };
-            if (!NativeMethods.GetGUIThreadInfo(tid, ref gti)) return null;
-            if ((gti.flags & NativeMethods.GUI_INMODALLOOP) == 0) return null;
-
-            string? title = WindowEnum.Describe(gti.hwndActive)?.Title;
+            IntPtr dialog = ModalDialog();
+            if (dialog == IntPtr.Zero) return null;
+            string? title = WindowEnum.Describe(dialog)?.Title;
             return string.IsNullOrWhiteSpace(title) ? "unnamed dialog" : title!;
         }
         catch (Exception ex)
@@ -353,29 +341,30 @@ public sealed class AcadMainThreadDispatcher : IAcadMainThreadDispatcher, IDispo
         try { context = Application.DocumentManager.IsApplicationContext.ToString(); }
         catch (Exception ex) { context = $"unreadable ({ex.GetType().Name})"; }
 
+        IntPtr dialog = ModalDialog();
         DevReloadDiagnostics.Info(
             $"AcadMainThreadDispatcher: {_queue.Count} main-thread call(s) waiting " +
-            $"{busy / 1000} s; application context {context}, modal loop {InModalLoop()}.");
+            $"{busy / 1000} s; application context {context}, main frame enabled {MainFrameEnabled()}, " +
+            $"modal dialog {(dialog == IntPtr.Zero ? "none" : WindowEnum.Describe(dialog)?.Title ?? "unnamed")}.");
     }
 
     /// <summary>
     /// Whether tool work may run right now: in application context (not
-    /// inside a command, e.g. one waiting at a prompt) and not inside any
-    /// modal loop on the main thread. Main thread only.
+    /// inside a command, e.g. one waiting at a prompt) and with the main frame
+    /// enabled. Main thread only.
     /// </summary>
     /// <remarks>
     /// Stricter than <see cref="BlockingModalTitle"/> on purpose. That one must
-    /// never drop a call wrongly, so it wants two signals. This one must never
-    /// run work inside a dialog, so the modal-loop flag alone is enough: a WPF
-    /// dialog owned by something other than the main frame leaves the frame
-    /// enabled. A menu or drag loop sets the flag too and costs one retry.
+    /// never drop a call wrongly, so it wants a dialog it can name. This one
+    /// must never run work inside a dialog, so a disabled frame alone is
+    /// enough: every modal loop disables its owner. AutoCAD's other reasons to
+    /// disable the frame (activating a document) cost a retry, nothing more.
     /// </remarks>
     private static bool CanRunNow()
     {
         try
         {
-            return Application.DocumentManager.IsApplicationContext
-                && !InModalLoop();
+            return Application.DocumentManager.IsApplicationContext && MainFrameEnabled();
         }
         catch (Exception ex)
         {
@@ -386,15 +375,34 @@ public sealed class AcadMainThreadDispatcher : IAcadMainThreadDispatcher, IDispo
         }
     }
 
-    // Called on the main thread, so the current thread is the GUI thread asked about.
-    private static bool InModalLoop()
+    // No frame yet (early startup) counts as enabled: nothing can be modal over it.
+    private static bool MainFrameEnabled()
     {
+        var frame = Application.MainWindow?.Handle ?? IntPtr.Zero;
+        return frame == IntPtr.Zero || NativeMethods.IsWindowEnabled(frame);
+    }
+
+    // The modal dialog over the main frame, or Zero: the frame is disabled and
+    // the frame thread's active window is another window, itself enabled.
+    // Callable from any thread.
+    private static IntPtr ModalDialog()
+    {
+        var frame = Application.MainWindow?.Handle ?? IntPtr.Zero;
+        if (frame == IntPtr.Zero || NativeMethods.IsWindowEnabled(frame)) return IntPtr.Zero;
+
+        uint tid = NativeMethods.GetWindowThreadProcessId(frame, out _);
+        if (tid == 0) return IntPtr.Zero;
+
         var gti = new NativeMethods.GUITHREADINFO
         {
             cbSize = Marshal.SizeOf<NativeMethods.GUITHREADINFO>(),
         };
-        return NativeMethods.GetGUIThreadInfo(NativeMethods.GetCurrentThreadId(), ref gti)
-            && (gti.flags & NativeMethods.GUI_INMODALLOOP) != 0;
+        if (!NativeMethods.GetGUIThreadInfo(tid, ref gti)) return IntPtr.Zero;
+
+        IntPtr active = gti.hwndActive;
+        if (active == IntPtr.Zero || active == frame || !NativeMethods.IsWindowEnabled(active))
+            return IntPtr.Zero;
+        return active;
     }
 
     public void Dispose()

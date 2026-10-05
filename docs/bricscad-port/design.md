@@ -47,11 +47,17 @@ Background: `bricscad-porting.md` `<main-thread>` on X: (`Application.Idle` neve
 agent-started BricsCAD).
 
 - `AcadMainThreadDispatcher` posts a drain to the main thread's WPF `Dispatcher` and
-  runs tool work only when `DocumentManager.IsApplicationContext` and no modal loop is up;
-  otherwise it retries every 100 ms. Never the `SynchronizationContext` current at
+  runs tool work only when `DocumentManager.IsApplicationContext` and the main frame is
+  enabled (every modal dialog disables it); otherwise it retries every 100 ms.
+  `GetGUIThreadInfo` has no modal-loop flag: the old gate's "GUI_INMODALLOOP" 0x1 was
+  `GUI_CARETBLINKING`, which BricsCAD leaves set at idle after a command ended with Enter, and
+  every later call waited (2026-10-05). Never the `SynchronizationContext` current at
   Initialize: WinForms swaps that one when its outermost modal loop ends, and a drain posted
   through a swapped-in plain context runs on the thread pool, where it can never run its work
   and retries forever (the Civil hang after a Drawing Recovery box, 2026-10-05).
+- `acad_open_drawing`, `acad_new_drawing` and `acad_activate_document` reply once the drawing
+  is the active one and the host is quiescent: Open/Add return while the activation is still
+  pending, and a reply then let the caller's next input land in the previous drawing.
 - ACD-MCP posts its auto-start and every tool call (`Pipe/MainThread.cs`).
 - `acad_start` opens a new drawing from `Default-m.dwt` (meters) with `/T`, since the Start page
   has no document.

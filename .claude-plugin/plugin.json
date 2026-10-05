@@ -1,6 +1,6 @@
 {
   "name": "devreload",
-  "version": "2.8.5",
+  "version": "2.8.6",
   "description": "Hot-reload toolchain for AutoCAD .NET plugins, and for BricsCAD V26 (.NET). Ships an MCP bridge that exposes acad_* (process + drawing control), devreload_* (plugin lifecycle + build), oarx_* (native ObjectARX groups + per-worktree profiles) and ui_* (WPF/dialog/mouse/vision UI automation) tools, plus the /acd-agentic-dev skill for agentic-development workflows.",
   "author": {
     "name": "shtirlitsDva",
