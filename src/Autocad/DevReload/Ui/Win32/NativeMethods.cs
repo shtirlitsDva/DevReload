@@ -140,6 +140,11 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgui);
 
+    // The most recently active popup the window owns, or the window itself.
+    // Kept across deactivation, unlike GUITHREADINFO.hwndActive.
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetLastActivePopup(IntPtr hWnd);
+
     [DllImport("kernel32.dll")]
     public static extern uint GetCurrentThreadId();
 

@@ -209,7 +209,8 @@ public sealed class AcadMainThreadDispatcher : IAcadMainThreadDispatcher, IDispo
     /// <summary>The blocking dialog's title, or null when nothing is blocking.</summary>
     /// <remarks>
     /// Two signals, both required: the main frame is disabled, and the main
-    /// thread's active window is another, enabled window - the dialog.
+    /// thread's active window (or, with the host in the background, the
+    /// frame's last active popup) is another, enabled window - the dialog.
     ///
     /// <para>A disabled main frame alone is not enough: AutoCAD disables its
     /// frame for other long main-thread work too - activating a document, for
@@ -383,8 +384,12 @@ public sealed class AcadMainThreadDispatcher : IAcadMainThreadDispatcher, IDispo
     }
 
     // The modal dialog over the main frame, or Zero: the frame is disabled and
-    // the frame thread's active window is another window, itself enabled.
-    // Callable from any thread.
+    // the frame thread's active window is another window, visible and enabled.
+    // A thread whose application is not the foreground one has no active
+    // window, and a host on the rig often sits behind another window; then the
+    // frame's last active popup stands in, because a modal dialog activates
+    // itself when it opens and Windows keeps that popup across deactivation
+    // (it is what Alt+Tab restores). Callable from any thread.
     private static IntPtr ModalDialog()
     {
         var frame = Application.MainWindow?.Handle ?? IntPtr.Zero;
@@ -399,10 +404,13 @@ public sealed class AcadMainThreadDispatcher : IAcadMainThreadDispatcher, IDispo
         };
         if (!NativeMethods.GetGUIThreadInfo(tid, ref gti)) return IntPtr.Zero;
 
-        IntPtr active = gti.hwndActive;
-        if (active == IntPtr.Zero || active == frame || !NativeMethods.IsWindowEnabled(active))
+        IntPtr dialog = gti.hwndActive != IntPtr.Zero
+            ? gti.hwndActive
+            : NativeMethods.GetLastActivePopup(frame);
+        if (dialog == IntPtr.Zero || dialog == frame
+            || !NativeMethods.IsWindowVisible(dialog) || !NativeMethods.IsWindowEnabled(dialog))
             return IntPtr.Zero;
-        return active;
+        return dialog;
     }
 
     public void Dispose()
