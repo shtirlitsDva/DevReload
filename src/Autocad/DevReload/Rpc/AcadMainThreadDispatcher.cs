@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Threading;
 using Acad.Rpc.Core;
 #if BRICSCAD
 using Bricscad.ApplicationServices;
@@ -18,7 +19,7 @@ namespace DevReload.Rpc;
 
 /// <summary>
 /// Host main-thread dispatcher. Queues work items and posts a drain to the
-/// main thread's <see cref="SynchronizationContext"/>. Used by Acad.Rpc.Core
+/// main thread's WPF <see cref="Dispatcher"/>. Used by Acad.Rpc.Core
 /// to marshal tool invocations that must touch AutoCAD/BricsCAD APIs.
 /// </summary>
 /// <remarks>
@@ -28,6 +29,19 @@ namespace DevReload.Rpc;
 /// Idle event (measured: 0 events in 18 s, while a Post from a background
 /// thread ran on the main thread within 10 ms). A posted message is
 /// delivered by whichever message loop is running, in both hosts.
+///
+/// WHY THE THREAD'S DISPATCHER, NOT SynchronizationContext.Current: the
+/// context that happens to be current at Initialize belongs to whoever
+/// installed it, not to the main thread. WinForms swaps it whenever its
+/// outermost message loop ends (a WinForms modal at startup, such as the
+/// Drawing Recovery box, can leave a plain context behind, whose Post runs on
+/// the thread pool), and a WinForms context posts through a marshalling
+/// window it may destroy. Captured that way, the drain ran off the main
+/// thread, where <see cref="CanRunNow"/> is never true, and retried forever
+/// while the main thread sat idle in GetMessage (Civil, 3 of 3 starts that
+/// had a Drawing Recovery box, 2026-10-05). The WPF Dispatcher is bound to
+/// the thread itself and posts to its own message-only window, which lives
+/// as long as the thread; no other code can swap it out.
 ///
 /// READY GUARD: that includes loops where tool work must NOT run: a command
 /// waiting at a prompt, a modal dialog. So the drain first asks
@@ -47,7 +61,7 @@ namespace DevReload.Rpc;
 /// below.
 ///
 /// Lifetime: created in <c>DevReloaderCommands.Initialize</c> (on the main
-/// thread, whose context it captures), disposed in Terminate.
+/// thread, whose Dispatcher it takes), disposed in Terminate.
 /// </remarks>
 public sealed class AcadMainThreadDispatcher : IAcadMainThreadDispatcher, IDisposable
 {
@@ -59,19 +73,47 @@ public sealed class AcadMainThreadDispatcher : IAcadMainThreadDispatcher, IDispo
     // How long a drain that found the host busy waits before trying again.
     private const int RetryMs = 100;
 
+    // A drain that has found the host busy this long reports why, so a stall
+    // leaves a trail in devreload.log instead of needing a dump; then again
+    // every StallReportEveryMs while it lasts.
+    private const int StallReportAfterMs = 10_000;
+    private const int StallReportEveryMs = 30_000;
+
     private readonly ConcurrentQueue<Action> _queue = new();
-    private readonly SynchronizationContext _main;
+    private readonly Dispatcher _main;
+    private readonly uint _mainThreadId;
     // 1 while a drain is posted or a retry is pending, so a burst of calls
     // posts one drain, not one each.
     private int _drainScheduled;
     private volatile bool _disposed;
 
+    // Main thread only (Drain): when the current run of busy drains began, and
+    // when it was last reported. 0 = the last drain ran.
+    private long _busySince;
+    private long _busyReportedAt;
+
     public AcadMainThreadDispatcher()
     {
-        _main = SynchronizationContext.Current
-            ?? throw new InvalidOperationException(
-                "AcadMainThreadDispatcher must be created on the host's main thread " +
-                "(no SynchronizationContext is installed on this one).");
+        _mainThreadId = NativeMethods.GetCurrentThreadId();
+
+        // "Created on the main thread" is checked against the frame's own
+        // thread, not inferred from what happens to be installed on this one.
+        var frame = Application.MainWindow?.Handle ?? IntPtr.Zero;
+        if (frame != IntPtr.Zero)
+        {
+            uint frameThread = NativeMethods.GetWindowThreadProcessId(frame, out _);
+            if (frameThread != 0 && frameThread != _mainThreadId)
+                throw new InvalidOperationException(
+                    $"AcadMainThreadDispatcher must be created on the host's main thread " +
+                    $"(created on thread {_mainThreadId}, the main window's is {frameThread}).");
+        }
+
+        _main = Dispatcher.CurrentDispatcher;
+
+        DevReloadDiagnostics.Info(
+            $"AcadMainThreadDispatcher: main thread {_mainThreadId}, posting through its WPF " +
+            $"Dispatcher; SynchronizationContext.Current at creation was " +
+            $"{SynchronizationContext.Current?.GetType().FullName ?? "null"} (not used).");
     }
 
     // Queued -> Running -> Done, claimed with one interlocked write each. The
@@ -217,8 +259,20 @@ public sealed class AcadMainThreadDispatcher : IAcadMainThreadDispatcher, IDispo
     private void ScheduleDrain()
     {
         if (_disposed) return;
-        if (Interlocked.Exchange(ref _drainScheduled, 1) == 0)
-            _main.Post(_ => Drain(), null);
+        if (Interlocked.Exchange(ref _drainScheduled, 1) != 0) return;
+
+        try
+        {
+            _main.BeginInvoke(DispatcherPriority.Normal, new Action(Drain));
+        }
+        catch (Exception ex)
+        {
+            // Category B - report, do not rethrow. A post that failed with the
+            // flag left at 1 would refuse every later drain for the life of the
+            // process, silently: the flag goes back so the next call posts anew.
+            Volatile.Write(ref _drainScheduled, 0);
+            DevReloadDiagnostics.Report("AcadMainThreadDispatcher: posting the drain", ex);
+        }
     }
 
     // On the main thread.
@@ -226,12 +280,29 @@ public sealed class AcadMainThreadDispatcher : IAcadMainThreadDispatcher, IDispo
     {
         if (_disposed) return;
 
+        uint thread = NativeMethods.GetCurrentThreadId();
+        if (thread != _mainThreadId)
+        {
+            // Cannot happen through the thread's own Dispatcher; if it ever
+            // does, retrying here would spin forever (CanRunNow is never true
+            // off the main thread), so say it loudly and leave the queue alone.
+            Volatile.Write(ref _drainScheduled, 0);
+            DevReloadDiagnostics.Report("AcadMainThreadDispatcher.Drain",
+                new InvalidOperationException(
+                    $"the drain ran on thread {thread}, not the main thread {_mainThreadId}; " +
+                    $"{_queue.Count} call(s) left queued."));
+            return;
+        }
+
         if (!CanRunNow())
         {
+            ReportIfStalled();
             // _drainScheduled stays 1: the retry owns the next drain.
             _ = RetryLaterAsync();
             return;
         }
+
+        _busySince = 0;
 
         // Cleared before running: work queued while this drain runs schedules its own.
         Volatile.Write(ref _drainScheduled, 0);
@@ -253,9 +324,38 @@ public sealed class AcadMainThreadDispatcher : IAcadMainThreadDispatcher, IDispo
 
     private async Task RetryLaterAsync()
     {
-        await Task.Delay(RetryMs).ConfigureAwait(false);
-        Volatile.Write(ref _drainScheduled, 0);
+        try
+        {
+            await Task.Delay(RetryMs).ConfigureAwait(false);
+        }
+        finally
+        {
+            // Whatever happened above, the retry gives up its claim on the
+            // next drain; a flag left at 1 would refuse every later one.
+            Volatile.Write(ref _drainScheduled, 0);
+        }
         if (!_queue.IsEmpty) ScheduleDrain();
+    }
+
+    // Main thread only. No blanket timeout drops the work (see the remarks);
+    // this only writes down why it is waiting.
+    private void ReportIfStalled()
+    {
+        long now = Environment.TickCount64;
+        if (_busySince == 0) { _busySince = now; _busyReportedAt = 0; return; }
+
+        long busy = now - _busySince;
+        if (busy < StallReportAfterMs) return;
+        if (_busyReportedAt != 0 && now - _busyReportedAt < StallReportEveryMs) return;
+        _busyReportedAt = now;
+
+        string context;
+        try { context = Application.DocumentManager.IsApplicationContext.ToString(); }
+        catch (Exception ex) { context = $"unreadable ({ex.GetType().Name})"; }
+
+        DevReloadDiagnostics.Info(
+            $"AcadMainThreadDispatcher: {_queue.Count} main-thread call(s) waiting " +
+            $"{busy / 1000} s; application context {context}, modal loop {InModalLoop()}.");
     }
 
     /// <summary>
