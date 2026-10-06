@@ -126,6 +126,12 @@ Background: `transients.md` on X: (the `DrawableIsAnEntity` bit).
   asks every module still in (listed OR mapped) to unload again; skipping the unlisted one stranded
   the dbx after its drawings were closed (2026-10-06, 2.8.7). A refusal is not a restart case:
   `restartRequired` is false, close the drawings and call again.
+- The bundle autoloads into every bricscad.exe, including NSSM's UI-less plot consoles
+  (`/b script /automation /nologo`). There DevReload does nothing (`ConsoleProcess`): `/automation`
+  on the command line, or the image accoreconsole.exe on AutoCAD, makes `Initialize` write one log
+  line and return before any UI, RPC, build or autoload. Measured 2026-10-06 before the guard: it
+  read `Application.MainWindow` and started msbuild in all six consoles, and two died at QUIT in
+  BrxMgd's `WindowFromHandle` finalizer. A COM-started BricsCAD (`/Automation`) is left alone too.
 - So on BricsCAD `OarxDrawingCycle` closes every named drawing before the unload and, on a reload,
   reopens them after the load and makes the active one active again. One drawing always stays open
   (the Start tab has no document to run in): an unnamed one with no unsaved changes, or a new blank one.
