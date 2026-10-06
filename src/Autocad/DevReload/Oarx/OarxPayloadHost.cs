@@ -81,14 +81,16 @@ namespace DevReload.Oarx
             // load) before the next is asked. A module may refuse its own unload;
             // then the record keeps every module still in, at the path it is
             // mapped from, so the next call plans against them instead of
-            // calling them another payload's.
+            // calling them another payload's. Not a restart case: the retry asks
+            // the module again, so once its cause is gone (its drawings closed)
+            // the same call continues from here.
             var run = OarxModuleHost.Unload(plan.UnloadModules);
             if (OarxModuleHost.DescribeRefusal(run) is string refusal)
             {
                 _mapped[name] = ModuleUnloader.Remaining(previous!, run.Unloaded);
                 string? at = previous!.Modules
                     .FirstOrDefault(m => m.FileName.Equals(run.StoppedAt, StringComparison.OrdinalIgnoreCase))?.Path;
-                return Refused(name, true, refusal + " Nothing new was loaded.", at ?? run.StoppedAt);
+                return Refused(name, false, refusal + " Nothing new was loaded.", at ?? run.StoppedAt);
             }
 
             // From here the previous modules are out. Whatever fails below, the

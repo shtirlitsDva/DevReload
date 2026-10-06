@@ -46,8 +46,11 @@ namespace DevReload.Oarx
         public OarxModuleKind? Kind =>
             TargetPath == null ? null : KindOf(TargetPath);
 
+        /// <summary>Still in the process, listed by the linker or mapped: a
+        /// module BricsCAD kept mapped after it refused its unload must keep its
+        /// group "loaded" (or partially), so an unload or reload asks it again.</summary>
         public bool IsLoaded =>
-            ModuleFileName != null && OarxModuleHost.IsLoaded(ModuleFileName);
+            ModuleFileName != null && OarxModuleHost.IsIn(ModuleFileName);
 
         /// <summary>Classify by output extension. Throws rather than guessing:
         /// a project whose TargetExt is not an ObjectARX one is a registration

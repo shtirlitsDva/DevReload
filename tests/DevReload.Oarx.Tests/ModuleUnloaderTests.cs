@@ -12,12 +12,16 @@ public class ModuleUnloaderTests
 {
     /// <summary>A host linker that remembers what it was asked. A module is
     /// registered and mapped until its unload call is honoured; a refusing
-    /// module stays registered, a pinned one stays mapped.</summary>
+    /// module stays registered, a pinned one stays mapped. A module in
+    /// <see cref="RefusesUnlisted"/> refuses the way BricsCAD V26 showed it
+    /// (2026-10-06): the host drops it from its list but keeps it mapped, and a
+    /// later unload call still reaches it.</summary>
     private sealed class FakeLinker : IModuleLinker
     {
         private readonly Dictionary<string, string> _registered = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _mapped = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> Refuses { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> RefusesUnlisted { get; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> Pinned { get; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> CallThrows { get; } = new(StringComparer.OrdinalIgnoreCase);
         public List<string> Asked { get; } = new();
@@ -49,6 +53,11 @@ public class ModuleUnloaderTests
         {
             Asked.Add(m);
             if (Refuses.Contains(m)) return "eInvalidInput";
+            if (RefusesUnlisted.Contains(m))
+            {
+                _registered.Remove(m);
+                return null;
+            }
             _registered.Remove(m);
             if (!Pinned.Contains(m)) _mapped.Remove(m);
             return CallThrows.Contains(m) ? "Operation is not valid" : null;
@@ -122,15 +131,32 @@ public class ModuleUnloaderTests
         Assert.DoesNotContain("A.dbx", linker.Asked);
     }
 
+    /// <summary>Mapped but no longer listed is how BricsCAD leaves a module that
+    /// refused its unload earlier. It must be asked again: its own unload
+    /// handler is the only thing that can let it go.</summary>
     [Fact]
-    public void A_module_mapped_but_no_longer_listed_is_not_asked_again()
+    public void A_module_mapped_but_no_longer_listed_is_asked_again()
     {
         var linker = new FakeLinker().MappedOnly(@"C:\p\1\A.dbx");
 
         var run = ModuleUnloader.Run(new[] { "A.dbx" }, linker);
 
-        Assert.Empty(linker.Asked);
+        Assert.Equal(new[] { "A.dbx" }, linker.Asked);
+        Assert.True(run.Complete);
+    }
+
+    [Fact]
+    public void A_still_mapped_refusal_carries_the_hosts_own_error()
+    {
+        var linker = new FakeLinker().MappedOnly(@"C:\p\1\A.dbx");
+        linker.Refuses.Add("A.dbx");
+
+        var run = ModuleUnloader.Run(new[] { "A.dbx" }, linker);
+        string msg = ModuleUnloader.Describe(run, "BricsCAD")!;
+
         Assert.Equal(ModuleUnloadState.StillMapped, run.State);
+        Assert.Contains("(eInvalidInput)", msg);
+        Assert.Contains("Nothing was unloaded.", msg);
     }
 
     [Fact]
@@ -213,5 +239,56 @@ public class ModuleUnloaderTests
         var proceed = Assert.IsType<PayloadDecision.Proceed>(retry);
         Assert.Equal(new[] { "A.dbx" }, proceed.UnloadModules);
         Assert.True(ModuleUnloader.Run(proceed.UnloadModules, linker).Complete);
+    }
+
+    /// <summary>The live failure after 2.8.7 (BricsCAD V26, 2026-10-06), step by
+    /// step. The dbx refused its unload with 37 objects in an open drawing;
+    /// BricsCAD dropped it from its list but kept it mapped. The tester closed
+    /// the drawing and retried three times, and every retry said "Nothing was
+    /// unloaded" without calling the dbx's unload: a module no longer listed was
+    /// never asked again. The retry must ask it, find it gone, and plan the load.</summary>
+    [Fact]
+    public void Replay_bricscad_refusal_then_drawings_closed_then_retry_unloads_and_loads()
+    {
+        var prev = Payload("1");
+        var linker = new FakeLinker().Loaded(@"C:\p\1\A.dbx", @"C:\p\1\A.arx", @"C:\p\1\NorsynLogging.dll");
+        linker.RefusesUnlisted.Add("A.dbx");
+        var next = Payload("2", dbxSha: "d2", arxSha: "a2");
+
+        // 1. The dbx refuses: the arx is out, the dbx is still mapped, and the
+        //    refusal says so honestly.
+        var plan = Assert.IsType<PayloadDecision.Proceed>(
+            PayloadPlanner.Decide(prev, next, ProcessImages.FromPaths(linker.MappedPaths, Array.Empty<string>())));
+        var first = ModuleUnloader.Run(plan.UnloadModules, linker);
+        Assert.Equal("A.dbx", first.StoppedAt);
+        Assert.Equal(new[] { "A.arx" }, first.Unloaded);
+        string refusal = ModuleUnloader.Describe(first, "BricsCAD")!;
+        Assert.Contains("'A.dbx' is still mapped", refusal);
+        Assert.Contains("Unloaded before it: A.arx.", refusal);
+        Assert.DoesNotContain("modules are unloaded", refusal);
+
+        // 2. The record is kept: only the dbx, at the path it is mapped from.
+        var record = ModuleUnloader.Remaining(prev, first.Unloaded);
+        Assert.Equal(new[] { F("1", "A.dbx", "d1") }, record.Modules);
+
+        // 3. The drawings are closed: the dbx no longer refuses.
+        linker.RefusesUnlisted.Clear();
+        linker.Asked.Clear();
+
+        // 4. The retry asks the dbx to unload again, and it goes.
+        var retry = Assert.IsType<PayloadDecision.Proceed>(
+            PayloadPlanner.Decide(record, next, ProcessImages.FromPaths(linker.MappedPaths, Array.Empty<string>())));
+        Assert.Equal(new[] { "A.dbx" }, retry.UnloadModules);
+        var second = ModuleUnloader.Run(retry.UnloadModules, linker);
+        Assert.Equal(new[] { "A.dbx" }, linker.Asked);
+        Assert.True(second.Complete);
+        Assert.Equal(new[] { "A.dbx" }, second.Unloaded);
+        Assert.Empty(ModuleUnloader.Remaining(record, second.Unloaded).Modules);
+
+        // 5. The load follows: the whole new payload, dbx first; the unchanged
+        //    logging pin is kept.
+        Assert.Equal(next.Modules, retry.Modules);
+        Assert.Empty(retry.PinNative);
+        Assert.Null(linker.MappedPath("A.dbx"));
     }
 }

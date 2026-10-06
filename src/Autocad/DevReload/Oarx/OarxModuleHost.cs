@@ -95,6 +95,14 @@ namespace DevReload.Oarx
                 Path.GetFileName(m), moduleFileName, StringComparison.OrdinalIgnoreCase));
         }
 
+        /// <summary>Is this module still in the process: listed by the linker
+        /// (<see cref="IsLoaded"/>) or still mapped? BricsCAD leaves a module that
+        /// refused its unload mapped but no longer listed; it is still in, and an
+        /// unload must still ask it.</summary>
+        public static bool IsIn(string moduleFileName) =>
+            !string.IsNullOrWhiteSpace(moduleFileName)
+            && (IsLoaded(moduleFileName) || MappedPath(moduleFileName) is not null);
+
         /// <summary>Every module the linker currently reports (lowercased file
         /// names on AutoCAD). Part of <see cref="IsLoaded"/>.</summary>
         public static IReadOnlyList<string> LoadedModules()
@@ -167,9 +175,11 @@ namespace DevReload.Oarx
         public static string? DescribeRefusal(ModuleUnloadRun run)
         {
             if (run.StoppedAt is not string stopped) return null;
+            // On BricsCAD a refused module shows as still mapped and no longer
+            // listed, so that state gets the close-and-retry hint too.
             string hint = run.State == ModuleUnloadState.StillMapped
                 && MappedPath(stopped) is string at
-                    ? " " + DescribeStillLocked(at)
+                    ? " " + DescribeStillLocked(at) + StillLoadedHint
                     : StillLoadedHint;
             return ModuleUnloader.Describe(run, HostName, hint);
         }

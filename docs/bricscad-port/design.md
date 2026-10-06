@@ -122,6 +122,10 @@ Background: `transients.md` on X: (the `DrawableIsAnEntity` bit).
   stops at the first that stays, and says the module refused. Groups and payloads keep it on record,
   so a retry continues from it (2026-10-06: a payload reload had dropped the record and every later
   reload was refused as "not by this payload"). `oarx_reload_payload` closes no drawings.
+- BricsCAD V26 leaves a refused module mapped but no longer listed by the linker. A retry therefore
+  asks every module still in (listed OR mapped) to unload again; skipping the unlisted one stranded
+  the dbx after its drawings were closed (2026-10-06, 2.8.7). A refusal is not a restart case:
+  `restartRequired` is false, close the drawings and call again.
 - So on BricsCAD `OarxDrawingCycle` closes every named drawing before the unload and, on a reload,
   reopens them after the load and makes the active one active again. One drawing always stays open
   (the Start tab has no document to run in): an unnamed one with no unsaved changes, or a new blank one.

@@ -68,7 +68,8 @@ namespace DevReload.Oarx.Payload
     /// returning is never taken as success: after every call the host's list of
     /// loaded apps and the process image are asked. The run stops at the first
     /// module still in, because the modules after it (a .dbx under a refusing
-    /// .arx) are what it depends on.
+    /// .arx) are what it depends on. A retry asks the module that stopped it
+    /// again, whether or not the host still lists it.
     /// </remarks>
     public static class ModuleUnloader
     {
@@ -79,9 +80,12 @@ namespace DevReload.Oarx.Payload
             {
                 string m = order[i];
                 string? error = null;
-                // A module the host no longer lists cannot be unloaded through it
-                // (the call would only fail); its state is already the answer.
-                if (linker.IsRegistered(m))
+                // Every module still in is asked, listed or not. Mapped but no
+                // longer listed is how BricsCAD leaves a module that refused its
+                // unload earlier, so on a retry that is the normal state, and only
+                // the module's own unload handler can let it go. Only a module
+                // already out (neither listed nor mapped) is skipped.
+                if (StateOf(m, linker) != ModuleUnloadState.Gone)
                     error = linker.TryUnload(m);
 
                 var state = StateOf(m, linker);
@@ -111,13 +115,14 @@ namespace DevReload.Oarx.Payload
         {
             if (run.StoppedAt is not string m) return null;
 
+            string hostSaid = run.HostError is null ? "" : $" ({run.HostError})";
             string why = run.State == ModuleUnloadState.Refused
                 ? $"'{m}' refused its own unload: {hostName} still lists it as loaded after the unload call" +
-                  (run.HostError is null ? "" : $" ({run.HostError})") +
+                  hostSaid +
                   ". That is the module's own decision, not a DevReload failure; the module's own log says why."
-                : $"'{m}' is still mapped into {hostName} after the unload call, although {hostName} no longer " +
-                  "lists it: another loaded module imports from it, or the module refused its own unload " +
-                  "(its own log says so if it did).";
+                : $"'{m}' is still mapped into {hostName} after the unload call" + hostSaid +
+                  $", although {hostName} no longer lists it: another loaded module imports from it, or the " +
+                  "module refused its own unload (its own log says so if it did).";
 
             string left = run.Unloaded.Count == 0
                 ? " Nothing was unloaded."
