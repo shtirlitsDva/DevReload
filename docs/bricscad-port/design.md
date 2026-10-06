@@ -116,6 +116,12 @@ Background: `transients.md` on X: (the `DrawableIsAnEntity` bit).
   `kUnloadAppMsg` first, takes the module's OK, and only then keeps the module, so a module with no
   guard of its own is left torn down under live objects and the next regen crashes (measured
   2026-10-02, NorsynDrawingTools). AutoCAD unloads and keeps the objects as stand-ins.
+- A module may refuse its own unload (its `kUnloadAppMsg` answers with an error; NorsynDrawingTools'
+  dbx does while its objects are open). An unload call returning proves nothing, so `ModuleUnloader`
+  asks the linker (its query and its list of loaded apps) and the process image after each module,
+  stops at the first that stays, and says the module refused. Groups and payloads keep it on record,
+  so a retry continues from it (2026-10-06: a payload reload had dropped the record and every later
+  reload was refused as "not by this payload"). `oarx_reload_payload` closes no drawings.
 - So on BricsCAD `OarxDrawingCycle` closes every named drawing before the unload and, on a reload,
   reopens them after the load and makes the active one active again. One drawing always stays open
   (the Start tab has no document to run in): an unnamed one with no unsaved changes, or a new blank one.

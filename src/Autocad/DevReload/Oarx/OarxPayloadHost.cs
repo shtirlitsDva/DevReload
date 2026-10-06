@@ -76,31 +76,19 @@ namespace DevReload.Oarx
             var log = new LineLog();
 
             // ── Unload the previous modules, .arx first ──────────────────
-            foreach (string module in plan.UnloadModules)
+            // Each is proven out (not listed by the linker, not mapped: a
+            // same-named image still mapped would take the new module's place at
+            // load) before the next is asked. A module may refuse its own unload;
+            // then the record keeps every module still in, at the path it is
+            // mapped from, so the next call plans against them instead of
+            // calling them another payload's.
+            var run = OarxModuleHost.Unload(plan.UnloadModules);
+            if (OarxModuleHost.DescribeRefusal(run) is string refusal)
             {
-                try
-                {
-                    OarxModuleHost.Unload(module);
-                }
-                catch (OarxModuleException ex)
-                {
-                    Forget(name);
-                    return Refused(name, true, ex.Message, module);
-                }
-            }
-
-            // The linker says they are gone. A same-named image still mapped
-            // would take the new module's place at load, so check the process.
-            var afterUnload = Snapshot();
-            foreach (string module in plan.UnloadModules)
-            {
-                if (afterUnload.NativePath(module) is string still)
-                {
-                    Forget(name);
-                    return Refused(name, true,
-                        OarxModuleHost.DescribeStillLocked(still) +
-                        " The previous modules are unloaded; nothing new was loaded.", still);
-                }
+                _mapped[name] = ModuleUnloader.Remaining(previous!, run.Unloaded);
+                string? at = previous!.Modules
+                    .FirstOrDefault(m => m.FileName.Equals(run.StoppedAt, StringComparison.OrdinalIgnoreCase))?.Path;
+                return Refused(name, true, refusal + " Nothing new was loaded.", at ?? run.StoppedAt);
             }
 
             // From here the previous modules are out. Whatever fails below, the
@@ -132,9 +120,9 @@ namespace DevReload.Oarx
                 }
                 catch (OarxModuleException ex)
                 {
-                    // No half-loaded payload: what did load comes out again.
+                    // No half-loaded payload: what did load comes out again,
+                    // and whatever refuses to stays on the record.
                     UnloadInReverse(loadedModules, log);
-                    loadedModules.Clear();
                     _mapped[name] = Mapped(next, companions, loadedModules);
                     return new PayloadReloadResult(name, false, false,
                         ex.Message + Tail(log), m.Path, Describe(_mapped[name]));
@@ -200,23 +188,23 @@ namespace DevReload.Oarx
             PayloadManifest next, PayloadFile missing, LineLog log)
         {
             UnloadInReverse(loadedModules, log);
-            loadedModules.Clear();
             _mapped[name] = Mapped(next, companions, loadedModules);
             return new PayloadReloadResult(name, false, false,
                 $"'{missing.Path}' did not load at its payload path." + Tail(log),
                 missing.Path, Describe(_mapped[name]));
         }
 
+        /// <summary>Takes <paramref name="modules"/> out again, last first, and
+        /// leaves in the list only the ones still in: a module that refuses its
+        /// unload stays on the record.</summary>
         private static void UnloadInReverse(List<PayloadFile> modules, LineLog log)
         {
-            for (int i = modules.Count - 1; i >= 0; i--)
-            {
-                try { OarxModuleHost.Unload(modules[i].FileName); }
-                catch (OarxModuleException ex) { log.Line(ex.Message); }
-            }
+            var run = OarxModuleHost.Unload(modules.Select(m => m.FileName).Reverse().ToList());
+            if (OarxModuleHost.DescribeRefusal(run) is string refusal)
+                log.Line(refusal);
+            var gone = new HashSet<string>(run.Unloaded, StringComparer.OrdinalIgnoreCase);
+            modules.RemoveAll(m => gone.Contains(m.FileName));
         }
-
-        private static void Forget(string name) => _mapped.Remove(name);
 
         // ── Process snapshot ─────────────────────────────────────────
 

@@ -698,16 +698,22 @@ namespace DevReload.Oarx
         }
 
         /// <summary>Unload in REVERSE declaration order: the .arx that uses the
-        /// .dbx's classes must go first.</summary>
+        /// .dbx's classes must go first. Stops at the first module that stays in
+        /// and throws its refusal; the modules before it in load order are left
+        /// alone. The group's state is the linker's, so a retry continues from
+        /// whatever is still loaded.</summary>
         private static void UnloadModules(OarxRegistration reg, IReloadProgress ui)
         {
-            foreach (var m in Enumerable.Reverse(reg.Modules))
-            {
-                if (m.ModuleFileName == null) continue;
-                OarxModuleHost.Unload(m.ModuleFileName);
-                ui.Line($"unloaded {m.ModuleFileName}");
-            }
+            var order = Enumerable.Reverse(reg.Modules)
+                .Select(m => m.ModuleFileName)
+                .OfType<string>()
+                .ToList();
+            var run = OarxModuleHost.Unload(order);
+            foreach (string m in run.Unloaded)
+                ui.Line($"unloaded {m}");
             StateChanged?.Invoke(reg.Name);
+            if (OarxModuleHost.DescribeRefusal(run) is string refusal)
+                throw new OarxModuleException(refusal);
         }
 
         private static (string Message, string? Log)? BuildModules(

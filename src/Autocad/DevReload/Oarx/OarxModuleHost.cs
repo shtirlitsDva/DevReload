@@ -14,6 +14,7 @@ using Autodesk.AutoCAD.Runtime;
 using Exception = System.Exception;
 
 using DevReload.Diagnostics;
+using DevReload.Oarx.Payload;
 
 namespace DevReload.Oarx
 {
@@ -46,7 +47,11 @@ namespace DevReload.Oarx
     /// <item><b>F2</b> — the unload is synchronous. The module is unregistered,
     /// unmapped from the process, and its file writable before the call returns.
     /// There is no deferred FreeLibrary here (that belongs to <c>acedArxUnload</c>,
-    /// which DevReload does not use), so no idle-driven state machine is needed.</item>
+    /// which DevReload does not use), so no idle-driven state machine is needed.
+    /// Synchronous is not the same as successful: a module may refuse its own
+    /// unload (BricsCAD keeps one whose kUnloadAppMsg answers with an error), so
+    /// every unload is checked against the linker and the process afterwards
+    /// (<see cref="ModuleUnloader"/>).</item>
     /// <item><b>F4</b> — load and unload APIs are paired. A module loaded through
     /// <c>LoadModule</c> is invisible to the ADS application table, so LISP
     /// <c>arxunload</c> cannot unload it, and vice versa. Do not mix.</item>
@@ -67,26 +72,31 @@ namespace DevReload.Oarx
 
         /// <summary>Is this module registered with the dynamic linker right now?
         /// Takes the module FILE NAME with extension ("Foo.arx"), matched
-        /// case-insensitively — not a path (F6).</summary>
+        /// case-insensitively — not a path (F6). Either answer counts: the
+        /// linker's own query, or the module in its list of loaded apps. A
+        /// module that refused its unload must never read as gone because one
+        /// of the two disagrees.</summary>
         public static bool IsLoaded(string moduleFileName)
         {
             if (string.IsNullOrWhiteSpace(moduleFileName)) return false;
+            bool registered;
             try
             {
-                return Linker.IsModuleLoaded(moduleFileName);
+                registered = Linker.IsModuleLoaded(moduleFileName);
             }
             catch (Exception ex)
             {
-                // Category B - report, do not rethrow. "Not loaded" is the safe
-                // answer, but a linker that cannot answer is worth knowing about:
-                // it makes a group look unloaded when it may not be.
+                // Category B - report, do not rethrow. The list below still
+                // answers; a linker that cannot answer is worth knowing about.
                 DevReloadDiagnostics.Report($"OarxModuleHost.IsLoaded({moduleFileName})", ex);
-                return false;
+                registered = false;
             }
+            return registered || LoadedModules().Any(m => string.Equals(
+                Path.GetFileName(m), moduleFileName, StringComparison.OrdinalIgnoreCase));
         }
 
-        /// <summary>Every module the linker currently reports, lowercased file
-        /// names. Used for diagnostics, not for control flow.</summary>
+        /// <summary>Every module the linker currently reports (lowercased file
+        /// names on AutoCAD). Part of <see cref="IsLoaded"/>.</summary>
         public static IReadOnlyList<string> LoadedModules()
         {
             try
@@ -143,38 +153,62 @@ namespace DevReload.Oarx
         }
 
         /// <summary>
-        /// Unload one module by FILE NAME (F6). Returns without throwing when the
-        /// module is not loaded — unloading nothing is a success, not an error.
+        /// Unload modules by FILE NAME (F6), in the order given (.arx before the
+        /// .dbx it uses). Each one is proven out — not listed by the linker, not
+        /// mapped — before the next is asked; the run stops at the first that
+        /// stays. A module already out is skipped. Never throws: the result says
+        /// what left and what did not, <see cref="DescribeRefusal"/> says why.
         /// </summary>
-        public static void Unload(string moduleFileName)
+        public static ModuleUnloadRun Unload(IReadOnlyList<string> order) =>
+            ModuleUnloader.Run(order, HostLinker.Instance);
+
+        /// <summary>The refusal of an incomplete <see cref="Unload"/> run, for the
+        /// caller to show. Null when the run was complete.</summary>
+        public static string? DescribeRefusal(ModuleUnloadRun run)
         {
-            if (string.IsNullOrWhiteSpace(moduleFileName)) return;
-            if (!IsLoaded(moduleFileName)) return;
+            if (run.StoppedAt is not string stopped) return null;
+            string hint = run.State == ModuleUnloadState.StillMapped
+                && MappedPath(stopped) is string at
+                    ? " " + DescribeStillLocked(at)
+                    : StillLoadedHint;
+            return ModuleUnloader.Describe(run, HostName, hint);
+        }
 
-            try
-            {
-                // F1: the second argument MUST be false. True throws for every
-                // module in every context. Do not "tidy" this to true.
-                Linker.UnloadModule(moduleFileName, false);
-            }
-            catch (Exception ex)
-            {
-                throw new OarxModuleException(
-                    $"{HostName} refused to unload '{moduleFileName}'. " +
-                    "The module is locked (its entry point never called " +
-                    "unlockApplication) or something still depends on it.", ex);
-            }
+        /// <summary>The linker and the process image, as <see cref="ModuleUnloader"/>
+        /// asks them.</summary>
+        private sealed class HostLinker : IModuleLinker
+        {
+            public static readonly HostLinker Instance = new();
 
-            if (IsLoaded(moduleFileName))
-                throw new OarxModuleException(
-                    $"'{moduleFileName}' reported no error but is still registered " +
-                    "with the dynamic linker." + StillLoadedHint);
+            public bool IsRegistered(string moduleFileName) => IsLoaded(moduleFileName);
+
+            public string? MappedPath(string moduleFileName) => OarxModuleHost.MappedPath(moduleFileName);
+
+            public string? TryUnload(string moduleFileName)
+            {
+                try
+                {
+                    // F1: the second argument MUST be false. True throws for every
+                    // module in every context. Do not "tidy" this to true.
+                    Linker.UnloadModule(moduleFileName, false);
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    // How the linker reads a native false return. Not a fault to
+                    // report: the module's state afterwards decides, and this text
+                    // goes into the refusal if the module stayed.
+                    return $"{HostName} answered: {ex.Message}";
+                }
+            }
         }
 
 #if BRICSCAD
-        // BricsCAD keeps a module whose objects are still in an open drawing
-        // (OarxDrawingCycle). The cycle closes the named drawings, so what is left
-        // is an unnamed one, or a drawing opened in the meantime.
+        // BricsCAD keeps a module whose kUnloadAppMsg handler answers with an
+        // error, which is what a module guarding its live objects does while an
+        // open drawing holds them. The OARX group cycle closes the named drawings
+        // first (OarxDrawingCycle), so what is left is an unnamed one, a drawing
+        // opened in the meantime, or a payload reload, which closes none.
         private const string StillLoadedHint =
             " BricsCAD does not unload a module while an open drawing holds its objects. " +
             "Close every drawing that holds them, then unload again.";
@@ -211,7 +245,7 @@ namespace DevReload.Oarx
             string name = Path.GetFileName(path);
             var reasons = new List<string>();
 
-            if (IsMappedInThisProcess(name))
+            if (MappedPath(name) is not null)
                 reasons.Add(
                     $"it is still mapped into THIS {HostName} even though the linker " +
                     "released it — another loaded module imports a symbol from it, " +
@@ -234,20 +268,24 @@ namespace DevReload.Oarx
             return $"'{name}' cannot be overwritten: " + string.Join("; ", reasons) + ".";
         }
 
-        private static bool IsMappedInThisProcess(string moduleFileName)
+        /// <summary>The full path this process has an image of that file name
+        /// mapped from, or null when it has none.</summary>
+        public static string? MappedPath(string moduleFileName)
         {
             try
             {
-                return Process.GetCurrentProcess().Modules
+                using var current = Process.GetCurrentProcess();
+                return current.Modules
                     .Cast<ProcessModule>()
-                    .Any(m => string.Equals(
-                        m.ModuleName, moduleFileName, StringComparison.OrdinalIgnoreCase));
+                    .FirstOrDefault(m => string.Equals(
+                        m.ModuleName, moduleFileName, StringComparison.OrdinalIgnoreCase))
+                    ?.FileName;
             }
             catch (Exception ex)
             {
                 DevReloadDiagnostics.Report(
                     $"OarxModuleHost: module-table probe for {moduleFileName}", ex);
-                return false;
+                return null;
             }
         }
 
