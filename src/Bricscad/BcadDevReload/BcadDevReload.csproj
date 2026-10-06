@@ -4,7 +4,8 @@
 	     Host differences live in `#if BRICSCAD` blocks in those sources — never
 	     in forked copies. -->
 	<PropertyGroup>
-		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+		<GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+		<Version>$(DevReloadVersion)</Version>
 		<OutputType>Library</OutputType>
 		<AssemblyName>BcadDevReload</AssemblyName>
 		<RootNamespace>DevReload</RootNamespace>

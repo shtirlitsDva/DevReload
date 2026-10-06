@@ -95,8 +95,13 @@ namespace DevReload
                 Application.DocumentManager.MdiActiveDocument?.Editor?.WriteMessage(msg);
 
             // First-line file log so we can verify autoload at all,
-            // independent of whether an editor is attached at Initialize.
-            DevReloadDiagnostics.Info("DevReloaderCommands.Initialize entered");
+            // independent of whether an editor is attached at Initialize, and
+            // which build it is: the version is plugin.json's, stamped at build.
+            var self = typeof(DevReloaderCommands).Assembly;
+            string version = System.Reflection.CustomAttributeExtensions
+                .GetCustomAttribute<System.Reflection.AssemblyFileVersionAttribute>(self)?.Version ?? "unknown";
+            DevReloadDiagnostics.Info(
+                $"DevReloaderCommands.Initialize entered: DevReload {version} for {Host}, from {self.Location}");
 
             // Bridge AutoCAD's .NET 8 host runtime to our bundled
             // dependency graph (MCP SDK + Microsoft.Extensions.* 10.x

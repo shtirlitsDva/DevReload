@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
-		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+		<GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+		<Version>$(DevReloadVersion)</Version>
 		<OutputType>Library</OutputType>
 		<AssemblyName>DevReload</AssemblyName>
 		<NoWarn>$(NoWarn);CA1416</NoWarn>

@@ -78,7 +78,9 @@ namespace DevReload.Oarx
             // ── Unload the previous modules, .arx first ──────────────────
             // Each is proven out (not listed by the linker, not mapped: a
             // same-named image still mapped would take the new module's place at
-            // load) before the next is asked. A module may refuse its own unload;
+            // load) before the next is asked. Every module is asked first whether
+            // it may unload now; one no and nothing comes out, the .arx included
+            // (ModuleUnloader). A module may still refuse its own unload;
             // then the record keeps every module still in, at the path it is
             // mapped from, so the next call plans against them instead of
             // calling them another payload's. Not a restart case: the retry asks

@@ -23,6 +23,11 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <SupportedOSPlatformVersion>8.0</SupportedOSPlatformVersion>
+
+    <!-- The plugin's version, read from the one place it is written
+         (.claude-plugin/plugin.json). The host heads stamp their DLL with it,
+         so the file version and devreload.log name the build that runs. -->
+    <DevReloadVersion>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory).claude-plugin\plugin.json')), '(?&lt;="version"\s*:\s*")[0-9]+(\.[0-9]+){1,3}').Value)</DevReloadVersion>
   </PropertyGroup>
 
   <!-- Allow local override file (git-ignored) -->

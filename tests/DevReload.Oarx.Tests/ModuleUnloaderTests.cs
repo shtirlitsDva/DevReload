@@ -62,6 +62,26 @@ public class ModuleUnloaderTests
             if (!Pinned.Contains(m)) _mapped.Remove(m);
             return CallThrows.Contains(m) ? "Operation is not valid" : null;
         }
+
+        /// <summary>Modules that carry the DevReloadMayUnload_v1 export: the
+        /// answer it returns and the sentence it writes. A module not in here
+        /// has no export.</summary>
+        public Dictionary<string, (int Answer, string Sentence)> Exports { get; } = new(StringComparer.OrdinalIgnoreCase);
+        /// <summary>Every module whose export was called, in order.</summary>
+        public List<string> Questioned { get; } = new();
+
+        public MayUnloadExport? FindMayUnload(string m)
+        {
+            if (MappedPath(m) is null || !Exports.TryGetValue(m, out var export)) return null;
+            return reason =>
+            {
+                Questioned.Add(m);
+                int n = Math.Min(export.Sentence.Length, reason.Length - 1);
+                export.Sentence.CopyTo(0, reason, 0, n);
+                reason[n] = '\0';
+                return export.Answer;
+            };
+        }
     }
 
     private static PayloadFile F(string dir, string name, string sha = "aa") => new($@"C:\p\{dir}\{name}", sha);
@@ -290,5 +310,113 @@ public class ModuleUnloaderTests
         Assert.Equal(next.Modules, retry.Modules);
         Assert.Empty(retry.PinNative);
         Assert.Null(linker.MappedPath("A.dbx"));
+    }
+
+    // ── Asked first: DevReloadMayUnload_v1 ────────────────────────────
+
+    private const string LiveObjects =
+        "37 NDH objects are alive in open drawings. Close those drawings, then unload.";
+
+    /// <summary>The live failure behind the question (BricsCAD V26, 2026-10-06):
+    /// the arx went, the dbx refused, and BricsCAD never called the dbx's unload
+    /// again. Asked first, the dbx says no and NOTHING is asked to unload: the
+    /// arx stays, so its commands still work.</summary>
+    [Fact]
+    public void A_module_that_says_no_when_asked_first_stops_every_unload()
+    {
+        var linker = new FakeLinker().Loaded(@"C:\p\1\A.dbx", @"C:\p\1\A.arx");
+        linker.Exports["A.dbx"] = (0, LiveObjects);
+
+        var run = ModuleUnloader.Run(ArxThenDbx, linker);
+
+        Assert.Empty(linker.Asked);
+        Assert.Equal(ModuleUnloadState.Declined, run.State);
+        Assert.Equal("A.dbx", run.StoppedAt);
+        Assert.Empty(run.Unloaded);
+        Assert.Equal(ArxThenDbx, run.StillLoaded);
+        Assert.True(linker.IsRegistered("A.arx"));
+    }
+
+    [Fact]
+    public void The_decline_says_the_modules_own_sentence_and_that_nothing_was_unloaded()
+    {
+        var linker = new FakeLinker().Loaded(@"C:\p\1\A.dbx", @"C:\p\1\A.arx");
+        linker.Exports["A.dbx"] = (0, LiveObjects);
+
+        string msg = ModuleUnloader.Describe(ModuleUnloader.Run(ArxThenDbx, linker), "BricsCAD", " HINT")!;
+
+        Assert.Equal(
+            "'A.dbx' may not unload now: " + LiveObjects +
+            " Nothing was unloaded. Still loaded: A.arx, A.dbx.", msg);
+    }
+
+    [Fact]
+    public void Every_module_saying_yes_lets_the_unload_proceed()
+    {
+        var linker = new FakeLinker().Loaded(@"C:\p\1\A.dbx", @"C:\p\1\A.arx");
+        linker.Exports["A.dbx"] = (1, "");
+        linker.Exports["A.arx"] = (1, "");
+
+        var run = ModuleUnloader.Run(ArxThenDbx, linker);
+
+        Assert.Equal(ArxThenDbx, linker.Questioned);
+        Assert.Equal(ArxThenDbx, linker.Asked);
+        Assert.True(run.Complete);
+        Assert.Equal(ArxThenDbx, run.Unloaded);
+    }
+
+    /// <summary>The arx has no export, the dbx says yes: the arx counts as yes,
+    /// is asked nothing, and both unload.</summary>
+    [Fact]
+    public void A_module_without_the_export_counts_as_yes()
+    {
+        var linker = new FakeLinker().Loaded(@"C:\p\1\A.dbx", @"C:\p\1\A.arx");
+        linker.Exports["A.dbx"] = (1, "");
+
+        var run = ModuleUnloader.Run(ArxThenDbx, linker);
+
+        Assert.Equal(new[] { "A.dbx" }, linker.Questioned);
+        Assert.True(run.Complete);
+        Assert.Equal(ArxThenDbx, run.Unloaded);
+    }
+
+    /// <summary>Only 1 is a yes. An answer that is neither, with no sentence,
+    /// holds the unload and says what the export answered.</summary>
+    [Fact]
+    public void An_answer_that_is_not_one_holds_the_unload_and_says_what_it_was()
+    {
+        var linker = new FakeLinker().Loaded(@"C:\p\1\A.dbx", @"C:\p\1\A.arx");
+        linker.Exports["A.dbx"] = (7, "");
+
+        var run = ModuleUnloader.Run(ArxThenDbx, linker);
+
+        Assert.Empty(linker.Asked);
+        Assert.Equal(ModuleUnloadState.Declined, run.State);
+        Assert.Contains("answered 7 and gave no reason", run.Reason);
+    }
+
+    /// <summary>A module that said no is asked again on the retry; once it says
+    /// yes (its drawings were closed) the whole run proceeds.</summary>
+    [Fact]
+    public void After_a_decline_the_retry_asks_again_and_proceeds()
+    {
+        var prev = Payload("1");
+        var linker = new FakeLinker().Loaded(@"C:\p\1\A.dbx", @"C:\p\1\A.arx", @"C:\p\1\NorsynLogging.dll");
+        linker.Exports["A.dbx"] = (0, LiveObjects);
+        var next = Payload("2", dbxSha: "d2", arxSha: "a2");
+
+        var plan = Assert.IsType<PayloadDecision.Proceed>(
+            PayloadPlanner.Decide(prev, next, ProcessImages.FromPaths(linker.MappedPaths, Array.Empty<string>())));
+        var first = ModuleUnloader.Run(plan.UnloadModules, linker);
+        var record = ModuleUnloader.Remaining(prev, first.Unloaded);
+        Assert.Equal(prev.Modules, record.Modules);
+
+        linker.Exports["A.dbx"] = (1, "");
+        var retry = Assert.IsType<PayloadDecision.Proceed>(
+            PayloadPlanner.Decide(record, next, ProcessImages.FromPaths(linker.MappedPaths, Array.Empty<string>())));
+        var second = ModuleUnloader.Run(retry.UnloadModules, linker);
+
+        Assert.True(second.Complete);
+        Assert.Equal(ArxThenDbx, second.Unloaded);
     }
 }

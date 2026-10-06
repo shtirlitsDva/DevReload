@@ -34,3 +34,21 @@ Publishing does not activate. The active profile decides what the user's AutoCAD
   - `success:false`, `restartRequired:false` — the payload is defective (manifest, file-name clash, module refused). `file` names the file. A restart does not help.
 - `loaded` lists what this `name` has mapped now, with file version and sha256. Compare the sha256 values with the payload you sent.
 </prebuilt-payloads>
+
+<may-unload-export>
+Before DevReload unloads ANY module of a group or a payload (reload, unload, a payload's rollback), it asks every module in the run whether it may unload now. One no and NOTHING is unloaded: the .arx stays loaded and its commands keep working. The response carries the module's own sentence plus "Nothing was unloaded"; `restartRequired` is false. Remove the cause and call again.
+
+Any native module may answer through one optional C export (2.9.0):
+
+```cpp
+extern "C" __declspec(dllexport) int DevReloadMayUnload_v1(wchar_t* reason, int reasonChars);
+```
+
+- Return 1 = may unload now, 0 = refuse. Any other value, or a call that faults, holds the unload.
+- On a refusal, write ONE sentence the user can act on into `reason`, NUL-ended, at most `reasonChars` characters with the NUL (DevReload passes 1024). Say why and what to do ("37 NDH objects are alive in open drawings. Close those drawings, then unload.").
+- No export = asked nothing, counts as yes. A module that is not mapped is not asked.
+- DevReload finds it with `GetModuleHandle(<file name>)` + `GetProcAddress`, and calls it on the host's MAIN thread (every `oarx_*` tool and `{PREFIX}` command runs there). Keep it cheap and side-effect free; it must not throw (an exception leaving an `extern "C"` function is undefined behaviour).
+- Make it the SAME decision as the module's `kUnloadAppMsg` refusal, so the question and the handler never disagree. The handler's refusal stays as the last guard.
+- Why: a refusal from `kUnloadAppMsg` cannot always be recovered. BricsCAD V26 drops the refusing module from its list, keeps it mapped, and never calls its unload handler again, so the session is stuck without the modules that did come out (the .arx). Asking first prevents it.
+- The group cycle asks after it has closed the named drawings (BricsCAD), so a dbx that counts its live objects answers about what is left open.
+</may-unload-export>

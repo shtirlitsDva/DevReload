@@ -126,6 +126,11 @@ Background: `transients.md` on X: (the `DrawableIsAnEntity` bit).
   asks every module still in (listed OR mapped) to unload again; skipping the unlisted one stranded
   the dbx after its drawings were closed (2026-10-06, 2.8.7). A refusal is not a restart case:
   `restartRequired` is false, close the drawings and call again.
+- That retry did not save the session: after the drawing was closed, BricsCAD V26 never called the
+  refused dbx's unload handler again, and the arx was already out (2026-10-06, 2.8.9). So since 2.9.0
+  DevReload ASKS every module first, through the optional `DevReloadMayUnload_v1` export, and one no
+  unloads nothing; the arx stays and works. The contract is in
+  `skills/acd-agentic-dev/references/oarx.md` <may-unload-export>.
 - The bundle autoloads into every bricscad.exe, including NSSM's UI-less plot consoles
   (`/b script /automation /nologo`). There DevReload does nothing (`ConsoleProcess`): `/automation`
   on the command line, or the image accoreconsole.exe on AutoCAD, makes `Initialize` write one log

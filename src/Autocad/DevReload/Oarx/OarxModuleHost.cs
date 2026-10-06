@@ -162,7 +162,9 @@ namespace DevReload.Oarx
 
         /// <summary>
         /// Unload modules by FILE NAME (F6), in the order given (.arx before the
-        /// .dbx it uses). Each one is proven out — not listed by the linker, not
+        /// .dbx it uses). Every module is first asked whether it may unload now
+        /// (its optional DevReloadMayUnload_v1 export); one no and nothing is
+        /// unloaded. Each one is then proven out — not listed by the linker, not
         /// mapped — before the next is asked; the run stops at the first that
         /// stays. A module already out is skipped. Never throws: the result says
         /// what left and what did not, <see cref="DescribeRefusal"/> says why.
@@ -211,7 +213,44 @@ namespace DevReload.Oarx
                     return $"{HostName} answered: {ex.Message}";
                 }
             }
+
+            public MayUnloadExport? FindMayUnload(string moduleFileName)
+            {
+                // The file name with its extension: without one, Windows looks
+                // for "<name>.dll".
+                IntPtr module = GetModuleHandleW(moduleFileName);
+                if (module == IntPtr.Zero) return null;
+                IntPtr export = GetProcAddress(module, ModuleUnloader.MayUnloadExportName);
+                if (export == IntPtr.Zero) return null;
+
+                var call = Marshal.GetDelegateForFunctionPointer<NativeMayUnload>(export);
+                return reason =>
+                {
+                    var pin = GCHandle.Alloc(reason, GCHandleType.Pinned);
+                    try
+                    {
+                        return call(pin.AddrOfPinnedObject(), reason.Length);
+                    }
+                    finally
+                    {
+                        pin.Free();
+                    }
+                };
+            }
         }
+
+        // DevReloadMayUnload_v1 as the module exports it (ModuleUnloader).
+        // Called on the host's main thread: every OARX tool and command that
+        // unloads runs there.
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate int NativeMayUnload(IntPtr reason, int reasonChars);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+        private static extern IntPtr GetModuleHandleW(string lpModuleName);
+
+        // The export name is ANSI: GetProcAddress has no wide form.
+        [DllImport("kernel32.dll", CharSet = CharSet.Ansi, ExactSpelling = true, BestFitMapping = false)]
+        private static extern IntPtr GetProcAddress(IntPtr hModule, string lpProcName);
 
 #if BRICSCAD
         // BricsCAD keeps a module whose kUnloadAppMsg handler answers with an
