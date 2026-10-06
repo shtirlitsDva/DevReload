@@ -23,5 +23,6 @@
   <ItemGroup>
     <Compile Include="..\..\src\Autocad\DevReload\Oarx\Payload\*.cs" LinkBase="Sut" />
     <Compile Include="..\..\src\Autocad\DevReload\Oarx\OarxBuildFolder.cs" LinkBase="Sut" />
+    <Compile Include="..\..\src\Autocad\DevReload\ConsoleProcess.cs" LinkBase="Sut" />
   </ItemGroup>
 </Project>

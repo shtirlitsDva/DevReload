@@ -58,7 +58,33 @@ namespace DevReload
 
         private static AcadMainThreadDispatcher? _dispatcher;
 
+#if BRICSCAD
+        private const CadHost Host = CadHost.BricsCad;
+#else
+        private const CadHost Host = CadHost.AutoCad;
+#endif
+
+        /// <summary>True when this process is a UI-less console and DevReload
+        /// stayed out of it: Terminate then has nothing to take down.</summary>
+        private static bool _stayedOut;
+
         public void Initialize()
+        {
+            // A UI-less console (NSSM's plot consoles, accoreconsole) gets
+            // nothing: no RPC server, no window reads, no build, no autoload.
+            // Decided first and in a method that names no host UI type, so the
+            // JIT never resolves one here (InitializeCore holds them).
+            if (ConsoleProcess.Current(Host) is string why)
+            {
+                _stayedOut = true;
+                DevReloadDiagnostics.Info($"DevReload stays out of this process: {why}.");
+                return;
+            }
+            InitializeCore();
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static void InitializeCore()
         {
             // Give the diagnostics sink a way onto the command line. Every
             // reported failure in this assembly — the whole plugin lifecycle
@@ -202,6 +228,14 @@ namespace DevReload
         }
 
         public void Terminate()
+        {
+            // Nothing was brought up in a console, so nothing is taken down.
+            if (_stayedOut) return;
+            TerminateCore();
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static void TerminateCore()
         {
             // Collect-then-aggregate: every step runs and every failure is
             // reported as it happens, then the lot is rethrown. Throwing on the
